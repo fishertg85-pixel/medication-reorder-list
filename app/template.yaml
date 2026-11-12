@@ -10,6 +10,14 @@ Parameters:
     Default: nortex-reorder
     AllowedPattern: '[a-z][a-z0-9-]{2,30}'
     Description: Short lowercase name used in resource names.
+  TextCodes:
+    Type: String
+    Default: 'on'
+    AllowedValues: ['on', 'off']
+    Description: Texted sign-in codes. 'off' signs in with password only (while SMS isn't approved yet). deploy.sh keeps the last choice.
+
+Conditions:
+  TextCodesOn: !Equals [!Ref TextCodes, 'on']
 
 Resources:
   # ------------------------------------------------------------------ data
@@ -78,8 +86,8 @@ Resources:
       # sign-in with a login ID (not email); IDs are not case-sensitive
       UsernameConfiguration: { CaseSensitive: false }
       DeletionProtection: ACTIVE
-      MfaConfiguration: 'ON'
-      EnabledMfas: [SMS_MFA]
+      MfaConfiguration: !If [TextCodesOn, 'ON', 'OFF']
+      EnabledMfas: !If [TextCodesOn, [SMS_MFA], !Ref AWS::NoValue]
       SmsConfiguration:
         SnsCallerArn: !GetAtt SmsRole.Arn
         ExternalId: !Sub '${AppName}-sms'

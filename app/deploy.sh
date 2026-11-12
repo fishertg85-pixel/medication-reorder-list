@@ -2,6 +2,8 @@
 # NorTex Reorder List — deploy or update, from AWS CloudShell (or any shell with the AWS CLI).
 #   First time:  bash deploy.sh          (asks for the Account Manager's details at the end)
 #   Updates:     bash deploy.sh          (same command; data is never touched)
+#   Texted sign-in codes off/on:  TEXT_CODES=off bash deploy.sh   /   TEXT_CODES=on bash deploy.sh
+#                (the choice is kept for later updates until you change it)
 # Optional: APP=other-name bash deploy.sh   -> a completely separate copy (e.g. for another business)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -9,6 +11,8 @@ cd "$(dirname "$0")"
 APP="${APP:-nortex-reorder}"
 REGION="${AWS_REGION:-$(aws configure get region || true)}"
 REGION="${REGION:-us-east-1}"
+TEXT_CODES="$(echo "${TEXT_CODES:-}" | tr 'A-Z' 'a-z')"
+case "$TEXT_CODES" in ''|on|off) ;; *) echo "TEXT_CODES must be on or off."; exit 1;; esac
 ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
 ART="${APP}-deploy-${ACCOUNT}-${REGION}"
 say(){ printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
@@ -27,7 +31,7 @@ fi
 say "Packaging and deploying the stack (first time: 5–10 minutes)"
 aws cloudformation package --template-file template.yaml --s3-bucket "$ART" --s3-prefix "$APP" --output-template-file .packaged.yaml >/dev/null
 aws cloudformation deploy --template-file .packaged.yaml --stack-name "$APP" --region "$REGION" \
-  --capabilities CAPABILITY_IAM --parameter-overrides AppName="$APP" --no-fail-on-empty-changeset
+  --capabilities CAPABILITY_IAM --parameter-overrides AppName="$APP" ${TEXT_CODES:+TextCodes="$TEXT_CODES"} --no-fail-on-empty-changeset
 
 out(){ aws cloudformation describe-stacks --stack-name "$APP" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
 SITE="$(out SiteUrl)"; API="$(out ApiUrl)"; CLIENT="$(out ClientId)"; BUCKET="$(out SiteBucketName)"
@@ -67,6 +71,17 @@ if [ "$OWNERS" = "0" ]; then
   echo "Give the Account Manager: the web address below, their Pharmacy ID, Login ID and that temporary password."
 fi
 
+if [ "$TEXT_CODES" = on ]; then                     # codes back on: make sure every login gets them
+  POOL="$(out UserPoolId)"
+  for u in $(aws cognito-idp list-users --user-pool-id "$POOL" --region "$REGION" --query 'Users[].Username' --output text); do
+    aws cognito-idp admin-set-user-mfa-preference --user-pool-id "$POOL" --username "$u" --region "$REGION" \
+      --sms-mfa-settings Enabled=true,PreferredMfa=true >/dev/null 2>&1 || true
+  done
+fi
+CODES="$(aws cloudformation describe-stacks --stack-name "$APP" --region "$REGION" --query "Stacks[0].Parameters[?ParameterKey=='TextCodes'].ParameterValue" --output text)"
+
 say "Done"
+if [ "$CODES" = off ]; then echo "Texted sign-in codes: OFF (password only). Turn back on: TEXT_CODES=on bash deploy.sh"
+else echo "Texted sign-in codes: ON"; fi
 echo "Web address:  ${SITE}"
 echo "Updates: run 'bash deploy.sh' again. Lists, archives and logins are never touched by an update."

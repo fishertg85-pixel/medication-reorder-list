@@ -62,6 +62,13 @@ FIRST DEPLOY (about 15 minutes, mostly waiting)
   Optional short link: make a TinyURL that points to the web address for typing it the first time.
   Security comes from the login and text code, not from the address being hard to guess.
 
+TEXTED SIGN-IN CODES OFF / ON
+  Until the toll-free number is approved, texts can't be delivered, so nobody could finish signing in.
+  Password-only for now:   TEXT_CODES=off bash deploy.sh
+  Codes back on later:     TEXT_CODES=on bash deploy.sh     (also re-enables codes for every login)
+  The choice is kept across normal updates (plain 'bash deploy.sh') until you change it.
+  Temporary passwords are never texted: they are shown on screen to whoever reset them.
+
 HOST PAGE (no CloudShell needed)
   Once:  bash host.sh make-host neo "Thomas Fisher" 8175551234    (prints a temporary password)
   Then open  <web address>/host.html  and sign in with that Login ID and password (no Pharmacy ID),
