@@ -62,6 +62,15 @@ FIRST DEPLOY (about 15 minutes, mostly waiting)
   Optional short link: make a TinyURL that points to the web address for typing it the first time.
   Security comes from the login and text code, not from the address being hard to guess.
 
+HOST PAGE (no CloudShell needed)
+  Once:  bash host.sh make-host neo "Thomas Fisher" 8175551234    (prints a temporary password)
+  Then open  <web address>/host.html  and sign in with that Login ID and password (no Pharmacy ID),
+  then the texted code. It is a separate gate: only the host login opens it, it asks for the password
+  again on reload and locks after 5 minutes idle. From there: reset any password (including the
+  Account Manager's), change mobile numbers, switch logins on/off, add people and pharmacies, and
+  assign people to pharmacies. The host sees no pharmacy's list unless the Account Manager allows it.
+  If you ever lose the host password, run the make-host command again for a new temporary one.
+
 HOST TOOLS (CloudShell, in the same folder)
   bash host.sh people                    bash host.sh reset-password maria.t
   bash host.sh set-phone maria.t 8175551234      bash host.sh off maria.t   /   bash host.sh on maria.t

@@ -10,7 +10,7 @@ process.env.MAIN_TABLE = 'nortex-reorder-main'; process.env.ARCHIVE_TABLE = 'nor
 const { handler } = await import('../app/lambda/index.mjs');
 const WEB = path.resolve(process.argv[3] || new URL('../app/web', import.meta.url).pathname);
 const PORT = +(process.argv[2] || 8790);
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml' };
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.css': 'text/css', '.woff2': 'font/woff2' };
 const body = req => new Promise(r => { let b = ''; req.on('data', c => b += c); req.on('end', () => r(b)); });
 http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');

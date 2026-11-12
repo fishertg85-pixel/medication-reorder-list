@@ -1238,6 +1238,9 @@ function renderOwnPeople(){
       ${P.map(p => `<th class="c">${PERM_LABELS[p]}</th>`).join('')}<th class="c">Login on</th><th></th></tr></thead><tbody>
     ${OWN.users.map(u => u.owner ? `<tr><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Account Manager</div></td><td data-l="Mobile">${esc(u.phone)}</td>
         <td colspan="${st.length + P.length + 2}" class="hint">Full access to every pharmacy (can’t be changed)</td></tr>`
+      : u.host ? `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Host (IronLedger)</div></td><td data-l="Mobile">${esc(u.phone)}</td>
+        ${st.map(s => `<td class="c" data-l="${esc(s.id)}">${sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Let the host open ' + s.name)}</td>`).join('')}
+        <td colspan="${P.length + 2}" class="hint">Runs the program for you: passwords, phones, logins. Sees a pharmacy’s list only if you switch it on here.</td></tr>`
       : `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)}${u.status === 'FORCE_CHANGE_PASSWORD' ? ' · hasn’t signed in yet' : ''}</div></td>
         <td data-l="Mobile">${esc(u.phone)} <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button></td>
         ${st.map(s => `<td class="c" data-l="${esc(s.id)}">${sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name)}</td>`).join('')}

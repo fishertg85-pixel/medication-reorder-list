@@ -8,6 +8,7 @@
 #   bash host.sh add-pharmacy ID "NAME" [eastern|central|mountain|arizona|pacific]
 #   bash host.sh assign LOGIN PHARMACY_ID     give a person access to a pharmacy
 #   bash host.sh unassign LOGIN PHARMACY_ID   take that access away
+#   bash host.sh make-host LOGIN "NAME" NUMBER  create your own host login for the host page (web address/host.html)
 # Optional: APP=other-name bash host.sh ...   for a separate copy
 set -euo pipefail
 APP="${APP:-nortex-reorder}"
@@ -69,5 +70,15 @@ case "$cmd" in
       --update-expression "SET stores.#p = :v" --expression-attribute-names "{\"#p\":\"${pid}\"}" \
       --expression-attribute-values "{\":v\":{\"BOOL\":${val}}}" --condition-expression 'attribute_exists(stores)' >/dev/null
     echo "${login}: access to ${pid} switched $([ "$cmd" = assign ] && echo on || echo off)." ;;
-  *) sed -n '2,11p' "$0" ;;
+  make-host)
+    need_login; hname="${3:-}"; num="$(echo "${4:-}" | tr -dc '0-9')"
+    [ -n "$hname" ] || { echo "Give your name in quotes, then your 10-digit mobile number."; exit 1; }
+    [ ${#num} -eq 10 ] || [ ${#num} -eq 11 ] || { echo "Give a 10-digit US mobile number."; exit 1; }
+    payload="$(jq -cn --arg l "$login" --arg n "$hname" --arg p "$num" --arg t "$(temp_pw)" '{makeHost:{login:$l, name:$n, phone:$p, tempPassword:$t}}')"
+    aws lambda invoke --function-name "$(out FunctionName)" --region "$REGION" --cli-binary-format raw-in-base64-out --payload "$payload" .host.json >/dev/null
+    jq -r '.message // .errorMessage // .' .host.json; rm -f .host.json
+    site="$(out SiteUrl 2>/dev/null || true)"
+    [ -n "$site" ] && [ "$site" != "None" ] && echo "Host page: ${site%/}/host.html"
+    echo "Sign in there with that Login ID and temporary password (no Pharmacy ID). A code is texted to your phone." ;;
+  *) sed -n '2,12p' "$0" ;;
 esac

@@ -39,7 +39,7 @@ BUILD="$(mktemp -d)"; cp -r web/. "$BUILD/"
 cat > "$BUILD/config.js" <<EOF
 window.NORTEX_CONFIG = {"region":"${REGION}","clientId":"${CLIENT}","apiUrl":"${API}"};
 EOF
-sed -i 's# http://localhost:8790##' "$BUILD/index.html"      # the local test address isn't allowed in the live app
+sed -i "s# http://localhost:8790##" "$BUILD/index.html" "$BUILD/host.html"      # the local test address isn't allowed in the live app
 aws s3 sync "$BUILD" "s3://${BUCKET}" --delete --exclude "*.png" --cache-control "no-cache" >/dev/null
 aws s3 sync "$BUILD" "s3://${BUCKET}" --exclude "*" --include "*.png" --cache-control "max-age=86400" >/dev/null
 aws s3 cp "$BUILD/manifest.webmanifest" "s3://${BUCKET}/manifest.webmanifest" --content-type "application/manifest+json" --cache-control "no-cache" >/dev/null

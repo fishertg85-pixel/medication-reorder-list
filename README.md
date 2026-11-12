@@ -35,11 +35,16 @@ python3 scan_test.py       # barcode scanner input
 python3 recent_test.py     # used-before ordering (recent, then frequency)
 python3 tz_test.py         # per-pharmacy time zones
 python3 dist_test.py       # adding a distributor
+python3 host_test.py       # the host page: its own gate, sign-in and lock
 ```
 
 ## Deploy
 
 See `app/README.txt`. Use one AWS region for the app and all SMS setup (US East (Ohio) recommended). Updates are the same command and never touch the data.
+
+## Host page
+
+`<web address>/host.html` is a separate page for the IronLedger host login only (created once with `bash host.sh make-host LOGIN "NAME" MOBILE`). It signs in with Login ID, password and a texted code, with no Pharmacy ID, and talks only to `/host/*` on the server, which answers nobody but a host login. From it the host can reset passwords (including the Account Manager's), change mobile numbers, switch logins on or off, add people and pharmacies, and assign people to pharmacies. It re-asks for the password on reload and locks after 5 minutes idle. The host sees no pharmacy's list unless the Account Manager switches that pharmacy on for the host, and only the host can change the host login.
 
 ## Data safety
 

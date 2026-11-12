@@ -278,10 +278,10 @@ async function listPeople(){
   do { const r = await idp.send(new ListUsersCommand({ UserPoolId: POOL, PaginationToken, Limit: 60 }));
     for(const u of r.Users || []){ const sub = (u.Attributes || []).find(a => a.Name === 'sub'); if(sub) status[sub.Value] = { status: u.UserStatus, enabled: u.Enabled }; }
     PaginationToken = r.PaginationToken; } while(PaginationToken);
-  return profiles.map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner,
+  return profiles.map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host,
     stores: p.stores || {}, perms: permsOf(p), disabled: status[p.sk] ? !status[p.sk].enabled : !!p.disabled,
     status: (status[p.sk] || {}).status || 'UNKNOWN' }))
-    .sort((a, b) => (b.owner - a.owner) || (a.name || a.login).localeCompare(b.name || b.login));
+    .sort((a, b) => (b.owner - a.owner) || (b.host - a.host) || (a.name || a.login).localeCompare(b.name || b.login));
 }
 async function cleanStoreToggles(obj){
   const all = new Set((await allStores()).map(s => s.id)), out = {};
@@ -305,6 +305,10 @@ async function createLogin(b){
 async function updatePerson(me, sub, seg3, body){
   if(!okId(sub)) throw bad('Bad user');
   const p = await profileOf(sub); if(!p) throw new HttpError(404, 'No such person.');
+  // the host login belongs to IronLedger: the Account Manager sees it but only the host changes it
+  // except which pharmacies it may open: only the Account Manager grants that
+  if(p.host && !me.host && (seg3 || Object.keys(body).some(k => k !== 'stores'))) throw forbidden('The host login is managed by IronLedger.');
+  if(sub === me.sk && body.disabled === true) throw bad('You can’t switch off your own login.');
   if(seg3 === 'reset-password'){
     const pw = body.tempPassword ? String(body.tempPassword) : tempPassword();
     if(pw.length < 10 || !/[a-z]/.test(pw) || !/\d/.test(pw)) throw bad('Temporary password: at least 10 characters with a lowercase letter and a number.');
@@ -312,8 +316,10 @@ async function updatePerson(me, sub, seg3, body){
     await idp.send(new AdminUserGlobalSignOutCommand({ UserPoolId: POOL, Username: p.login })).catch(() => {});
     return { ok: true, tempPassword: pw };
   }
-  if(p.owner && (body.stores !== undefined || body.perms !== undefined || body.disabled !== undefined))
+  if(p.owner && (body.stores !== undefined || body.perms !== undefined || (body.disabled !== undefined && !me.host)))
     throw bad('The Account Manager always has full access.');
+  if(p.host && body.perms !== undefined) throw bad('The host login is managed by IronLedger.');
+  if(p.host && body.stores !== undefined && me.host) throw bad('Only the Account Manager can give the host access to a pharmacy.');
   const upd = {};
   if(body.stores !== undefined) upd.stores = Object.assign({}, p.stores || {}, await cleanStoreToggles(body.stores));
   if(body.perms !== undefined) upd.perms = Object.assign({}, p.perms || {}, cleanPerms(body.perms));
@@ -341,8 +347,9 @@ async function updatePerson(me, sub, seg3, body){
 // ---------- Account Manager tab lock: password again to open it; locks after 5 minutes without activity there
 const UNLOCK_MS = 5 * 60 * 1000;
 class Locked extends HttpError { constructor(){ super(423, 'The Account Manager tab is locked. Re-enter your password.'); this.locked = true; } }
+const manages = me => !!(me.owner || me.host);         // the Account Manager, and the host (IronLedger)
 async function requireUnlocked(me){
-  if(!me.owner) throw forbidden('Only the Account Manager can do that.');
+  if(!manages(me)) throw forbidden('Only the Account Manager can do that.');
   if(!(me.unlockUntil > Date.now())) throw new Locked();
   await setUnlock(me.sk, Date.now() + UNLOCK_MS);              // activity keeps it open
 }
@@ -351,7 +358,7 @@ async function setUnlock(sub, until){
 }
 // checks the password with Cognito without sending a text: "change" it to itself using the caller's own access token
 async function unlock(me, claims, b){
-  if(!me.owner) throw forbidden('Only the Account Manager can do that.');
+  if(!manages(me)) throw forbidden('Only the Account Manager can do that.');
   const pw = typeof b.password === 'string' ? b.password : '', at = typeof b.accessToken === 'string' ? b.accessToken : '';
   if(!pw || !at) throw bad('Enter your password.');
   let tokSub = '';
@@ -375,7 +382,7 @@ async function route(method, path, q, body, me, claims){
   if(seg[0] === 'api') seg.shift();                    // works with or without an /api prefix
 
   if(method === 'GET' && seg[0] === 'me' && seg.length === 1)
-    return { name: me.name || '', login: me.login, owner: !!me.owner, perms: permsOf(me), stores: await storesFor(me) };
+    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, perms: permsOf(me), stores: await storesFor(me) };
 
   if(seg[0] === 'stores' && seg[1]){
     const store = seg[1];
@@ -394,11 +401,18 @@ async function route(method, path, q, body, me, claims){
       do { const p = await archivePage(store, { cursor, limit: 2000 }); arch.push(...p.items); cursor = p.cursor; } while(cursor);
       return { meta: { pharmacy: exists.Item.name, store, exportedAt: now(), version: 3 }, reorder: await lines(store), archive: arch, remember: await memory(store) };
     }
-    if(method === 'POST' && what === 'import'){ await requireUnlocked(me); return await importData(store, body); }
+    if(method === 'POST' && what === 'import'){ if(!me.owner) throw forbidden('Only the Account Manager can import.'); await requireUnlocked(me); return await importData(store, body); }
   }
 
+  // two separate gates: /owner/* answers only the Account Manager, /host/* answers only the host (and is a 404 to everyone else)
+  if(seg[0] === 'host-unlock' || seg[0] === 'host-lock' || seg[0] === 'host'){
+    if(!me.host) throw new HttpError(404, 'Not found');
+    seg[0] = seg[0].replace('host', 'owner');
+  } else if(seg[0] === 'owner-unlock' || seg[0] === 'owner-lock' || seg[0] === 'owner'){
+    if(!me.owner) throw forbidden('Only the Account Manager can do that.');
+  }
   if(method === 'POST' && seg[0] === 'owner-unlock') return await unlock(me, claims, body);
-  if(method === 'POST' && seg[0] === 'owner-lock'){ if(me.owner) await setUnlock(me.sk, 0); return { ok: true }; }
+  if(method === 'POST' && seg[0] === 'owner-lock'){ await setUnlock(me.sk, 0); return { ok: true }; }
   if(seg[0] === 'owner'){
     await requireUnlocked(me);
     if(method === 'POST' && seg[1] === 'keepalive') return { ok: true };
@@ -442,9 +456,36 @@ async function bootstrap(b){
   return { ok: true, message: `Account Manager login "${u.login}" created. Pharmacy ID: ${store.id} (${store.name}). Temporary password: ${u.tempPassword}`, store, tempPassword: u.tempPassword };
 }
 
+// host login (IronLedger): made from CloudShell with host.sh make-host, never through the API
+async function makeHost(b){
+  const people = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'USERS' } });
+  const login = String(b.login || '').trim().toLowerCase();
+  const same = people.find(p => p.login === login);
+  if(same && !same.host) return { ok: false, message: `"${login}" is already a pharmacy login. Choose another Login ID for the host.` };
+  let u;
+  if(same){                                            // already the host: just give it a new temporary password
+    const pw = b.tempPassword || tempPassword();
+    await idp.send(new AdminSetUserPasswordCommand({ UserPoolId: POOL, Username: login, Password: pw, Permanent: false }));
+    return { ok: true, message: `Host login "${login}" already exists. New temporary password: ${pw}`, tempPassword: pw };
+  }
+  try{ u = await createLogin({ login, name: b.name, phone: b.phone, tempPassword: b.tempPassword }); }
+  catch(e){
+    if(!/already taken/.test(e.message)) throw e;
+    const pw = b.tempPassword || tempPassword();
+    const g = await idp.send(new AdminGetUserCommand({ UserPoolId: POOL, Username: login }));
+    const attr = n => ((g.UserAttributes || []).find(a => a.Name === n) || {}).Value || '';
+    await idp.send(new AdminSetUserPasswordCommand({ UserPoolId: POOL, Username: login, Password: pw, Permanent: false }));
+    u = { sub: attr('sub'), login, name: attr('name') || b.name || '', phone: attr('phone_number'), tempPassword: pw };
+  }
+  await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'USERS', sk: u.sub, login: u.login, name: u.name, phone: u.phone,
+    owner: false, host: true, stores: {}, perms: {}, createdAt: now(), createdBy: 'setup' } }));
+  return { ok: true, message: `Host login "${u.login}" created. Temporary password: ${u.tempPassword}`, tempPassword: u.tempPassword };
+}
+
 export const handler = async (event) => {
   try{
     if(event && event.bootstrap){ try{ return await bootstrap(event.bootstrap); }catch(e){ return { ok: false, message: 'Setup stopped: ' + e.message + ' Run deploy.sh again to retry.' }; } }
+    if(event && event.makeHost){ try{ return await makeHost(event.makeHost); }catch(e){ return { ok: false, message: 'Stopped: ' + e.message }; } }
     const rp = (event.rawPath || '').replace(/^\/api/, '');
     if(event.requestContext && event.requestContext.http && event.requestContext.http.method === 'GET' && rp.startsWith('/public/pharmacy/'))
     { let id = ''; try{ id = decodeURIComponent(rp.slice('/public/pharmacy/'.length)); }catch(e){}
