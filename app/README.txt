@@ -41,7 +41,7 @@ In the AWS console, in the SAME region you'll deploy to (US East (N. Virginia) u
      (e.g. $20/month) through a Service Quotas / Support request.
   2. Get a toll-free number and submit its registration: End User Messaging SMS > Phone numbers >
      Request originator > United States > Toll-free > "Transactional", then fill in the registration
-     (business name, website or description, sample message: "IronLedger: Your NorTex Reorder sign-in code is 123456. Do not share this code.").
+     (business name, website or description, sample message: "IronLedger: Your NorTex Reorder sign-in code is 123456. Do not share this code. Reply STOP to opt out.").
   3. Ask to leave the SMS sandbox (same console, "Request production access").
   4. While waiting: SNS > Text messaging (SMS) > Sandbox destination phone numbers > Add the phone
      numbers of the people testing (each gets a verification code).

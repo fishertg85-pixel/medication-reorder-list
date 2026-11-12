@@ -84,8 +84,8 @@ Resources:
         SnsCallerArn: !GetAtt SmsRole.Arn
         ExternalId: !Sub '${AppName}-sms'
         SnsRegion: !Ref AWS::Region
-      SmsAuthenticationMessage: 'IronLedger: Your NorTex Reorder sign-in code is {####}. Do not share this code.'
-      SmsVerificationMessage: 'IronLedger: Your NorTex Reorder verification code is {####}. Do not share this code.'
+      SmsAuthenticationMessage: 'IronLedger: Your NorTex Reorder sign-in code is {####}. Do not share this code. Reply STOP to opt out.'
+      SmsVerificationMessage: 'IronLedger: Your NorTex Reorder verification code is {####}. Do not share this code. Reply STOP to opt out.'
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true
         InviteMessageTemplate:

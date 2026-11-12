@@ -20,7 +20,7 @@ def link(path):
     if WEB: return f'<a href="{html.escape(WEB + path)}">{html.escape(WEB.replace("https://","") + path)}</a>'
     # not known yet: once these pages are published, they show their own web address
     return f'<a class="selfurl" data-path="{path}" href="{path}">{path}</a>'
-SAMPLE = "IronLedger: Your NorTex Reorder sign-in code is 123456. Do not share this code."
+SAMPLE = "IronLedger: Your NorTex Reorder sign-in code is 123456. Do not share this code. Reply STOP to opt out."
 CSS = """<link rel="stylesheet" href="brand.css"><link rel="icon" href="mark.svg" type="image/svg+xml">
 <style>
 main.doc{max-width:820px;margin:24px auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:32px 38px;box-shadow:var(--shadow)}
