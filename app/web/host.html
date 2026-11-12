@@ -21,6 +21,7 @@
   .btn2 { background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
   .small { min-height: 32px; padding: 3px 10px; font-size: 13.5px; }
   button:disabled { opacity: .6; cursor: default; }
+  .btn2.danger { color: var(--bad); border-color: var(--bad); }
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
   .msg { min-height: 1.4em; margin-top: 12px; color: var(--bad); font-size: 14px; }
   .msg.ok { color: var(--ok); }
@@ -129,6 +130,14 @@
       <h2 style="margin-top:18px">Add a pharmacy</h2>
       <div class="grid2" id="addStore"></div>
       <div class="row"><button class="btn" id="psAdd">Add pharmacy</button></div>
+    </section>
+
+    <section class="card">
+      <h2>Import a pharmacy's old reorder file</h2>
+      <div class="hint">The <span class="mono">nortex_reorder_data.json</span> file from the shared-drive version: open orders, archive and remembered items.
+        It only adds. Nothing already in the cloud is changed or removed, and running it twice adds nothing twice.</div>
+      <div class="row"><select id="impStore"></select><input type="file" id="impFile" accept=".json,application/json"><button class="btn" id="impGo">Import</button></div>
+      <div class="msg ok" id="impMsg"></div>
     </section>
   </div>
 </main>

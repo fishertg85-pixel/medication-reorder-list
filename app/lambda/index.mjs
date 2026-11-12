@@ -10,7 +10,7 @@
 //   <storeId>       / <dateSubmitted>#<submittedAt>#<id>   one archived line. Only ever added, never changed or deleted.
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
-import { CognitoIdentityProviderClient, AdminCreateUserCommand, AdminDisableUserCommand, AdminEnableUserCommand,
+import { CognitoIdentityProviderClient, AdminCreateUserCommand, AdminDeleteUserCommand, AdminDisableUserCommand, AdminEnableUserCommand,
          AdminUpdateUserAttributesCommand, AdminSetUserPasswordCommand, AdminSetUserMFAPreferenceCommand,
          AdminUserGlobalSignOutCommand, AdminGetUserCommand, ListUsersCommand, ChangePasswordCommand } from '@aws-sdk/client-cognito-identity-provider';
 
@@ -63,11 +63,12 @@ async function profileOf(sub){
   const r = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: sub } }));
   return r.Item || null;
 }
-const STORE_FIELDS = ['name', 'address', 'phone', 'fax', 'email', 'license', 'timezone'];
+const STORE_FIELDS = ['name', 'address', 'suite', 'city', 'state', 'zip', 'phone', 'fax', 'email', 'license', 'timezone'];
 // each pharmacy's local time zone: dates/times on its orders are shown in it
 const TIMEZONES = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix', 'America/Los_Angeles',
   'America/Anchorage', 'Pacific/Honolulu', 'America/Puerto_Rico'];
 const DEFAULT_TZ = 'America/Chicago';
+const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
 async function allStores(){
   return (await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'STORES' } }))
     .map(s => ({ id: s.sk, ...pick(s, STORE_FIELDS), timezone: TIMEZONES.includes(s.timezone) ? s.timezone : DEFAULT_TZ, hasLogo: !!s.hasLogo }))
@@ -223,7 +224,11 @@ function tempPassword(){                                    // meets the policy:
 }
 function storeFields(b){
   const f = {};
-  for(const k of STORE_FIELDS) if(b[k] !== undefined) f[k] = String(clean(b[k], k === 'address' ? 300 : 120) || '').trim();
+  const max = { address: 200, suite: 40, city: 80, state: 2, zip: 10 };
+  for(const k of STORE_FIELDS) if(b[k] !== undefined) f[k] = String(clean(b[k], max[k] || 120) || '').trim();
+  if(f.state) f.state = f.state.toUpperCase();
+  if(f.state && !US_STATES.includes(f.state)) throw bad('Pick the state from the list.');
+  if(f.zip && !/^\d{5}(-\d{4})?$/.test(f.zip)) throw bad('ZIP code: 5 digits (or ZIP+4, like 76052-1234).');
   if(f.name === '') throw bad('Pharmacy name is required.');
   if(f.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email)) throw bad('Pharmacy email doesn’t look right.');
   if(f.timezone !== undefined && !TIMEZONES.includes(f.timezone)) throw bad('Pick the pharmacy’s time zone from the list.');
@@ -278,7 +283,7 @@ async function listPeople(){
   do { const r = await idp.send(new ListUsersCommand({ UserPoolId: POOL, PaginationToken, Limit: 60 }));
     for(const u of r.Users || []){ const sub = (u.Attributes || []).find(a => a.Name === 'sub'); if(sub) status[sub.Value] = { status: u.UserStatus, enabled: u.Enabled }; }
     PaginationToken = r.PaginationToken; } while(PaginationToken);
-  return profiles.map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host,
+  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host,
     stores: p.stores || {}, perms: permsOf(p), disabled: status[p.sk] ? !status[p.sk].enabled : !!p.disabled,
     status: (status[p.sk] || {}).status || 'UNKNOWN' }))
     .sort((a, b) => (b.owner - a.owner) || (b.host - a.host) || (a.name || a.login).localeCompare(b.name || b.login));
@@ -309,6 +314,21 @@ async function updatePerson(me, sub, seg3, body){
   // except which pharmacies it may open: only the Account Manager grants that
   if(p.host && !me.host && (seg3 || Object.keys(body).some(k => k !== 'stores'))) throw forbidden('The host login is managed by IronLedger.');
   if(sub === me.sk && body.disabled === true) throw bad('You can’t switch off your own login.');
+  if(seg3 === 'delete'){
+    // the login is removed for good (the Login ID can be used again); what they did stays on the orders and archive by name.
+    // A short record is kept of who existed and who removed them, with their SMS consent dates.
+    if(p.owner) throw bad('The Account Manager can’t be deleted.');
+    if(p.host) throw bad('The host login can’t be deleted here.');
+    if(sub === me.sk) throw bad('You can’t delete your own login.');
+    if(p.deleted) return { ok: true };
+    await idp.send(new AdminUserGlobalSignOutCommand({ UserPoolId: POOL, Username: p.login })).catch(() => {});
+    await idp.send(new AdminDeleteUserCommand({ UserPoolId: POOL, Username: p.login })).catch(e => { if(e.name !== 'UserNotFoundException') throw e; });
+    await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: sub },
+      UpdateExpression: 'SET deleted = :t, deletedAt = :n, deletedBy = :b, stores = :e, perms = :e, disabled = :t',
+      ExpressionAttributeValues: { ':t': true, ':n': now(), ':b': who(me), ':e': {} } }));
+    return { ok: true };
+  }
+  if(p.deleted) throw new HttpError(404, 'No such person.');
   if(seg3 === 'reset-password'){
     const pw = body.tempPassword ? String(body.tempPassword) : tempPassword();
     if(pw.length < 10 || !/[a-z]/.test(pw) || !/\d/.test(pw)) throw bad('Temporary password: at least 10 characters with a lowercase letter and a number.');
@@ -416,6 +436,13 @@ async function route(method, path, q, body, me, claims){
   if(seg[0] === 'owner'){
     await requireUnlocked(me);
     if(method === 'POST' && seg[1] === 'keepalive') return { ok: true };
+    // bring in a pharmacy's old shared-drive file: adds only, never changes or removes anything already there
+    if(method === 'POST' && seg[1] === 'import' && seg[2]){
+      if(!okId(seg[2])) throw bad('Bad pharmacy');
+      const ex = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: seg[2] } }));
+      if(!ex.Item) throw new HttpError(404, 'No such pharmacy.');
+      return await importData(seg[2], body);
+    }
     if(method === 'GET' && seg[1] === 'stores') return { stores: await allStores() };
     if(method === 'POST' && seg[1] === 'stores' && !seg[2]) return await addStore(body);
     if(method === 'POST' && seg[1] === 'stores' && seg[2] && seg[3] === 'logo'){ await setLogo(seg[2], body.dataUrl); return { ok: true }; }
@@ -460,7 +487,7 @@ async function bootstrap(b){
 async function makeHost(b){
   const people = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'USERS' } });
   const login = String(b.login || '').trim().toLowerCase();
-  const same = people.find(p => p.login === login);
+  const same = people.find(p => p.login === login && !p.deleted);
   if(same && !same.host) return { ok: false, message: `"${login}" is already a pharmacy login. Choose another Login ID for the host.` };
   let u;
   if(same){                                            // already the host: just give it a new temporary password
@@ -493,7 +520,7 @@ export const handler = async (event) => {
     const claims = (((event.requestContext || {}).authorizer || {}).jwt || {}).claims || {};
     if(!claims.sub) throw new HttpError(401, 'Please sign in again.');
     const me = await profileOf(claims.sub);
-    if(!me || me.disabled) throw forbidden('Your login isn’t switched on for any pharmacy. Ask the Account Manager.');
+    if(!me || me.disabled || me.deleted) throw forbidden('Your login isn’t switched on for any pharmacy. Ask the Account Manager.');
     me.login = me.login || claims['cognito:username'];
     const method = event.requestContext.http.method, path = event.rawPath || '/';
     let body = {};

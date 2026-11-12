@@ -10,7 +10,9 @@ const LOCK_MS = 5 * 60 * 1000;
 const TZ = {'America/New_York':'Eastern', 'America/Chicago':'Central', 'America/Denver':'Mountain', 'America/Phoenix':'Arizona (no daylight saving)',
   'America/Los_Angeles':'Pacific', 'America/Anchorage':'Alaska', 'Pacific/Honolulu':'Hawaii', 'America/Puerto_Rico':'Atlantic (Puerto Rico)'};
 const PERMS = {submit:'Submit orders', archive:'View archive', remove:'Remove lines', export:'Download backup'};
-const SF = [['name','Pharmacy name'],['address','Address'],['phone','Phone'],['fax','Fax'],['email','Email'],['license','License #'],['timezone','Time zone']];
+const SF = [['name','Pharmacy name'],['address','Street address'],['suite','Suite / unit (if any)'],['city','City'],['state','State'],['zip','ZIP code'],['phone','Phone'],['fax','Fax'],['email','Email'],['license','License #'],['timezone','Time zone']];
+const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
+const MAXLEN = {address: 200, suite: 40, city: 80, zip: 10};
 
 /* ---- Cognito, called directly ---- */
 const COG_ERR = {
@@ -182,23 +184,27 @@ function render(){
         + P.map(p => `<td class="c" data-l="${PERMS[p]}">${box(`data-uperm="${p}"`, u.perms[p], PERMS[p])}</td>`).join('');
       const on = self ? `<td class="c hint" data-l="Login on">yours</td>` : `<td class="c" data-l="Login on">${box('data-uon="1"', !u.disabled, 'Switch this login on or off')}</td>`;
       return `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}>${who}${mid}${on}
-        <td>${self ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`}</td></tr>`;
+        <td>${self ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`}${u.owner || u.host ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">Delete</button>`}</td></tr>`;
     }).join('')}
     </tbody></table></div>`;
   $('nStores').innerHTML = st.map(s => `<label class="chk"><input type="checkbox" data-nst="${esc(s.id)}"${st.length === 1 ? ' checked' : ''}> ${esc(s.id)} · ${esc(s.name)}</label>`).join('') || '<span class="hint">Add a pharmacy first.</span>';
   $('nPerms').innerHTML = Object.entries(PERMS).map(([p, l]) => `<label class="chk"><input type="checkbox" data-nperm="${p}"${p !== 'export' ? ' checked' : ''}> ${l}</label>`).join('');
   if(!$('nPass').value) $('nPass').value = genTemp();
   renderStores();
+  const keep = $('impStore').value;
+  $('impStore').innerHTML = st.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join('');
+  if(keep && st.some(s => s.id === keep)) $('impStore').value = keep;
   if(!$('addStore').innerHTML) $('addStore').innerHTML = `<label class="f">Pharmacy ID<input type="text" id="psId" maxlength="20" placeholder="e.g. NTX2" autocapitalize="characters"></label>`
-    + SF.map(([k, l]) => `<label class="f">${l}${k === 'timezone' ? tzSel('id="ps_timezone"') : `<input type="text" id="ps_${k}" maxlength="${k === 'address' ? 200 : 120}">`}</label>`).join('');
+    + SF.map(([k, l]) => `<label class="f">${l}${k === 'timezone' ? tzSel('id="ps_timezone"') : k === 'state' ? stSel('id="ps_state"', 'TX') : `<input type="text" id="ps_${k}" maxlength="${MAXLEN[k] || 120}"${k === 'zip' ? ' inputmode="numeric"' : ''}>`}</label>`).join('');
   for(const s of st) if(s.hasLogo && LOGOS[s.id] === undefined) loadLogo(s.id);
 }
+const stSel = (attrs, cur) => `<select ${attrs}><option value=""></option>${US_STATES.map(v => `<option${v === (cur || '') ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
 const tzSel = (attrs, cur) => `<select ${attrs}>${Object.entries(TZ).map(([v, l]) => `<option value="${v}"${v === (cur || 'America/Chicago') ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
 function renderStores(){
   $('stores').innerHTML = DATA.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">
       <div>${LOGOS[s.id] ? `<img src="${esc(LOGOS[s.id])}" alt="">` : ''}<b>Pharmacy ID: <span class="mono">${esc(s.id)}</span></b>
         <label class="btn2 small" style="display:inline-flex;align-items:center;margin-left:10px">Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" data-logo="${esc(s.id)}" hidden></label></div>
-      <div class="grid2">${SF.map(([k, l]) => `<label class="f">${l}${k === 'timezone' ? tzSel('data-sf="timezone"', s.timezone) : `<input type="text" data-sf="${k}" value="${esc(s[k] || '')}" maxlength="${k === 'address' ? 200 : 120}">`}</label>`).join('')}</div>
+      <div class="grid2">${SF.map(([k, l]) => `<label class="f">${l}${k === 'timezone' ? tzSel('data-sf="timezone"', s.timezone) : k === 'state' ? stSel('data-sf="state"', s.state) : `<input type="text" data-sf="${k}" value="${esc(s[k] || '')}" maxlength="${MAXLEN[k] || 120}"${k === 'zip' ? ' inputmode="numeric"' : ''}>`}</label>`).join('')}</div>
       <div class="row"><button class="btn small" data-save="${esc(s.id)}">Save details</button></div>
     </div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
 }
@@ -228,7 +234,14 @@ $('people').addEventListener('change', async e => {
   finally{ c.disabled = false; }
 });
 $('people').addEventListener('click', async e => {
-  const ph = e.target.closest('[data-phone]'), rs = e.target.closest('[data-reset]');
+  const ph = e.target.closest('[data-phone]'), rs = e.target.closest('[data-reset]'), dl = e.target.closest('[data-del]');
+  if(dl){
+    const u = DATA.users.find(x => x.sub === dl.dataset.del);
+    const typed = prompt(`Delete ${u.name || u.login} for good?\n\nTheir login is removed and can't be switched back on. Orders and archive lines they entered stay, under their name.\nTo just stop them signing in for now, switch their login off instead.\n\nType their Login ID (${u.login}) to delete:`);
+    if(typed === null) return;
+    if(typed.trim().toLowerCase() !== u.login) return alert('The Login ID didn’t match. Nothing was deleted.');
+    try{ await api('POST', '/host/users/' + encodeURIComponent(u.sub) + '/delete', {}); await load(); alert(`${u.name || u.login} was deleted.`); }catch(err){ if(!err.auth) alert(err.message); }
+  }
   if(ph){
     const u = DATA.users.find(x => x.sub === ph.dataset.phone);
     const v = prompt(`New mobile number for ${u.name || u.login} (sign-in codes are texted here):`, u.phone); if(!v) return;
@@ -284,8 +297,29 @@ $('psAdd').onclick = async () => {
   const body = {id:($('psId') || {}).value ? $('psId').value.trim().toUpperCase() : ''}; SF.forEach(([k]) => body[k] = $('ps_' + k).value.trim());
   if(!body.id || !body.name) return alert('Pharmacy ID and name are needed.');
   busy($('psAdd'), true);
-  try{ await api('POST', '/host/stores', body); $('psId').value = ''; SF.forEach(([k]) => { if(k !== 'timezone') $('ps_' + k).value = ''; }); await load(); }
+  try{ await api('POST', '/host/stores', body); $('psId').value = ''; SF.forEach(([k]) => { if(k !== 'timezone' && k !== 'state') $('ps_' + k).value = ''; }); await load(); }
   catch(err){ if(!err.auth) alert(err.message); } finally{ busy($('psAdd'), false); }
+};
+
+$('impGo').onclick = async () => {
+  const f = $('impFile').files[0], sid = $('impStore').value;
+  if(!f || !sid) return alert('Choose the pharmacy and the nortex_reorder_data.json file.');
+  let data; try{ data = JSON.parse(await f.text()); }catch(e){ return alert('That file isn’t a reorder data file: ' + e.message); }
+  if(!data || typeof data !== 'object' || !(Array.isArray(data.reorder) || Array.isArray(data.archive))) return alert('That file isn’t a reorder data file (no orders or archive in it).');
+  const arch = data.archive || [], open = (data.reorder || []).filter(r => r && !r.archived), mem = Object.entries(data.remember || {});
+  const name = (DATA.stores.find(s => s.id === sid) || {}).name || sid;
+  if(!confirm(`Import into ${sid} · ${name}?\n\n${open.length} open orders, ${arch.length} archived lines, ${mem.length} remembered items.\nNothing already in the cloud is changed or removed.`)) return;
+  const tot = {linesAdded:0, linesSkipped:0, archiveAdded:0, archiveSkipped:0, memoryAdded:0, memorySkipped:0};
+  const add = r => Object.keys(tot).forEach(k => tot[k] += r[k] || 0), url = '/host/import/' + encodeURIComponent(sid);
+  busy($('impGo'), true);
+  try{
+    for(let i = 0; i < open.length; i += 500){ $('impMsg').textContent = `Open orders ${i} of ${open.length}…`; add(await api('POST', url, {reorder:open.slice(i, i + 500)})); }
+    for(let i = 0; i < arch.length; i += 500){ $('impMsg').textContent = `Archive ${i} of ${arch.length}…`; add(await api('POST', url, {archive:arch.slice(i, i + 500)})); }
+    for(let i = 0; i < mem.length; i += 1000){ $('impMsg').textContent = `Remembered items ${i} of ${mem.length}…`; add(await api('POST', url, {remember:Object.fromEntries(mem.slice(i, i + 1000))})); }
+    $('impMsg').innerHTML = `<b>Done: ${esc(sid)}.</b> Open orders: ${tot.linesAdded} added, ${tot.linesSkipped} already there. Archive: ${tot.archiveAdded} added, ${tot.archiveSkipped} already there. Remembered items: ${tot.memoryAdded} added, ${tot.memorySkipped} already there.`;
+    $('impFile').value = '';
+  }catch(e){ if(!e.auth) $('impMsg').textContent = 'Stopped: ' + e.message + ' (safe to run again; nothing is added twice)'; }
+  finally{ busy($('impGo'), false); }
 };
 
 /* ---- start: a reload in the same tab goes to the password box, never straight in ---- */

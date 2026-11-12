@@ -74,8 +74,8 @@ HOST PAGE (no CloudShell needed)
   Then open  <web address>/host.html  and sign in with that Login ID and password (no Pharmacy ID),
   then the texted code. It is a separate gate: only the host login opens it, it asks for the password
   again on reload and locks after 5 minutes idle. From there: reset any password (including the
-  Account Manager's), change mobile numbers, switch logins on/off, add people and pharmacies, and
-  assign people to pharmacies. The host sees no pharmacy's list unless the Account Manager allows it.
+  Account Manager's), change mobile numbers, switch logins on/off, add or delete people, add
+  pharmacies, assign people to pharmacies, and import a pharmacy's old nortex_reorder_data.json. The host sees no pharmacy's list unless the Account Manager allows it.
   If you ever lose the host password, run the make-host command again for a new temporary one.
 
 HOST TOOLS (CloudShell, in the same folder)

@@ -208,6 +208,6 @@ function paintStore(){
 function renderStoreInfo(){
   const s = STORE; if(!s){ $('storeInfo').innerHTML = ''; return; }
   const row = (k, v) => v ? `<tr><th style="width:140px;">${k}</th><td>${esc(v)}</td></tr>` : '';
-  $('storeInfo').innerHTML = `<table>${row('Pharmacy ID', s.id)}${row('Name', s.name)}${row('Address', s.address)}${row('Phone', s.phone)}${row('Fax', s.fax)}${row('Email', s.email)}${row('License #', s.license)}${row('Time zone', TZ_NAMES[storeTZ()] || storeTZ())}</table>`;
+  $('storeInfo').innerHTML = `<table>${row('Pharmacy ID', s.id)}${row('Name', s.name)}${row('Address', [[s.address, s.suite].filter(Boolean).join(', '), [s.city, [s.state, s.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', '))}${row('Phone', s.phone)}${row('Fax', s.fax)}${row('Email', s.email)}${row('License #', s.license)}${row('Time zone', TZ_NAMES[storeTZ()] || storeTZ())}</table>`;
 }
 $('storeSel').onchange = e => openStore(e.target.value);

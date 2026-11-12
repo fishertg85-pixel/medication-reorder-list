@@ -51,7 +51,9 @@ async function loadOwner(){
   }catch(e){ if(!e.auth) $('ownPeople').innerHTML = `<div class="banner warn">${esc(e.message)}</div>`; }
 }
 function renderOwner(){ renderOwnStores(); renderOwnPeople(); paintNewPerson(); $('impStore').innerHTML = OWN.stores.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join(''); }
-const SF = [['name','Pharmacy name'],['address','Address'],['phone','Phone'],['fax','Fax'],['email','Email'],['license','License #'],['timezone','Time zone']];
+const SF = [['name','Pharmacy name'],['address','Street address'],['suite','Suite / unit (if any)'],['city','City'],['state','State'],['zip','ZIP code'],['phone','Phone'],['fax','Fax'],['email','Email'],['license','License #'],['timezone','Time zone']];
+const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
+const stateSelect = (attrs, cur) => `<select ${attrs}><option value=""></option>${US_STATES.map(v => `<option${v === (cur || '') ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
 const tzSelect = (attrs, cur) => `<select ${attrs}>${Object.entries(TZ_NAMES).map(([v, l]) => `<option value="${v}"${v === (cur || 'America/Chicago') ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
 function renderOwnStores(){
   $('ownStores').innerHTML = OWN.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">
@@ -59,7 +61,7 @@ function renderOwnStores(){
         <label class="btn2 small">Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" data-logo="${esc(s.id)}" hidden></label>
         ${LOGOS[s.id] ? `<button class="btn2 small" data-nologo="${esc(s.id)}">Remove</button>` : ''}</div>
       <div class="pfields"><div class="pid">Pharmacy ID: <b>${esc(s.id)}</b> <span class="hint">(what people type when they sign in)</span></div>
-        ${SF.map(([k, l]) => `<label><span>${l}</span>${k === 'timezone' ? tzSelect(`data-sf="timezone"`, s.timezone) : `<input type="text" data-sf="${k}" value="${esc(s[k] || '')}"${k === 'address' ? ' class="wide"' : ''}>`}</label>`).join('')}
+        ${SF.map(([k, l]) => `<label><span>${l}</span>${k === 'timezone' ? tzSelect(`data-sf="timezone"`, s.timezone) : k === 'state' ? stateSelect(`data-sf="state"`, s.state) : `<input type="text" data-sf="${k}" value="${esc(s[k] || '')}"${k === 'address' ? ' class="wide"' : ''}>`}</label>`).join('')}
         <div><button class="btn small" data-savestore="${esc(s.id)}">Save details</button></div></div>
     </div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
 }
@@ -79,7 +81,7 @@ function renderOwnPeople(){
         ${st.map(s => `<td class="c" data-l="${esc(s.id)}">${sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name)}</td>`).join('')}
         ${P.map(p => `<td class="c" data-l="${PERM_LABELS[p]}">${sw(`data-uperm="${p}"`, u.perms[p], PERM_LABELS[p])}</td>`).join('')}
         <td class="c" data-l="Login on">${sw('data-uon="1"', !u.disabled, 'Switch this login on or off')}</td>
-        <td><button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button></td></tr>`).join('')}
+        <td><button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button> <button class="btn2 small danger" data-del="${esc(u.sub)}">Delete</button></td></tr>`).join('')}
     </tbody></table></div>`;
 }
 function paintNewPerson(){
@@ -123,7 +125,14 @@ $('ownPeople').addEventListener('change', async e => {
   finally{ c.disabled = false; }
 });
 $('ownPeople').addEventListener('click', async e => {
-  const r = e.target.closest('[data-reset]'), ph = e.target.closest('[data-phone]');
+  const r = e.target.closest('[data-reset]'), ph = e.target.closest('[data-phone]'), dl = e.target.closest('[data-del]');
+  if(dl){
+    const u = OWN.users.find(x => x.sub === dl.dataset.del);
+    const typed = prompt(`Delete ${u.name || u.login} for good?\n\nTheir login is removed and can't be switched back on. Orders and archive lines they entered stay, under their name.\nTo just stop them signing in for now, switch their login off instead.\n\nType their Login ID (${u.login}) to delete:`);
+    if(typed === null) return;
+    if(typed.trim().toLowerCase() !== u.login) return alert('The Login ID didn’t match. Nothing was deleted.');
+    try{ await api('POST', '/owner/users/' + encodeURIComponent(u.sub) + '/delete', {}); toast(`${u.name || u.login} was deleted.`); loadOwner(); }catch(err){ if(!err.auth) alert(err.message); }
+  }
   if(ph){
     const u = OWN.users.find(x => x.sub === ph.dataset.phone);
     const v = prompt(`New mobile number for ${u.name || u.login} (sign-in codes are texted here):`, u.phone); if(!v) return;
@@ -175,7 +184,7 @@ $('psAdd').onclick = async () => {
   const body = {id:$('psId').value.trim().toUpperCase()}; SF.forEach(([k]) => body[k] = $('ps_' + k).value.trim());
   if(!body.id || !body.name) return toast('Pharmacy ID and name are needed.');
   busy($('psAdd'), true);
-  try{ await api('POST', '/owner/stores', body); toast('Pharmacy added: ' + body.id); $('psId').value = ''; SF.forEach(([k]) => { if(k !== 'timezone') $('ps_' + k).value = ''; }); await refreshMe(); loadOwner(); }
+  try{ await api('POST', '/owner/stores', body); toast('Pharmacy added: ' + body.id); $('psId').value = ''; SF.forEach(([k]) => { if(k !== 'timezone' && k !== 'state') $('ps_' + k).value = ''; }); await refreshMe(); loadOwner(); }
   catch(err){ if(!err.auth) alert(err.message); } finally{ busy($('psAdd'), false); }
 };
 async function refreshMe(){ ME = await api('GET', '/me'); STORE = ME.stores.find(s => s.id === STORE.id) || STORE; paintStore(); }
@@ -192,7 +201,8 @@ $('impGo').onclick = async () => {
   try{
     for(let i = 0; i < arch.length; i += 500){ $('impMsg').textContent = `Archive ${i} of ${arch.length}…`; add(await api('POST', `/stores/${encodeURIComponent(store)}/import`, {archive:arch.slice(i, i + 500)})); }
     for(let i = 0; i < mem.length; i += 1000){ $('impMsg').textContent = `Memory ${i} of ${mem.length}…`; add(await api('POST', `/stores/${encodeURIComponent(store)}/import`, {remember:Object.fromEntries(mem.slice(i, i + 1000))})); }
-    if(open.length) add(await api('POST', `/stores/${encodeURIComponent(store)}/import`, {reorder:open.map(r => Object.assign({}, r, {item: r.itemEdited ? r.item : fixItem(r.item)}))}));
+    const fixed = open.map(r => Object.assign({}, r, {item: r.itemEdited ? r.item : fixItem(r.item)}));
+    for(let i = 0; i < fixed.length; i += 500) add(await api('POST', `/stores/${encodeURIComponent(store)}/import`, {reorder:fixed.slice(i, i + 500)}));
     $('impMsg').innerHTML = `<b>Done.</b> Archive: ${tot.archiveAdded} added, ${tot.archiveSkipped} already there. Open list: ${tot.linesAdded} added, ${tot.linesSkipped} already there. Memory: ${tot.memoryAdded} added, ${tot.memorySkipped} already there.`;
     if(STORE && STORE.id === store) openStore(store);
   }catch(e){ $('impMsg').textContent = 'Stopped: ' + e.message + ' (safe to run again; nothing is added twice)'; }

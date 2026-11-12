@@ -60,6 +60,7 @@ rep('</style>\n</head>', r'''
   .pfields label span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;}
   .pfields input,.pfields select,.formgrid select{width:100%;background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:7px 9px;font-size:14px;font-family:inherit;} .pfields label:has(.wide){grid-column:span 2;}
   .btn.small,.btn2.small{padding:5px 10px;font-size:12.5px;}
+  .btn2.danger{color:var(--bad, #a33);border-color:currentColor;}
   label.btn2{display:inline-block;}
   .tscroll{overflow-x:auto;}
   table.people th.c, table.people td.c{text-align:center;}
@@ -257,7 +258,11 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
       <div class="formgrid">
         <label><span>Pharmacy ID (typed at sign-in)</span><input type="text" id="psId" autocapitalize="characters" placeholder="e.g. NTX2"></label>
         <label><span>Pharmacy name</span><input type="text" id="ps_name"></label>
-        <label><span>Address</span><input type="text" id="ps_address"></label>
+        <label><span>Street address</span><input type="text" id="ps_address" maxlength="200"></label>
+        <label><span>Suite / unit (if any)</span><input type="text" id="ps_suite" maxlength="40"></label>
+        <label><span>City</span><input type="text" id="ps_city" maxlength="80"></label>
+        <label><span>State</span><select id="ps_state"><option value=""></option><option>AL</option><option>AK</option><option>AZ</option><option>AR</option><option>CA</option><option>CO</option><option>CT</option><option>DE</option><option>DC</option><option>FL</option><option>GA</option><option>HI</option><option>ID</option><option>IL</option><option>IN</option><option>IA</option><option>KS</option><option>KY</option><option>LA</option><option>ME</option><option>MD</option><option>MA</option><option>MI</option><option>MN</option><option>MS</option><option>MO</option><option>MT</option><option>NE</option><option>NV</option><option>NH</option><option>NJ</option><option>NM</option><option>NY</option><option>NC</option><option>ND</option><option>OH</option><option>OK</option><option>OR</option><option>PA</option><option>PR</option><option>RI</option><option>SC</option><option>SD</option><option>TN</option><option selected>TX</option><option>UT</option><option>VT</option><option>VA</option><option>WA</option><option>WV</option><option>WI</option><option>WY</option></select></label>
+        <label><span>ZIP code</span><input type="text" id="ps_zip" maxlength="10" inputmode="numeric"></label>
         <label><span>Phone</span><input type="tel" id="ps_phone"></label>
         <label><span>Fax</span><input type="tel" id="ps_fax"></label>
         <label><span>Email</span><input type="email" id="ps_email"></label>

@@ -157,7 +157,8 @@ Resources:
               - Effect: Allow
                 Action: [cognito-idp:AdminCreateUser, cognito-idp:AdminGetUser, cognito-idp:AdminDisableUser,
                          cognito-idp:AdminEnableUser, cognito-idp:AdminUpdateUserAttributes, cognito-idp:AdminSetUserPassword,
-                         cognito-idp:AdminSetUserMFAPreference, cognito-idp:AdminUserGlobalSignOut, cognito-idp:ListUsers]
+                         cognito-idp:AdminSetUserMFAPreference, cognito-idp:AdminUserGlobalSignOut, cognito-idp:ListUsers,
+                         cognito-idp:AdminDeleteUser]
                 Resource: !GetAtt UserPool.Arn
 
   ApiFunction:

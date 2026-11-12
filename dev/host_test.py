@@ -50,7 +50,12 @@ check("host changes the AM's phone (with consent)", api(HT, "POST", f"/host/user
 check("host can't change the AM's pharmacies", api(HT, "POST", f"/host/users/{amsub}", {"stores":{"NTX1":False}})[0] == 400)
 check("host can't switch itself off", api(HT, "POST", f"/host/users/{hsub}", {"disabled":True})[0] == 400)
 check("host can't give itself a pharmacy", api(HT, "POST", f"/host/users/{hsub}", {"stores":{"NTX1":True}})[0] == 400)
-check("host adds a pharmacy", api(HT, "POST", "/host/stores", {"id":"NTX2","name":"NorTex Keller","timezone":"America/Chicago"})[0] == 200)
+check("host adds a pharmacy", api(HT, "POST", "/host/stores", {"id":"NTX2","name":"NorTex Keller","address":"1200 Main St","suite":"Suite 104","city":"Keller","state":"tx","zip":"76248","timezone":"America/Chicago"})[0] == 200)
+st2 = [x for x in api(HT, "GET", "/host/stores")[1]["stores"] if x["id"] == "NTX2"][0]
+check("address saved in parts", (st2["address"], st2["suite"], st2["city"], st2["state"], st2["zip"]) == ("1200 Main St", "Suite 104", "Keller", "TX", "76248"))
+check("bad state refused", api(HT, "POST", "/host/stores/NTX2", {"state":"ZZ"})[0] == 400)
+check("bad ZIP refused", api(HT, "POST", "/host/stores/NTX2", {"zip":"7624"})[0] == 400)
+check("ZIP+4 accepted", api(HT, "POST", "/host/stores/NTX2", {"zip":"76248-1234"})[0] == 200)
 s, r = api(HT, "POST", "/host/users", {"login":"tech1","name":"Tech One","phone":"8175552222","stores":{"NTX2":True},"smsConsent":True})
 check("host adds a person to a pharmacy", s == 200 and r["user"]["stores"] == {"NTX2": True})
 tsub = r["user"]["sub"]
@@ -69,13 +74,27 @@ check("AM can't change the host's phone", api(OT, "POST", f"/owner/users/{hsub}"
 check("AM can give the host a pharmacy", api(OT, "POST", f"/owner/users/{hsub}", {"stores":{"NTX1":True}})[0] == 200)
 check("then the host can open that one", api(HT, "GET", "/stores/NTX1/lines")[0] == 200 and api(HT, "GET", "/stores/NTX2/lines")[0] == 403)
 check("AM still can't switch herself off", api(OT, "POST", f"/owner/users/{amsub}", {"disabled":True})[0] == 400)
+s, r = api(OT, "POST", "/owner/users", {"login":"temp9","name":"Temp Nine","phone":"8175553333","stores":{"NTX1":True},"smsConsent":True})
+T9, _ = login("temp9", r["tempPassword"], "temp9pass12")
+t9 = r["user"]["sub"]
+check("AM can't delete the host", api(OT, "POST", f"/owner/users/{hsub}/delete", {})[0] == 403)
+check("AM can't delete herself", api(OT, "POST", f"/owner/users/{amsub}/delete", {})[0] == 400)
+check("host can't delete the AM", api(HT, "POST", f"/host/users/{amsub}/delete", {})[0] == 400)
+check("AM deletes a person", api(OT, "POST", f"/owner/users/{t9}/delete", {})[0] == 200)
+check("deleted person's open session is refused at once", api(T9, "GET", "/me")[0] == 403)
+check("deleted person is gone from the list", all(x["sub"] != t9 for x in api(OT, "GET", "/owner/users")[1]["users"]))
+check("deleted person can't be changed back", api(OT, "POST", f"/owner/users/{t9}", {"disabled":False})[0] == 404)
+s, r = api(HT, "POST", "/host/users", {"login":"temp9","name":"Temp Again","phone":"8175553333","stores":{},"smsConsent":True})
+check("the Login ID can be used again", s == 200 and r["user"]["sub"] != t9)
+check("host deletes a person", api(HT, "POST", f"/host/users/{r['user']['sub']}/delete", {})[0] == 200)
 check("host lock closes the gate", api(HT, "POST", "/host-lock", {})[0] == 200 and api(HT, "GET", "/host/users")[0] == 423)
 
 # ---- the page itself
 with sync_playwright() as p:
     b = p.chromium.launch(); pg = b.new_page(viewport={"width": 1280, "height": 900})
     errs = []; pg.on("pageerror", lambda e: errs.append(str(e)))
-    pg.on("dialog", lambda d: d.accept())
+    PROMPT = [""]
+    pg.on("dialog", lambda d: d.accept(PROMPT[0]) if d.type == "prompt" else d.accept())
     pg.goto("http://localhost:8790/host.html")
     pg.fill("#sUser", "owner"); pg.fill("#sPass", "ownerpass77"); pg.click("#sGo")
     pg.wait_for_selector("#sMsg:has-text('only for the IronLedger host'), #sCode:visible")
@@ -90,6 +109,9 @@ with sync_playwright() as p:
     pg.wait_for_selector("#passBox:has-text('Temporary password')")
     check("reset from the page shows a temporary password", pg.is_visible("#passBox"))
     pg.screenshot(path="screenshots/host_page.png", full_page=True)
+    pg.fill("#psId", "NTX3"); pg.fill("#ps_name", "NorTex Denton"); pg.fill("#ps_address", "500 Oak St"); pg.fill("#ps_city", "Denton")
+    pg.select_option("#ps_state", "TX"); pg.fill("#ps_zip", "76201"); pg.click("#psAdd"); pg.wait_for_selector("[data-store='NTX3']")
+    check("add pharmacy from the page with city, state, ZIP", pg.locator("[data-store='NTX3'] [data-sf='city']").input_value() == "Denton" and pg.locator("[data-store='NTX3'] [data-sf='state']").input_value() == "TX")
     pg.reload(); pg.wait_for_selector("#gLock", state="visible")
     check("reload asks for the password again", pg.is_visible("#gLock") and not pg.is_visible("#gBody"))
     pg.fill("#lPass", "hostpass999"); pg.click("#lGo"); pg.wait_for_selector("#people table")
@@ -99,6 +121,25 @@ with sync_playwright() as p:
     sw = pg.evaluate("document.documentElement.scrollWidth")
     check("fits a phone screen", sw <= 392)
     pg.screenshot(path="screenshots/host_phone.png", full_page=True)
+    import tempfile, os
+    old = {"reorder": [{"id": "o%d" % i, "dateAdded": "2026-11-01", "item": "DRUG %d 10 MG TAB" % i, "qty": 1} for i in range(620)] + [{"id": "a1", "item": "X", "archived": True}],
+           "archive": [{"id": "x1", "dateSubmitted": "2026-10-20", "submittedAt": "2026-10-20T15:00:00.000Z", "item": "LISINOPRIL 10 MG TAB", "qty": 2, "dist": "Anda Inc"}],
+           "remember": {"00093-0752-01": {"dist": "Anda Inc"}}}
+    fp = os.path.join(tempfile.mkdtemp(), "nortex_reorder_data.json"); json.dump(old, open(fp, "w"))
+    pg.set_viewport_size({"width": 1280, "height": 900})
+    pg.select_option("#impStore", "NTX1"); pg.set_input_files("#impFile", fp); pg.click("#impGo")
+    pg.wait_for_selector("#impMsg:has-text('Done')", timeout=60000)
+    msg = pg.locator("#impMsg").inner_text(); print("   ", msg)
+    check("host imports a pharmacy's file (all 620 open orders, past the 500 batch)", "620 added" in msg and "Archive: 1 added" in msg)
+    pg.set_input_files("#impFile", fp); pg.click("#impGo"); pg.wait_for_selector("#impMsg:has-text('620 already there')", timeout=60000)
+    check("importing twice adds nothing twice", "Open orders: 0 added" in pg.locator("#impMsg").inner_text())
+    check("orders are on that pharmacy's list", len(api(HT, "GET", "/stores/NTX1/lines")[1].get("lines", [])) == 620)
+    tsub_row = pg.locator(f"[data-del='{tsub}']")
+    check("page shows Delete for staff, not for the AM or host", tsub_row.count() == 1 and pg.locator(f"[data-del='{amsub}'], [data-del='{hsub}']").count() == 0)
+    PROMPT[0] = "wrong"; tsub_row.click(); pg.wait_for_timeout(800)
+    check("wrong Login ID typed: nothing deleted", pg.locator(f"[data-del='{tsub}']").count() == 1)
+    PROMPT[0] = "TECH1"; tsub_row.click(); pg.wait_for_selector(f"[data-del='{tsub}']", state="detached")
+    check("typing the Login ID deletes from the page", pg.locator(f"[data-del='{tsub}']").count() == 0)
     pg.click("#bOut"); pg.wait_for_selector("#gSign", state="visible")
     check("no script errors", not errs); print(errs) if errs else None
     b.close()
