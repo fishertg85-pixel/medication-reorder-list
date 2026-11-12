@@ -1,0 +1,11 @@
+# local test tools
+node_modules/
+dev/moto_ids.json
+dev/screenshots/
+__pycache__/
+# written by deploy.sh / the local test server for each deployment — never commit
+app/web/config.js
+.packaged.yaml
+.boot.json
+*.zip
+.DS_Store

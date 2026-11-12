@@ -1,0 +1,21 @@
+src = open('e2e.py').read().split("with sync_playwright() as pw:")[0]
+exec(src)
+with sync_playwright() as pw:
+    b = pw.chromium.launch(); ctx = b.new_context(viewport={"width": 1300, "height": 900}, timezone_id='America/New_York'); setup(ctx); p = page_for(ctx)
+    login(p, 'NTX1', 'owner', 'temp12345a')
+    p.click('#tabs [data-tab=owner]'); p.fill('#ownPw', REALPW['owner']); p.click('#ownUnlock'); p.wait_for_timeout(1200)
+    print('T1 NTX1 default zone shown:', p.locator('.pcard [data-sf=timezone]').first.input_value())
+    p.fill('#psId', 'NTX9'); p.fill('#ps_name', 'Test West'); p.select_option('#ps_timezone', 'America/Los_Angeles'); p.click('#psAdd'); p.wait_for_timeout(1200)
+    print('T2 new pharmacy zone:', p.locator('.pcard [data-sf=timezone]').nth(1).input_value())
+    p.locator('.pcard').first.locator('[data-sf=timezone]').select_option('America/Denver'); p.locator('.pcard').first.locator('[data-savestore]').click(); p.wait_for_timeout(1200)
+    print('T3 NTX1 changed to:', p.locator('.pcard [data-sf=timezone]').first.input_value())
+    # submit an order in each pharmacy; archive time label should use that pharmacy's zone (device is Eastern)
+    for sid in ('NTX1', 'NTX9'):
+        p.select_option('#storeSel', sid); p.wait_for_timeout(1500); search_add(p, 'ateno 25')
+        p.locator('#listBody input[data-f=ordered]').first.check(); p.wait_for_timeout(800)
+        title = p.locator('#listBody input[data-f=ordered]').first.get_attribute('title')
+        p.click('#submitBtn'); p.wait_for_timeout(1500); p.click('#tabs [data-tab=archive]'); p.wait_for_timeout(1200)
+        print(f'T4 {sid}: ordered tooltip "{title}" | archive head:', p.locator('#archBody tr.order').first.inner_text().split('\t')[0].strip())
+        p.click('#tabs [data-tab=setup]'); print('   setup shows zone:', [l for l in p.inner_text('#storeInfo').split('\n') if 'zone' in l.lower()])
+    print('T5 bad zone via API:', p.evaluate("api('POST','/owner/stores/NTX1',{timezone:'Mars/Base'}).then(()=>'accepted',e=>e.message)"))
+    print('ERRORS:', ERR or 'none'); b.close()

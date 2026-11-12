@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Host tools (run in AWS CloudShell, in the folder with deploy.sh). For the web host only.
+#   bash host.sh people                    list logins, phones, status
+#   bash host.sh reset-password LOGIN      new temporary password (they choose their own at next sign-in)
+#   bash host.sh set-phone LOGIN NUMBER    change the mobile number that gets the sign-in codes
+#   bash host.sh off LOGIN | on LOGIN      switch a login off (signed out everywhere) or back on
+#   bash host.sh pharmacies                list pharmacies
+#   bash host.sh add-pharmacy ID "NAME" [eastern|central|mountain|arizona|pacific]
+#   bash host.sh assign LOGIN PHARMACY_ID     give a person access to a pharmacy
+#   bash host.sh unassign LOGIN PHARMACY_ID   take that access away
+# Optional: APP=other-name bash host.sh ...   for a separate copy
+set -euo pipefail
+APP="${APP:-nortex-reorder}"
+REGION="${AWS_REGION:-$(aws configure get region || true)}"; REGION="${REGION:-us-east-1}"
+out(){ aws cloudformation describe-stacks --stack-name "$APP" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
+POOL="${POOL:-$(out UserPoolId)}"; MAIN="${MAIN:-$(out MainTableName)}"
+cmd="${1:-}"; login="$(echo "${2:-}" | tr 'A-Z' 'a-z')"
+need_login(){ [ -n "$login" ] || { echo "Which Login ID?"; exit 1; }; }
+sub_of(){ aws cognito-idp admin-get-user --user-pool-id "$POOL" --username "$login" --region "$REGION" --query "UserAttributes[?Name=='sub'].Value" --output text; }
+temp_pw(){ local p; p="$(LC_ALL=C tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' </dev/urandom | head -c 10)"; echo "${p}a7"; }
+
+case "$cmd" in
+  people)
+    aws cognito-idp list-users --user-pool-id "$POOL" --region "$REGION" \
+      --query "Users[].[Username, Attributes[?Name=='name']|[0].Value, Attributes[?Name=='phone_number']|[0].Value, UserStatus, Enabled]" --output table ;;
+  reset-password)
+    need_login; pw="$(temp_pw)"
+    aws cognito-idp admin-set-user-password --user-pool-id "$POOL" --username "$login" --password "$pw" --no-permanent --region "$REGION"
+    aws cognito-idp admin-user-global-sign-out --user-pool-id "$POOL" --username "$login" --region "$REGION" || true
+    echo "Temporary password for ${login}: ${pw}   (they choose their own at the next sign-in)" ;;
+  set-phone)
+    need_login; num="$(echo "${3:-}" | tr -dc '0-9')"
+    [ ${#num} -eq 10 ] && num="+1${num}" || { [ ${#num} -eq 11 ] && [ "${num:0:1}" = 1 ] && num="+${num}"; } || { echo "Give a 10-digit US mobile number."; exit 1; }
+    aws cognito-idp admin-update-user-attributes --user-pool-id "$POOL" --username "$login" --region "$REGION" \
+      --user-attributes Name=phone_number,Value="$num" Name=phone_number_verified,Value=true
+    sub="$(sub_of)"
+    aws dynamodb update-item --table-name "$MAIN" --region "$REGION" --key "{\"pk\":{\"S\":\"USERS\"},\"sk\":{\"S\":\"${sub}\"}}" \
+      --update-expression "SET phone = :p" --expression-attribute-values "{\":p\":{\"S\":\"${num}\"}}" >/dev/null
+    echo "Sign-in codes for ${login} now go to ${num}." ;;
+  off|on)
+    need_login; sub="$(sub_of)"
+    if [ "$cmd" = off ]; then
+      aws cognito-idp admin-disable-user --user-pool-id "$POOL" --username "$login" --region "$REGION"
+      aws cognito-idp admin-user-global-sign-out --user-pool-id "$POOL" --username "$login" --region "$REGION" || true
+      val=true
+    else aws cognito-idp admin-enable-user --user-pool-id "$POOL" --username "$login" --region "$REGION"; val=false; fi
+    aws dynamodb update-item --table-name "$MAIN" --region "$REGION" --key "{\"pk\":{\"S\":\"USERS\"},\"sk\":{\"S\":\"${sub}\"}}" \
+      --update-expression "SET disabled = :d" --expression-attribute-values "{\":d\":{\"BOOL\":${val}}}" >/dev/null
+    echo "Login ${login} switched ${cmd}." ;;
+  pharmacies)
+    aws dynamodb query --table-name "$MAIN" --region "$REGION" --key-condition-expression 'pk = :p' \
+      --expression-attribute-values '{":p":{"S":"STORES"}}' --query 'Items[].[sk.S, name.S, timezone.S]' --output table ;;
+  add-pharmacy)
+    pid="$(echo "${2:-}" | tr 'a-z' 'A-Z')"; pname="${3:-}"
+    [[ "$pid" =~ ^[A-Z0-9][A-Z0-9-]{1,19}$ ]] || { echo "Pharmacy ID: 2-20 letters, numbers or dashes (e.g. NTX2)."; exit 1; }
+    [ -n "$pname" ] || { echo "Give the pharmacy name in quotes."; exit 1; }
+    case "$(echo "${4:-central}" | tr 'A-Z' 'a-z')" in eastern) tz=America/New_York;; mountain) tz=America/Denver;; arizona) tz=America/Phoenix;; pacific) tz=America/Los_Angeles;; *) tz=America/Chicago;; esac
+    item="$(jq -n --arg id "$pid" --arg n "$pname" --arg z "$tz" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      '{pk:{S:"STORES"}, sk:{S:$id}, name:{S:$n}, timezone:{S:$z}, createdAt:{S:$t}}')"
+    aws dynamodb put-item --table-name "$MAIN" --region "$REGION" --item "$item" --condition-expression 'attribute_not_exists(pk)' 2>/dev/null \
+      || { echo "That Pharmacy ID is already used (see: bash host.sh pharmacies)."; exit 1; }
+    echo "Pharmacy ${pid} (${pname}) added. Address, phone, fax, email, license and logo can be filled in from the Account Manager tab." ;;
+  assign|unassign)
+    need_login; pid="$(echo "${3:-}" | tr 'a-z' 'A-Z')"; [ -n "$pid" ] || { echo "Which Pharmacy ID?"; exit 1; }
+    found="$(aws dynamodb get-item --table-name "$MAIN" --region "$REGION" --key "{\"pk\":{\"S\":\"STORES\"},\"sk\":{\"S\":\"${pid}\"}}" --query 'Item.sk.S' --output text)"
+    [ "$found" = "$pid" ] || { echo "No pharmacy with ID ${pid} (see: bash host.sh pharmacies)."; exit 1; }
+    sub="$(sub_of)"; val=$([ "$cmd" = assign ] && echo true || echo false)
+    aws dynamodb update-item --table-name "$MAIN" --region "$REGION" --key "{\"pk\":{\"S\":\"USERS\"},\"sk\":{\"S\":\"${sub}\"}}" \
+      --update-expression "SET stores.#p = :v" --expression-attribute-names "{\"#p\":\"${pid}\"}" \
+      --expression-attribute-values "{\":v\":{\"BOOL\":${val}}}" --condition-expression 'attribute_exists(stores)' >/dev/null
+    echo "${login}: access to ${pid} switched $([ "$cmd" = assign ] && echo on || echo off)." ;;
+  *) sed -n '2,11p' "$0" ;;
+esac

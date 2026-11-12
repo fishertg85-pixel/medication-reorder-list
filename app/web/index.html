@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-1wf6ldakS8UvzeyAouOn8wSpQuk5T0Xd/6wKwHEgP4w='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.amazonaws.com https://clinicaltables.nlm.nih.gov https://rxnav.nlm.nih.gov https://api.fda.gov https://dailymed.nlm.nih.gov http://localhost:8790; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reorder List</title>
+<meta name="theme-color" content="#1f3864">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Reorder">
+<script src="config.js"></script>
+<script>
+  // apply saved theme before first paint (no flash)
+  (function(){ try{ var t = localStorage.getItem('nortex-theme'); if(t) document.documentElement.setAttribute('data-theme', t); }catch(e){} })();
+</script>
+<style>
+  :root{
+    --bg:#f4f6fa; --panel:#ffffff; --text:#1a1d23; --muted:#5f6673; --line:#d9dee7;
+    --head:#1f3864; --head-text:#ffffff; --head-sub:#c9d3e6; --nav:#172b4f;
+    --accent:#1f7a3d; --accent-hover:#186331; --link:#1a5fb4; --danger:#b42318;
+    --input-bg:#ffffff; --input-line:#b9c2d0; --row-alt:#fafbfd; --hover:#eaf1ff;
+    --sect:#eef2f8; --sect-text:#1f3864; --sect-fda:#e6f3ea; --sect-fda-text:#1d5c34;
+    --warn-bg:#fdecea; --warn-line:#f2b8b5; --warn-text:#7a271a;
+    --info-bg:#eaf1ff; --info-line:#b9d0f5; --info-text:#1f3864;
+    --new-bg:#fff4e5; --shadow:0 8px 24px rgba(0,0,0,.14);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14171c; --panel:#1d2128; --text:#e6e8ec; --muted:#9aa3b2; --line:#323844;
+      --head:#111827; --head-text:#f3f4f6; --head-sub:#9aa3b2; --nav:#0b1220;
+      --accent:#2e9e55; --accent-hover:#38b463; --link:#7cb3ff; --danger:#f0715f;
+      --input-bg:#14171c; --input-line:#3d4452; --row-alt:#20252d; --hover:#263247;
+      --sect:#232a36; --sect-text:#b9c8e6; --sect-fda:#1d2e24; --sect-fda-text:#9ad3ad;
+      --warn-bg:#3a1f1c; --warn-line:#6b302a; --warn-text:#f5b7ae;
+      --info-bg:#1b2638; --info-line:#2f4466; --info-text:#b9cdf0;
+      --new-bg:#33291b; --shadow:0 8px 24px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14171c; --panel:#1d2128; --text:#e6e8ec; --muted:#9aa3b2; --line:#323844;
+    --head:#111827; --head-text:#f3f4f6; --head-sub:#9aa3b2; --nav:#0b1220;
+    --accent:#2e9e55; --accent-hover:#38b463; --link:#7cb3ff; --danger:#f0715f;
+    --input-bg:#14171c; --input-line:#3d4452; --row-alt:#20252d; --hover:#263247;
+    --sect:#232a36; --sect-text:#b9c8e6; --sect-fda:#1d2e24; --sect-fda-text:#9ad3ad;
+    --warn-bg:#3a1f1c; --warn-line:#6b302a; --warn-text:#f5b7ae;
+    --info-bg:#1b2638; --info-line:#2f4466; --info-text:#b9cdf0;
+    --new-bg:#33291b; --shadow:0 8px 24px rgba(0,0,0,.5);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 "Segoe UI",Arial,Helvetica,sans-serif;}
+  a{color:var(--link);}
+  header{background:var(--head);color:var(--head-text);padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+  header h1{font-size:18px;margin:0;font-weight:600;}
+  header .sub{font-size:12px;color:var(--head-sub);}
+  .spacer{flex:1;}
+  .conn{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--head-sub);}
+  .dot{width:9px;height:9px;border-radius:50%;background:#d9534f;display:inline-block;}
+  .dot.ok{background:#2ecc71;}
+  .hbtn{background:transparent;color:var(--head-text);border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;}
+  .hbtn:hover{background:rgba(255,255,255,.1);}
+  .theme-btn{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;padding:0;}
+  .theme-btn svg{width:18px;height:18px;}
+  nav{display:flex;background:var(--nav);padding:0 12px;}
+  nav button{background:none;border:none;color:var(--head-sub);padding:10px 16px;cursor:pointer;font-size:13px;border-bottom:3px solid transparent;}
+  nav button.active{color:var(--head-text);border-bottom-color:#f0b429;}
+  main{padding:18px 20px 60px;max-width:1300px;margin:0 auto;}
+  .panel{display:none;} .panel.active{display:block;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px;}
+  h2{font-size:15px;margin:0 0 10px;}
+  .hint{font-size:12.5px;color:var(--muted);}
+  input[type=text],input[type=number],input[type=date],input[type=file]{background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:7px 9px;font-size:14px;font-family:inherit;}
+  input:focus{outline:2px solid var(--link);outline-offset:-1px;}
+  .search-wrap{position:relative;}
+  #search{width:100%;font-size:16px;padding:11px 12px;}
+  .results{position:absolute;left:0;right:0;z-index:50;background:var(--panel);border:1px solid var(--line);border-radius:0 0 8px 8px;max-height:440px;overflow-y:auto;box-shadow:var(--shadow);display:none;}
+  .results > div{padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px;}
+  .results > div.hi, .results > div[data-i]:hover{background:var(--hover);}
+  .results .sect{background:var(--sect);color:var(--sect-text);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;cursor:default;position:sticky;top:0;}
+  .results .sect.fda{background:var(--sect-fda);color:var(--sect-fda-text);}
+  .results .sub{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .results .none{color:var(--muted);cursor:default;}
+  .results .newdrug{color:var(--accent);font-weight:600;}
+  .usedb{color:#e0a100;font-weight:700;}
+  .brandfoot{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 10px 18px;font-size:11.5px;color:var(--muted);letter-spacing:.02em;}
+  .brandfoot img{height:20px;width:auto;}
+  .spin{display:inline-block;width:11px;height:11px;margin-right:7px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px;}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .results .muted{color:var(--muted);}
+  .dm{color:var(--link);font-size:11.5px;font-weight:600;text-decoration:none;white-space:nowrap;margin-left:6px;}
+  .dm:hover{text-decoration:underline;}
+  #newDrug{display:none;margin-top:10px;padding:12px;border-radius:8px;background:var(--new-bg);border:1px solid var(--line);}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);border-bottom:2px solid var(--line);padding:8px 6px;white-space:nowrap;}
+  td{border-bottom:1px solid var(--line);padding:6px;vertical-align:middle;}
+  tbody tr:nth-child(even) td{background:var(--row-alt);}
+  td input[type=text], td input[type=number]{width:100%;padding:5px 7px;font-size:13px;}
+  td input.ndcin{font-family:Consolas,Menlo,monospace;font-size:13px;width:100%;max-width:190px;}
+  #ndcPop > div{padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px;}
+  #ndcPop > div.hi, #ndcPop > div[data-p]:hover{background:var(--hover);}
+  .mono{font-family:Consolas,Menlo,monospace;}
+  .ndc-txt{font-family:Consolas,Menlo,monospace;font-weight:400;letter-spacing:.02em;}
+  .ndcmid{font-weight:800;font-size:1.12em;color:var(--text);background:var(--sect);padding:0 2px;border-radius:3px;}
+  td select{background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:5px 6px;font-size:12.5px;font-family:inherit;width:100%;max-width:330px;}
+  td.ndc{min-width:170px;}
+  td.mfr{font-size:12.5px;min-width:140px;max-width:220px;}
+  #listBody td:nth-child(2), #archBody td:nth-child(2){min-width:200px;}
+  td.pkg{width:140px;}
+  td.dist select{min-width:190px;max-width:230px;font-size:12.5px;}
+  td.dist select.need{border-color:#e0a100;background:var(--new-bg);}
+  td.qty{width:80px;}
+  button.edit{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 3px;}
+  button.edit:hover{color:var(--link);}
+  th.chk, td.chk{text-align:center;width:70px;}
+  td.chk input{width:20px;height:20px;cursor:pointer;accent-color:var(--accent);}
+  #listBody tr.is-ordered td{background:color-mix(in srgb, var(--accent) 12%, var(--panel)) !important;}
+  #listBody tr.is-ordered td b{color:var(--muted);} td.pkg{width:170px;} td.ven{width:160px;} td.ndc{white-space:nowrap;font-family:Consolas,Menlo,monospace;font-size:12.5px;}
+  .maker{font-size:11.5px;color:var(--muted);}
+  #archBody tr.order td{cursor:pointer;background:var(--panel);font-size:13px;}
+  #archBody tr.order:hover td{background:var(--hover);}
+  #archBody tr.order.open td{background:var(--sect);border-bottom-color:transparent;}
+  #archBody tr.order-line td{background:var(--row-alt);font-size:12.5px;}
+  #archBody tr.order-line td:first-child{border-left:3px solid var(--sect-text);}
+  .caret{display:inline-block;width:12px;color:var(--muted);}
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;}
+  .btn:hover{background:var(--accent-hover);}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .btn2{background:transparent;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:7px 12px;font-size:13px;cursor:pointer;}
+  .btn2:hover{background:var(--hover);}
+  .x{background:none;border:none;color:var(--danger);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px;}
+  .empty{text-align:center;color:var(--muted);padding:18px !important;}
+  .banner{padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:12px;border:1px solid;}
+  .banner.warn{background:var(--warn-bg);border-color:var(--warn-line);color:var(--warn-text);}
+  .banner.info{background:var(--info-bg);border-color:var(--info-line);color:var(--info-text);}
+  ol.steps{margin:6px 0 0;padding-left:20px;line-height:1.9;}
+  .toast{position:fixed;bottom:20px;right:20px;background:#111;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:200;}
+  .toast.show{opacity:.95;}
+  @media (max-width:700px){ td.pkg,td.ven{width:auto;} header{padding:10px 14px;} main{padding:14px;} }
+
+  /* ---- cloud version additions ---- */
+  input[type=tel],input[type=email],input[type=password]{background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:7px 9px;font-size:14px;font-family:inherit;}
+  #storeLogo{height:38px;width:38px;object-fit:contain;border-radius:6px;background:#fff;padding:2px;}
+  .hsel{background:rgba(255,255,255,.08);color:var(--head-text);border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:6px 8px;font-size:12.5px;max-width:260px;}
+  .hsel option{color:#111;}
+  .who{font-size:12px;color:var(--head-sub);}
+  .addrow{display:flex;gap:8px;align-items:stretch;}
+  .addrow .search-wrap{flex:1;}
+  .added-by{font-size:11px;color:var(--muted);}
+  /* sign-in */
+  #login{min-height:calc(100vh - 52px);display:none;align-items:center;justify-content:center;padding:20px;background:var(--bg);}
+  .li-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px 24px;width:100%;max-width:380px;box-shadow:var(--shadow);}
+  .li-card h1{font-size:18px;margin:0 0 4px;} .li-card .hint{margin-bottom:14px;}
+  .li-card label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.04em;}
+  .li-card input{width:100%;font-size:16px;padding:10px 11px;}
+  .li-card .btn{width:100%;margin-top:16px;padding:11px;font-size:15px;}
+  #liBrand{text-align:center;min-height:20px;margin-bottom:6px;}
+  #liBrand img{max-height:96px;max-width:200px;object-fit:contain;display:block;margin:0 auto 8px;}
+  .li-pname{font-weight:700;font-size:15px;} .li-none{color:var(--muted);font-size:13px;}
+  .li-msg{min-height:18px;margin-top:12px;font-size:13px;color:var(--danger);} .li-msg.ok{color:var(--accent);}
+  .li-links{margin-top:12px;font-size:13px;text-align:center;}
+  #liCodeIn,#liFCode{letter-spacing:.3em;font-family:Consolas,Menlo,monospace;text-align:center;}
+  /* Account Manager tab */
+  .pcard{display:flex;gap:16px;border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px;flex-wrap:wrap;}
+  .plogo{width:150px;display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .plogo img{max-width:140px;max-height:100px;object-fit:contain;}
+  .pfields{flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 12px;min-width:240px;}
+  .pfields .pid{grid-column:1/-1;font-size:13px;}
+  .pfields label span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;}
+  .pfields input,.pfields select,.formgrid select{width:100%;background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:7px 9px;font-size:14px;font-family:inherit;} .pfields label:has(.wide){grid-column:span 2;}
+  .btn.small,.btn2.small{padding:5px 10px;font-size:12.5px;}
+  label.btn2{display:inline-block;}
+  .tscroll{overflow-x:auto;}
+  table.people th.c, table.people td.c{text-align:center;}
+  table.people tr.off td{opacity:.55;}
+  .switch{position:relative;display:inline-block;width:38px;height:22px;vertical-align:middle;}
+  .switch input{opacity:0;width:0;height:0;}
+  .switch span{position:absolute;inset:0;background:var(--input-line);border-radius:22px;transition:.15s;cursor:pointer;}
+  .switch span:before{content:"";position:absolute;height:16px;width:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.15s;}
+  .switch input:checked + span{background:var(--accent);}
+  .switch input:checked + span:before{transform:translateX(16px);}
+  .switch input:disabled + span{opacity:.5;}
+  .formgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px 12px;}
+  .formgrid label span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;}
+  .formgrid input{width:100%;}
+  label.chk{display:inline-flex;align-items:center;gap:6px;margin:4px 14px 4px 0;font-size:13px;}
+  #passBox{display:none;}
+  /* phones: tables become cards */
+  @media (max-width:760px){
+    header{gap:8px;padding:10px 12px;} header h1{font-size:15px;} header .sub,.hide-sm{display:none;}
+    nav{overflow-x:auto;} nav button{padding:10px 12px;white-space:nowrap;}
+    main{padding:10px 10px 80px;} .card{padding:12px;}
+    #listTable thead, #archTable thead{display:none;}
+    #listBody tr{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;padding:10px 4px;border-bottom:2px solid var(--line);}
+    #listBody tr td{border:none;padding:2px 0;background:transparent !important;}
+    #listBody td[data-l]:before{content:attr(data-l);display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+    #listBody td.drug{grid-column:1/-1;font-size:14px;order:-2;}
+    #listBody td.added{order:-3;grid-column:1/-1;font-size:11.5px;color:var(--muted);}
+    #listBody td.ndc, #listBody td.dist{grid-column:1/-1;}
+    #listBody td.ndc input.ndcin{max-width:none;font-size:15px;}
+    #listBody td.dist select{max-width:none;font-size:15px;padding:8px;}
+    #listBody td.pkg, #listBody td.qty{width:auto;}
+    #listBody td input{font-size:15px;padding:7px;}
+    #listBody td.chk{text-align:left;} #listBody td.chk input{width:26px;height:26px;}
+    #listBody tr.is-ordered{background:color-mix(in srgb, var(--accent) 12%, var(--panel));}
+    #listBody td.empty{grid-column:1/-1;}
+    #archBody tr.order td:nth-child(2){display:block;}
+    #archBody tr.order{display:grid;grid-template-columns:1fr;} #archBody tr.order td{border:none;}
+    #archBody tr.order-line{display:grid;grid-template-columns:1fr 1fr;padding:6px 0;border-bottom:1px solid var(--line);}
+    #archBody tr.order-line td{border:none;padding:2px 4px;} #archBody tr.order-line td:first-child{display:none;}
+    #archBody tr.order-line td.drug{grid-column:1/-1;}
+    #archBody td[data-l]:before{content:attr(data-l);display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;}
+    .results{max-height:60vh;}
+    table.people thead{display:none;}
+    table.people tr{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:10px 0;border-bottom:2px solid var(--line);}
+    table.people td{border:none;text-align:left !important;}
+    table.people td[data-l]:before{content:attr(data-l);display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;}
+    .pfields label:has(.wide){grid-column:auto;}
+    .toast{left:10px;right:10px;bottom:14px;text-align:center;}
+  }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="li-card">
+    <div id="liBrand"></div>
+    <h1>Reorder List</h1>
+    <div class="li-msg" id="liMsg"></div>
+    <div id="liStart">
+      <label for="liPharm">Pharmacy ID</label><input type="text" id="liPharm" autocomplete="organization" autocapitalize="characters" spellcheck="false">
+      <label for="liUser">Login ID</label><input type="text" id="liUser" autocomplete="username" autocapitalize="none" spellcheck="false">
+      <label for="liPass">Password</label><input type="password" id="liPass" autocomplete="current-password">
+      <button class="btn" id="liGo">Sign in</button>
+      <div class="li-links hint">Forgot your password? Ask the Account Manager for a temporary one.</div>
+      <a href="#" id="liForgotLink" style="display:none;"></a>
+    </div>
+    <div id="liNew" style="display:none;">
+      <label for="liNew1">New password</label><input type="password" id="liNew1" autocomplete="new-password">
+      <label for="liNew2">Type it again</label><input type="password" id="liNew2" autocomplete="new-password">
+      <div class="hint" style="margin-top:6px;">At least 10 characters, with a lowercase letter and a number.</div>
+      <button class="btn" id="liNewGo">Save password</button>
+    </div>
+    <div id="liCode" style="display:none;">
+      <div class="hint">A code was texted to <b id="liCodeDest"></b>.</div>
+      <label for="liCodeIn">Code</label><input type="text" id="liCodeIn" inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+      <button class="btn" id="liCodeGo">Continue</button>
+      <div class="li-links"><a href="#" data-liback="1">Start over</a></div>
+    </div>
+    <div id="liForgot" style="display:none;">
+      <label for="liFUser">Login ID</label><input type="text" id="liFUser" autocapitalize="none" spellcheck="false">
+      <button class="btn" id="liFSend">Text me a code</button>
+      <div id="liForgot2" style="display:none;">
+        <label for="liFCode">Code from the text</label><input type="text" id="liFCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8">
+        <label for="liFNew">New password</label><input type="password" id="liFNew" autocomplete="new-password">
+        <button class="btn" id="liFGo">Change password</button>
+      </div>
+      <div class="li-links"><a href="#" data-liback="1">Back to sign in</a></div>
+    </div>
+  </div>
+</div>
+
+<div id="app" style="display:none;">
+<header>
+  <img id="storeLogo" alt="" style="display:none;">
+  <div>
+    <h1 id="storeName">Reorder List</h1>
+    <div class="sub" id="dmHeader">Drug search: NLM RxTerms / RxNav</div>
+  </div>
+  <div class="spacer"></div>
+  <select class="hsel" id="storeSel" title="Switch pharmacy" style="display:none;"></select>
+  <span class="who hide-sm" id="whoLabel"></span>
+  <button class="hbtn" id="signOutBtn">Sign out</button>
+  <button class="hbtn theme-btn" id="themeBtn" title="Switch to dark mode" aria-label="Switch to dark mode"></button>
+</header>
+
+<nav id="tabs">
+  <button data-tab="list" class="active">Reorder List</button>
+  <button data-tab="archive">Archive</button>
+  <button data-tab="setup">Setup</button>
+  <button data-tab="owner" style="display:none;">Account Manager</button>
+</nav>
+
+<main>
+  <div id="offlineBanner" class="banner warn" style="display:none;">No connection to the server right now. Changes can’t be saved until the connection is back.</div>
+
+  <!-- ======================= REORDER LIST ======================= -->
+  <section id="panel-list" class="panel active">
+    <div class="card">
+      <div class="addrow">
+        <div class="search-wrap">
+          <input type="text" id="search" placeholder="Search drug name or NDC, e.g. “ateno 25” or 00093075201" autocomplete="off" spellcheck="false" enterkeyhint="search">
+          <div id="results" class="results"></div>
+        </div>
+      </div>
+      <div id="newDrug">
+        <b>Add By Hand</b> <span class="muted">· type it exactly as on the bottle or box; it's remembered for this NDC</span>
+        <div class="toolbar" style="margin:8px 0 0;">
+          <input type="text" id="newDrugName" placeholder="Drug Name + Strength + Form (as on the bottle)" style="width:340px;">
+          <input type="text" id="newDrugNdc" placeholder="NDC (required)" style="width:160px;">
+          <input type="text" id="newDrugMfr" placeholder="Manufacturer (optional)" style="width:200px;">
+          <button class="btn" id="newDrugAdd">Add to list</button>
+          <button class="btn2" id="newDrugCancel">Cancel</button>
+          <span id="newDrugDm"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <h2 style="margin:0;">To order: <span id="openCount">0</span></h2>
+        <span class="hint" id="orderedCount"></span>
+        <div class="spacer"></div>
+        <span class="hint" id="submitOff" style="display:none;">Submitting is switched off for your login.</span>
+        <button class="btn" id="submitBtn">Submit order</button>
+      </div>
+      <table id="listTable">
+        <thead><tr><th>Added</th><th>Drug</th><th>NDC</th><th>Manufacturer</th><th>Distributor</th><th>Pkg Size</th><th>Qty</th><th class="chk" title="Tick once this line's order has been placed">Ordered</th><th></th><th></th></tr></thead>
+        <tbody id="listBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ======================= ARCHIVE ======================= -->
+  <section id="panel-archive" class="panel">
+    <div class="card">
+      <div class="toolbar">
+        <h2 style="margin:0;">Archive</h2>
+        <div class="spacer"></div>
+        <label class="hint">Submitted on <input type="date" id="archDate"></label>
+        <button class="btn2" id="archLatest">Latest order</button>
+        <button class="btn2" id="archAll">Show all</button>
+        <button class="btn2" id="archExpand">Expand all</button>
+      </div>
+      <div class="hint" id="archCount" style="margin-bottom:8px;"></div>
+      <table id="archTable">
+        <thead><tr><th>Submitted</th><th>Drug</th><th>NDC</th><th>Manufacturer</th><th>Distributor</th><th>Pkg Size</th><th>Qty</th><th></th></tr></thead>
+        <tbody id="archBody"></tbody>
+      </table>
+      <div class="toolbar" style="margin-top:10px;"><button class="btn2" id="archMore" style="display:none;">Load older orders</button></div>
+    </div>
+  </section>
+
+  <!-- ======================= SETUP ======================= -->
+  <section id="panel-setup" class="panel">
+    <div class="card">
+      <h2>Pharmacy Details</h2>
+      <div id="storeInfo"></div>
+    </div>
+    <div class="card">
+      <h2>Drug Search</h2>
+      <div id="dmStatus" class="banner info">Not tested on this device yet.</div>
+      <div class="hint">Drug names, strengths and NDCs come from the National Library of Medicine (RxTerms and RxNav), with the FDA NDC Directory as a backup. Needs internet. “DailyMed” links open each product’s label.</div>
+      <div class="toolbar" style="margin-top:10px;"><button class="btn2" id="dmTest">Test drug search</button></div>
+    </div>
+    <div class="card" id="exportCard" style="display:none;">
+      <h2>Download A Backup</h2>
+      <div class="hint">Everything for this pharmacy (open list, full archive, remembered distributors and package sizes) as one file. The cloud copy also keeps 35 days of automatic restore points.</div>
+      <div class="toolbar" style="margin-top:10px;"><button class="btn2" id="exportBtn">Download backup file</button></div>
+    </div>
+    <div class="card">
+      <h2>Use It On A Phone Or Tablet</h2>
+      <ol class="steps">
+        <li><b>iPhone / iPad (Safari):</b> open this page, tap the Share button, then <b>Add to Home Screen</b>.</li>
+        <li><b>Android (Chrome):</b> open this page, tap the ⋮ menu, then <b>Add to Home screen</b> or <b>Install app</b>.</li>
+        <li><b>Computer (Chrome / Edge):</b> click the install icon at the right of the address bar, or just bookmark the page.</li>
+      </ol>
+      <div class="hint">Barcode scanning is for computers with a USB barcode scanner: click in the search box and scan the bottle or box.</div>
+    </div>
+  </section>
+
+  <!-- ======================= ACCOUNT MANAGER ======================= -->
+  <section id="panel-owner" class="panel">
+    <div class="card" id="ownLock" style="max-width:420px;">
+      <h2>🔒 Account Manager</h2>
+      <div class="hint">Re-enter your password to open this tab. It locks again after 5 minutes without activity here.</div>
+      <div class="toolbar" style="margin-top:10px;"><input type="password" id="ownPw" autocomplete="current-password" style="flex:1;min-width:180px;"><button class="btn" id="ownUnlock">Unlock</button></div>
+      <div class="li-msg" id="ownLockMsg"></div>
+    </div>
+    <div id="ownBody" style="display:none;">
+    <div class="banner info" id="passBox"></div>
+    <div class="card">
+      <h2>People</h2>
+      <div class="hint" style="margin-bottom:8px;">Switch each person’s access on or off for each pharmacy, and what they may do. Changes apply within a few seconds.</div>
+      <div id="ownPeople"></div>
+    </div>
+    <div class="card">
+      <h2>Add A Person</h2>
+      <div class="formgrid">
+        <label><span>Name</span><input type="text" id="npName"></label>
+        <label><span>Login ID</span><input type="text" id="npLogin" autocapitalize="none" spellcheck="false" placeholder="e.g. maria.t"></label>
+        <label><span>Mobile number (for sign-in codes)</span><input type="tel" id="npPhone" placeholder="817-555-1234"></label>
+        <label><span>Temporary password</span><input type="text" id="npPass" class="mono" spellcheck="false"></label>
+      </div>
+      <label class="chk" style="margin-top:10px;"><input type="checkbox" id="npConsent" style="width:18px;height:18px;"> The employee has signed the <a href="sms-consent.html" target="_blank" rel="noopener">SMS consent form</a> for this mobile number (print it, have them sign, keep it on file).</label>
+      <div style="margin-top:8px;"><b class="hint">Pharmacies:</b><div id="npStores"></div></div>
+      <div style="margin-top:4px;"><b class="hint">May:</b><div id="npPerms"></div></div>
+      <div class="toolbar" style="margin-top:10px;"><button class="btn" id="npAdd">Add person</button> <button class="btn2" id="npGen">New temporary password</button></div>
+    </div>
+    <div class="card">
+      <h2>Pharmacies</h2>
+      <div id="ownStores"></div>
+      <h2 style="margin-top:14px;">Add A Pharmacy</h2>
+      <div class="formgrid">
+        <label><span>Pharmacy ID (typed at sign-in)</span><input type="text" id="psId" autocapitalize="characters" placeholder="e.g. NTX2"></label>
+        <label><span>Pharmacy name</span><input type="text" id="ps_name"></label>
+        <label><span>Address</span><input type="text" id="ps_address"></label>
+        <label><span>Phone</span><input type="tel" id="ps_phone"></label>
+        <label><span>Fax</span><input type="tel" id="ps_fax"></label>
+        <label><span>Email</span><input type="email" id="ps_email"></label>
+        <label><span>License #</span><input type="text" id="ps_license"></label>
+        <label><span>Time zone</span><select id="ps_timezone"><option value="America/New_York">Eastern</option><option value="America/Chicago" selected>Central</option><option value="America/Denver">Mountain</option><option value="America/Phoenix">Arizona (no daylight saving)</option><option value="America/Los_Angeles">Pacific</option><option value="America/Anchorage">Alaska</option><option value="Pacific/Honolulu">Hawaii</option><option value="America/Puerto_Rico">Atlantic (Puerto Rico)</option></select></label>
+      </div>
+      <div class="toolbar" style="margin-top:10px;"><button class="btn" id="psAdd">Add pharmacy</button><span class="hint">The Pharmacy ID can’t be changed later.</span></div>
+    </div>
+    <div class="card">
+      <h2>Import From The Shared-Drive Version</h2>
+      <div class="hint">Brings in the old <b>nortex_reorder_data.json</b>: archive, open list and remembered distributors. Only adds; anything already here is left as it is, so it’s safe to run twice.</div>
+      <div class="toolbar" style="margin-top:10px;"><select id="impStore" class="btn2"></select><input type="file" id="impFile" accept=".json"><button class="btn" id="impGo">Import</button></div>
+      <div class="hint" id="impMsg"></div>
+    </div>
+    </div><!-- #ownBody -->
+  </section>
+</main>
+
+</div><!-- #app -->
+
+<div class="results" id="ndcPop" style="position:absolute;left:0;right:auto;max-height:320px;"></div>
+<div class="toast" id="toast"></div>
+<footer class="brandfoot"><img id="ilLogo" src="ironledger-logo.png" alt="" hidden><span>2026 IronLedger LLC</span></footer>
+
+<script src="app.js"></script>
+</body>
+</html>

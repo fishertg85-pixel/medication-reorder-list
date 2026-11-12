@@ -1,0 +1,21 @@
+src = open('e2e.py').read().split("with sync_playwright() as pw:")[0]
+exec(src)
+ANS = []
+with sync_playwright() as pw:
+    b = pw.chromium.launch(); ctx = b.new_context(viewport={"width": 1366, "height": 800}); setup(ctx)
+    p = ctx.new_page(); p.on('pageerror', lambda e: ERR.append(str(e)))
+    p.on('dialog', lambda d: d.accept(ANS.pop(0) if (d.type == 'prompt' and ANS) else '') if d.type == 'prompt' else d.accept())
+    login(p, 'NTX1', 'owner', 'temp12345a')
+    search_add(p, 'ateno 25'); search_add(p, 'ateno 50')
+    sel = lambda i: p.locator('#listBody tr').nth(i).locator('select[data-f=dist]')
+    print('D1 last option:', sel(0).locator('option').last.inner_text())
+    ANS.append('Bloodworth Wholesale Drugs'); sel(0).select_option('__add_new_distributor__'); p.wait_for_timeout(1500)
+    print('D2 line 1 now:', sel(0).input_value())
+    print('D3 offered on line 2:', 'Bloodworth Wholesale Drugs' in sel(1).locator('option').all_inner_texts())
+    ANS.append('mckesson drug company'); sel(1).select_option('__add_new_distributor__'); p.wait_for_timeout(1500)
+    print('D4 typed existing name in lowercase -> uses:', sel(1).input_value(), '| McKesson count in list:', sum(1 for t in sel(1).locator('option').all_inner_texts() if t.lower() == 'mckesson drug company'))
+    sel(1).select_option('__add_new_distributor__'); p.wait_for_timeout(800)                    # cancel (empty answer)
+    print('D5 cancel keeps previous:', sel(1).input_value())
+    p.reload(); p.wait_for_timeout(2500)
+    print('D6 after reload, saved for the pharmacy:', 'Bloodworth Wholesale Drugs' in sel(1).locator('option').all_inner_texts(), '| line 1 still:', sel(0).input_value())
+    print('ERRORS:', ERR or 'none'); b.close()
