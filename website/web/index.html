@@ -3,44 +3,47 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>IronLedger Compliance LLC</title>
+<title>IronLedger · Compliance and workflow software for pharmacies</title>
 <meta name="description" content="IronLedger Compliance LLC builds and hosts compliance and workflow software for pharmacies.">
+<meta name="theme-color" content="#02182e">
+<link rel="icon" href="mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="brand.css">
 <style>
-  :root{--t:#1a1d23;--m:#5f6673;--l:#d9dee7;--h:#1f3864;--bg:#f4f6fa;--card:#fff;}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--t);font:16px/1.6 "Segoe UI",Arial,Helvetica,sans-serif}
-  header{background:var(--h);color:#fff;padding:22px 20px}
-  .wrap{max-width:900px;margin:0 auto}
-  header .brand{font-size:24px;font-weight:700;letter-spacing:.02em}
-  header .tag{color:#c9d3e6;font-size:14.5px;margin-top:2px}
-  main{padding:28px 20px}
-  .card{background:var(--card);border:1px solid var(--l);border-radius:12px;padding:22px 24px;margin-bottom:18px}
-  h2{color:var(--h);font-size:19px;margin:0 0 8px}
-  p{margin:0 0 10px}
-  ul{margin:6px 0 0;padding-left:20px}
-  a{color:#1a5fb4}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-  footer{color:var(--m);font-size:13px;text-align:center;padding:18px 20px 30px}
-  @media (max-width:700px){.grid{grid-template-columns:1fr}header .brand{font-size:21px}}
+  .hero { padding: 46px 20px 34px; background: var(--topbar-bg); color: var(--topbar-ink); }
+  .hero .in { max-width: 960px; margin: 0 auto; }
+  .hero h1 { color: var(--topbar-ink); font-size: 34px; margin: 0 0 10px; font-weight: 700; letter-spacing: -.01em; }
+  .hero p { color: var(--topbar-dim); font-size: 17px; margin: 0; max-width: 640px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .card h2 { font-size: 18.5px; margin: 0 0 8px; }
+  .card p { margin: 0 0 10px; }
+  ul.links { margin: 6px 0 0; padding-left: 20px; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+          color: var(--ok); background: var(--ok-soft); border-radius: 999px; padding: 2px 10px; margin-bottom: 8px; }
+  address { font-style: normal; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } .hero h1 { font-size: 27px; } .hero { padding: 30px 16px 24px; } }
 </style>
 </head>
 <body>
-<header><div class="wrap">
-  <div class="brand">IronLedger</div>
-  <div class="tag">IronLedger Compliance LLC · Compliance and workflow software for pharmacies</div>
+<header class="topbar"><div class="in">
+  <a class="brand" href="/"><img src="mark.svg" alt=""><span class="wm">IronLedger</span></a>
+  <span class="tag">IronLedger Compliance LLC</span>
 </div></header>
-<main><div class="wrap">
+<section class="hero"><div class="in">
+  <h1>Compliance and workflow software for pharmacies</h1>
+  <p>Records that are complete, signed and kept: fewer errors, less paper, more time for patients.</p>
+</div></section>
+<main class="wrap">
   <div class="card">
-    <h2>What we do</h2>
-    <p>IronLedger Compliance LLC builds and hosts software that helps pharmacies keep accurate records, reduce errors and save staff time.</p>
-    <p>Our hosted <b>Reorder List</b> lets pharmacy teams track medications to reorder, see where each item was last ordered from, and keep a permanent archive of submitted orders across one or more locations.</p>
+    <span class="pill">Available now</span>
+    <h2>Reorder List</h2>
+    <p>Pharmacy teams track medications to reorder, see the label strength and NDC exactly as on the bottle, and see which distributor each item was last ordered from. Every submitted order is kept in a permanent archive across one or more locations.</p>
   </div>
   <div class="grid">
     <div class="card">
       <h2>Secure sign-in by text</h2>
       <p>Pharmacy employees who use our software receive <b>one-time sign-in codes</b> by text message after they sign a consent form with their employer. We never send marketing texts and never sell or share mobile numbers.</p>
       <p>Message frequency varies with sign-ins. Message and data rates may apply. Reply <b>STOP</b> to opt out or <b>HELP</b> for help.</p>
-      <ul>
+      <ul class="links">
         <li><a href="/sms-terms.html">SMS Terms and Conditions</a></li>
         <li><a href="/privacy.html">Privacy Policy</a></li>
         <li><a href="/sms-consent.html">Employee SMS consent form</a></li>
@@ -48,11 +51,11 @@
     </div>
     <div class="card">
       <h2>Contact</h2>
-      <p>IronLedger Compliance LLC<br>5900 Balcones Drive #35026<br>Austin, TX 78731, US</p>
-      <p>Email: <a href="mailto:admin.ironledger@proton.me">admin.ironledger@proton.me</a><br>Phone: <a href="tel:+19453902699">(945) 390-2699</a></p>
+      <address>IronLedger Compliance LLC<br>5900 Balcones Drive #35026<br>Austin, TX 78731, US</address>
+      <p style="margin-top:10px">Email: <a href="mailto:admin.ironledger@proton.me">admin.ironledger@proton.me</a><br>Phone: <a href="tel:+19453902699">(945) 390-2699</a></p>
     </div>
   </div>
-</div></main>
-<footer>2026 IronLedger LLC · <a href="/privacy.html">Privacy</a> · <a href="/sms-terms.html">SMS Terms</a></footer>
+</main>
+<footer class="foot"><img src="mark.svg" alt=""><span>2026 IronLedger LLC</span><span>·</span><a href="/privacy.html">Privacy</a><span>·</span><a href="/sms-terms.html">SMS Terms</a></footer>
 </body>
 </html>

@@ -21,22 +21,23 @@ def link(path):
     # not known yet: once these pages are published, they show their own web address
     return f'<a class="selfurl" data-path="{path}" href="{path}">{path}</a>'
 SAMPLE = "IronLedger: Your NorTex Reorder sign-in code is 123456. Do not share this code."
-CSS = """<style>
-:root{--t:#1a1d23;--m:#5f6673;--l:#d9dee7;--h:#1f3864;}
-*{box-sizing:border-box}body{margin:0;background:#f4f6fa;color:var(--t);font:15px/1.6 "Segoe UI",Arial,Helvetica,sans-serif}
-main{max-width:820px;margin:0 auto;background:#fff;padding:36px 40px;min-height:100vh}
-h1{color:var(--h);font-size:24px;margin:0 0 4px}h2{color:var(--h);font-size:16.5px;margin:24px 0 6px}
-.sub{color:var(--m);font-size:13px;margin-bottom:18px}mark{background:#fff3b0;padding:0 3px}
-.box{border:1px solid var(--l);border-radius:8px;padding:12px 14px;background:#fafbfd}
-footer{margin-top:30px;padding-top:12px;border-top:1px solid var(--l);color:var(--m);font-size:12px;text-align:center}
-@media (max-width:640px){main{padding:22px 16px}}
-@media print{body{background:#fff}main{padding:0;max-width:none}}
+CSS = """<link rel="stylesheet" href="brand.css"><link rel="icon" href="mark.svg" type="image/svg+xml">
+<style>
+main.doc{max-width:820px;margin:24px auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:32px 38px;box-shadow:var(--shadow)}
+main.doc h1{font-size:25px;margin:0 0 4px}main.doc h2{font-size:16.5px;margin:24px 0 6px;color:var(--ink-2)}
+.sub{color:var(--muted);font-size:13.5px;margin-bottom:18px}mark{background:#fff3b0;color:#02182e;padding:0 3px}
+.box{border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:var(--panel-2)}
+@media (max-width:680px){main.doc{margin:12px;padding:22px 16px}}
+@media print{main.doc{margin:0;border:0;padding:0;max-width:none}}
 </style>"""
 def page(title, body):
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{html.escape(title)} · {html.escape(V['company'])}</title>{CSS}</head><body><main>{body}
+<title>{html.escape(title)} · IronLedger</title>{CSS}</head><body>
+<header class="topbar"><div class="in"><a class="brand" href="/"><img src="mark.svg" alt=""><span class="wm">IronLedger</span></a><span class="tag">{html.escape(V['company'])}</span></div></header>
+<main class="doc">{body}</main>
 <script>document.querySelectorAll('.selfurl').forEach(function(a){{ if(location.host) a.textContent = location.host + a.getAttribute('data-path'); }});</script>
-<footer>2026 IronLedger LLC · {f('company')} · {f('email','CONTACT EMAIL')} · {f('phone','CONTACT PHONE')}</footer></main></body></html>"""
+<footer class="foot"><img src="mark.svg" alt=""><span>2026 IronLedger LLC</span><span>·</span><span>{f('company')}</span><span>·</span><span>{f('email','CONTACT EMAIL')}</span><span>·</span><span>{f('phone','CONTACT PHONE')}</span></footer>
+</body></html>"""
 
 privacy = page("SMS Privacy Policy", f"""
 <h1>Privacy Policy — Text Messaging</h1>

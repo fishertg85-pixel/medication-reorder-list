@@ -362,6 +362,49 @@ rep("""        <label><span>License #</span><input type="text" id="ps_license"><
     """        <label><span>License #</span><input type="text" id="ps_license"></label>
         <label><span>Time zone</span><select id="ps_timezone"><option value="America/New_York">Eastern</option><option value="America/Chicago" selected>Central</option><option value="America/Denver">Mountain</option><option value="America/Phoenix">Arizona (no daylight saving)</option><option value="America/Los_Angeles">Pacific</option><option value="America/Anchorage">Alaska</option><option value="Pacific/Honolulu">Hawaii</option><option value="America/Puerto_Rico">Atlantic (Puerto Rico)</option></select></label>""")
 
+
+# ---------- IronLedger look: same palette and type as the IronLedger compliance app (cloud version only)
+IL_LIGHT = """--bg:#ccdee4;--panel:#e8f1f5;--text:#02182e;--muted:#49637a;--line:#abc6d4;
+    --head:#02182e;--head-text:#e8f1f5;--head-sub:#85c4e4;--nav:#022f56;
+    --accent:#022f56;--accent-hover:#02182e;--on-accent:#ffffff;--ok:#2f6b4e;--link:#0b4f86;--danger:#8e3d2b;
+    --input-bg:#ffffff;--input-line:#abc6d4;--row-alt:#dcebf1;--hover:#d3e5ee;
+    --sect:#dcebf1;--sect-text:#022f56;--sect-fda:#d5e6dc;--sect-fda-text:#2f6b4e;
+    --warn-bg:#f2ded9;--warn-line:#e2b8ad;--warn-text:#8e3d2b;--info-bg:#dcebf1;--info-line:#abc6d4;--info-text:#022f56;
+    --new-bg:#f3e7d8;--shadow:0 1px 2px rgba(13,20,38,.06),0 8px 24px rgba(13,20,38,.10);"""
+IL_DARK = """--bg:#02182e;--panel:#022f56;--text:#ccdee4;--muted:#86a7bd;--line:#0b3f6d;
+    --head:#010f1e;--head-text:#ccdee4;--head-sub:#85c4e4;--nav:#011426;
+    --accent:#85c4e4;--accent-hover:#a9d6ee;--on-accent:#02182e;--ok:#86c7a7;--link:#85c4e4;--danger:#f0ab92;
+    --input-bg:#02182e;--input-line:#0b3f6d;--row-alt:#03284a;--hover:#043a68;
+    --sect:#043a68;--sect-text:#a9d6ee;--sect-fda:#123f2c;--sect-fda-text:#86c7a7;
+    --warn-bg:#5e2a1c;--warn-line:#8e3d2b;--warn-text:#f0ab92;--info-bg:#0a3a63;--info-line:#0b3f6d;--info-text:#a9d6ee;
+    --new-bg:#4a3519;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);"""
+rep('</style>\n</head>', """</style>
+<link rel="stylesheet" href="fonts.css">
+<style id="ironledger-theme">
+  :root{""" + IL_LIGHT + """}
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){""" + IL_DARK + """} }
+  :root[data-theme="dark"]{""" + IL_DARK + """}
+  body{font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+  .mono,.ndc-txt,td input.ndcin,td.ndc,#liCodeIn,#liFCode{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+  .btn{color:var(--on-accent);} .btn:hover{color:var(--on-accent);}
+  nav button.active{border-bottom-color:#85c4e4;}
+  td.chk input{accent-color:var(--ok);}
+  #listBody tr.is-ordered td{background:color-mix(in srgb, var(--ok) 14%, var(--panel)) !important;}
+  .card,.li-card{box-shadow:var(--shadow);}
+  .li-il{display:flex;align-items:center;gap:9px;margin-bottom:14px;color:var(--muted);font-size:13px;font-weight:600;letter-spacing:.02em;}
+  .li-il img{width:26px;height:26px;border-radius:6px;}
+  .brandfoot img{height:20px;width:20px;border-radius:5px;}
+</style>
+</head>""")
+rep('<meta name="theme-color" content="#1f3864">', '<meta name="theme-color" content="#02182e">')
+rep('<meta name="apple-mobile-web-app-title" content="Reorder">', '<meta name="apple-mobile-web-app-title" content="IronLedger Reorder">')
+rep('<link rel="icon" href="icon-192.png">', '<link rel="icon" href="mark.svg" type="image/svg+xml">\n<link rel="alternate icon" href="icon-192.png">')
+rep("""  <div class="li-card">
+    <div id="liBrand"></div>""", """  <div class="li-card">
+    <div class="li-il"><img src="mark.svg" alt=""><span>IronLedger</span></div>
+    <div id="liBrand"></div>""")
+rep('<img id="ilLogo" src="ironledger-logo.png" alt="" hidden>', '<img id="ilLogo" src="mark.svg" alt="" hidden>')
+
 # ---------- move the app script out of the page so a strict Content-Security-Policy can block injected scripts
 import hashlib, base64 as b64
 m = re.search(r'<script>\n(/\* =+\n   NorTex Reorder List \(cloud\)[\s\S]*?)</script>', s)
