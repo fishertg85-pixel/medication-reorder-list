@@ -73,8 +73,17 @@ rep('</style>\n</head>', r'''
   .ustat.ok{background:var(--ok-soft, #d5e6dc);color:var(--ok, #2f6b4e);} .ustat.wait{background:var(--warn-soft, #f3e7d8);color:var(--warn, #8a5a22);}
   .ustat.bad{background:var(--bad-soft, #f2ded9);color:var(--bad, #8e3d2b);} .ustat.off{background:var(--panel-2, #ddd);color:var(--muted, #555);}
   label.btn2{display:inline-block;}
-  .tscroll{overflow-x:auto;}
+  .tscroll{overflow-x:auto;} #ownPeople .tscroll{overflow-x:visible;}
   table.people th.c, table.people td.c{text-align:center;}
+  /* when the full table is wider than the space it has, each person becomes a card instead of scrolling sideways */
+  table.people.cards thead{display:none;}
+  table.people.cards, table.people.cards tbody{display:block;}
+  table.people.cards tr{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px 12px;padding:10px 0;border-bottom:2px solid var(--line);}
+  table.people.cards td{border:none;text-align:left !important;padding:2px 4px;}
+  table.people.cards td[data-l]:before{content:attr(data-l);display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;}
+  table.people.cards td[data-l="Person"], table.people.cards td.acts, table.people.cards td.hint{grid-column:1 / -1;}
+  table.people.cards td.copycell:empty{display:none;}
+  table.people.cards td{background:transparent;} table.people.cards td[data-l="Status"]{grid-column:span 2;}
   table.people tr.off td{opacity:.55;}
   .switch{position:relative;display:inline-block;width:38px;height:22px;vertical-align:middle;}
   .switch input{opacity:0;width:0;height:0;}

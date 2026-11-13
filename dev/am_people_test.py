@@ -54,7 +54,7 @@ with sync_playwright() as pw:
     am.wait_for_selector('table.people tbody tr:has-text("dtech")')
     rows = am.locator('table.people tbody tr')
     row = am.locator('table.people tbody tr:has-text("dtech")')
-    check('new person is listed as Pending', 'Pending' in row.inner_text() and 'Temp password good until' in row.inner_text())
+    check('new person is listed as Pending', 'Pending' in row.inner_text() and 'Temp password until' in row.inner_text())
     check('pending person sits right under the Account Manager', 'dtech' in rows.nth(1).inner_text())
     check('pending row offers Cancel invite', row.locator('[data-del]').inner_text() == 'Cancel invite')
     row.locator('[data-copy]').click(); am.wait_for_timeout(300)

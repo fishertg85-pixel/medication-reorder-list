@@ -1289,7 +1289,7 @@ const fmtDay = iso => { try{ return new Date(iso).toLocaleDateString('en-US', {m
 function statusBadge(u){
   if(u.disabled) return '<span class="ustat off">Login off</span>';
   if(u.pending && u.tempExpired) return `<span class="ustat bad">Expired</span><div class="maker">Temp password expired</div>`;
-  if(u.pending) return `<span class="ustat wait">Pending</span><div class="maker">${u.tempExpires ? 'Temp password good until ' + fmtDay(u.tempExpires) : 'Hasn’t signed in yet'}</div>`;
+  if(u.pending) return `<span class="ustat wait">Pending</span><div class="maker">${u.tempExpires ? 'Temp password until ' + fmtDay(u.tempExpires) : 'Hasn’t signed in yet'}</div>`;
   return '<span class="ustat ok">Active</span>';
 }
 const sw = (attrs, on, title) => `<label class="switch" title="${esc(title || '')}"><input type="checkbox" ${attrs}${on ? ' checked' : ''}><span></span></label>`;
@@ -1312,7 +1312,16 @@ function renderOwnPeople(){
         <td class="acts">${STAGED[u.sub] ? stageBtns(u.sub) : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button> <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`}</td>
         <td class="c copycell" data-l="Copy sign-in">${u.pending && TEMPS[u.sub] ? `<button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${COPY_SVG}</button>` : ''}</td></tr>`).join('')}
     </tbody></table></div>`;
+  fitPeople();
 }
+// never a sideways scroll: if the table is wider than its space, show each person as a card
+function fitPeople(){
+  const t = $('ownPeople').querySelector('table.people'); if(!t) return;
+  t.classList.remove('cards');
+  if(t.scrollWidth > t.parentElement.clientWidth + 1) t.classList.add('cards');
+}
+let fitTimer = 0;
+window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitPeople, 120); });
 function paintNewPerson(){
   $('npStores').innerHTML = OWN.stores.map(s => `<label class="chk">${sw(`data-npst="${esc(s.id)}"`, OWN.stores.length === 1)} ${esc(s.id)} · ${esc(s.name)}</label>`).join('');
   $('npPerms').innerHTML = Object.entries(PERM_LABELS).map(([p, l]) => `<label class="chk">${sw(`data-npperm="${p}"`, p !== 'export')} ${l}</label>`).join('');

@@ -173,7 +173,7 @@ const fmtDay = iso => { try{ return new Date(iso).toLocaleDateString('en-US', {m
 function statusBadge(u){
   if(u.disabled) return '<span class="ust off">Login off</span>';
   if(u.pending && u.tempExpired) return '<span class="ust bad">Expired</span><div class="role">Temp password expired</div>';
-  if(u.pending) return `<span class="ust wait">Pending</span><div class="role">${u.tempExpires ? 'Temp password good until ' + fmtDay(u.tempExpires) : 'Hasn’t signed in yet'}</div>`;
+  if(u.pending) return `<span class="ust wait">Pending</span><div class="role">${u.tempExpires ? 'Temp password until ' + fmtDay(u.tempExpires) : 'Hasn’t signed in yet'}</div>`;
   return '<span class="ust ok">Active</span>';
 }
 // temporary passwords made on this page, kept only in this tab's memory so they can be copied again while the person is pending
@@ -203,6 +203,14 @@ async function copyText(t){
   catch(e){ const a = document.createElement('textarea'); a.value = t; a.style.position = 'fixed'; a.style.opacity = '0'; document.body.appendChild(a); a.select();
     let ok = false; try{ ok = document.execCommand('copy'); }catch(e2){} a.remove(); return ok; }
 }
+// never a sideways scroll: if the people table is wider than its space, each person becomes a card
+function fitPeople(){
+  const t = $('people').querySelector('table'); if(!t) return;
+  t.classList.remove('cards');
+  if(window.innerWidth > 820 && t.scrollWidth > t.parentElement.clientWidth + 1) t.classList.add('cards');
+}
+let fitTimer = 0;
+window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitPeople, 120); });
 const box = (attrs, on, title) => `<input type="checkbox" ${attrs}${on ? ' checked' : ''} title="${esc(title || '')}">`;
 function render(){
   const st = DATA.stores, P = Object.keys(PERMS);
@@ -225,6 +233,7 @@ function render(){
         <td class="c copycell" data-l="Copy sign-in">${u.pending && TEMPS[u.sub] ? `<button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${COPY_SVG}</button>` : ''}</td></tr>`;
     }).join('')}
     </tbody></table></div>`;
+  fitPeople();
   $('nStores').innerHTML = st.map(s => `<label class="chk"><input type="checkbox" data-nst="${esc(s.id)}"${st.length === 1 ? ' checked' : ''}> ${esc(s.id)} · ${esc(s.name)}</label>`).join('') || '<span class="hint">Add a pharmacy first.</span>';
   $('nPerms').innerHTML = Object.entries(PERMS).map(([p, l]) => `<label class="chk"><input type="checkbox" data-nperm="${p}"${p !== 'export' ? ' checked' : ''}> ${l}</label>`).join('');
   if(!$('nPass').value) $('nPass').value = genTemp();

@@ -32,7 +32,15 @@
   .bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
   .bar .who { margin-left: auto; color: var(--muted); font-size: 14px; }
   h2 { font-size: 18px; margin: 0 0 10px; }
-  .tscroll { overflow-x: auto; }
+  .tscroll { overflow-x: auto; } #people .tscroll { overflow-x: visible; }
+  table.cards thead { display: none; }
+  table.cards, table.cards tbody { display: block; }
+  table.cards tr { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px 12px; padding: 10px 0; border-bottom: 2px solid var(--line); }
+  table.cards td { border: 0; text-align: left; padding: 2px 4px; }
+  table.cards td[data-l]::before { content: attr(data-l); display: block; color: var(--muted); font-size: 11px; text-transform: uppercase; }
+  table.cards td[data-l="Person"], table.cards td.acts, table.cards td.hint { grid-column: 1 / -1; }
+  table.cards td.copycell:empty { display: none; }
+  table.cards td { background: transparent; } table.cards td[data-l="Status"] { grid-column: span 2; }
   table { border-collapse: collapse; width: 100%; font-size: 14px; }
   th, td { text-align: left; padding: 8px 8px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; white-space: nowrap; }
   th { font-size: 12.5px; color: var(--muted); font-weight: 600; }
