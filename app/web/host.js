@@ -171,8 +171,8 @@ async function load(){
 const fmtDay = iso => { try{ return new Date(iso).toLocaleDateString('en-US', {month:'short', day:'numeric'}); }catch(e){ return ''; } };
 function statusBadge(u){
   if(u.disabled) return '<span class="ust off">Login off</span>';
-  if(u.pending && u.tempExpired) return '<span class="ust bad">Temporary password expired</span><div class="role">Reset password for a new one</div>';
-  if(u.pending) return `<span class="ust wait">Pending</span><div class="role">Hasn’t signed in yet${u.tempExpires ? ' · good until ' + fmtDay(u.tempExpires) : ''}</div>`;
+  if(u.pending && u.tempExpired) return '<span class="ust bad">Expired</span><div class="role">Temp password expired</div>';
+  if(u.pending) return `<span class="ust wait">Pending</span><div class="role">${u.tempExpires ? 'Temp password good until ' + fmtDay(u.tempExpires) : 'Hasn’t signed in yet'}</div>`;
   return '<span class="ust ok">Active</span>';
 }
 // temporary passwords made on this page, kept only in this tab's memory so they can be copied again while the person is pending
@@ -192,7 +192,7 @@ function render(){
   const st = DATA.stores, P = Object.keys(PERMS);
   $('people').innerHTML = `<div class="tscroll"><table class="stack"><thead><tr><th>Person</th><th>Status</th><th>Mobile</th>
       ${st.map(s => `<th class="c" title="${esc(s.name)}">${esc(s.id)}</th>`).join('')}
-      ${P.map(p => `<th class="c">${PERMS[p]}</th>`).join('')}<th class="c">Login on</th><th></th><th class="c">Copy</th></tr></thead><tbody>
+      ${P.map(p => `<th class="c" title="${PERMS[p]}">${({submit:'Submit', archive:'Archive', remove:'Remove', export:'Backup'})[p]}</th>`).join('')}<th class="c">Login on</th><th></th><th></th></tr></thead><tbody>
     ${DATA.users.map(u => {
       const self = u.sub === (ME && ME.sub) || (u.host && u.login === ME.login);
       const role = u.owner ? 'Account Manager' : u.host ? 'Host (IronLedger)' : '';
@@ -200,7 +200,7 @@ function render(){
         <td data-l="Mobile"><span class="mono">${esc(u.phone)}</span> <button class="btn2 small" data-phone="${esc(u.sub)}" title="Change mobile number">Change</button></td>`;
       let mid;
       if(u.owner) mid = `<td colspan="${st.length + P.length}" class="hint" data-l="Access">Full access to every pharmacy</td>`;
-      else if(u.host) mid = `<td colspan="${st.length + P.length}" class="hint" data-l="Access">Pharmacies: ${esc(st.filter(s => u.stores[s.id] === true).map(s => s.id).join(', ') || 'none')} (only the Account Manager can change this)</td>`;
+      else if(u.host) mid = `<td colspan="${st.length + P.length}" class="hint" data-l="Access">Pharmacies: ${esc(st.filter(s => u.stores[s.id] === true).map(s => s.id).join(', ') || 'none')} (set by the Account Manager)</td>`;
       else mid = st.map(s => `<td class="c" data-l="${esc(s.id)}">${box(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name)}</td>`).join('')
         + P.map(p => `<td class="c" data-l="${PERMS[p]}">${box(`data-uperm="${p}"`, u.perms[p], PERMS[p])}</td>`).join('');
       const on = self ? `<td class="c hint" data-l="Login on">yours</td>` : `<td class="c" data-l="Login on">${box('data-uon="1"', !u.disabled, 'Switch this login on or off')}</td>`;

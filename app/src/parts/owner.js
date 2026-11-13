@@ -39,6 +39,7 @@ setInterval(() => {
   if(ownLastAct > ownPingAt && now - ownPingAt > 60000){ ownPingAt = now; api('POST', '/owner/keepalive', {}).catch(() => {}); }
 }, 15000);
 const PERM_LABELS = {submit:'Submit orders', archive:'View archive', remove:'Remove lines', export:'Download backup'};
+const PERM_HEADS = {submit:'Submit', archive:'Archive', remove:'Remove', export:'Backup'};
 let OWN = {stores:[], users:[]};
 // temporary passwords made on this screen, kept only in this page (never saved anywhere) so they can be copied again
 // while the person is still pending; gone on sign-out or reload, or once the person has signed in
@@ -83,8 +84,8 @@ function renderOwnStores(){
 const fmtDay = iso => { try{ return new Date(iso).toLocaleDateString('en-US', {month:'short', day:'numeric'}); }catch(e){ return ''; } };
 function statusBadge(u){
   if(u.disabled) return '<span class="ustat off">Login off</span>';
-  if(u.pending && u.tempExpired) return `<span class="ustat bad">Temporary password expired</span><div class="maker">Reset password to send a new one</div>`;
-  if(u.pending) return `<span class="ustat wait">Pending</span><div class="maker">Hasn’t signed in yet${u.tempExpires ? ' · temporary password good until ' + fmtDay(u.tempExpires) : ''}</div>`;
+  if(u.pending && u.tempExpired) return `<span class="ustat bad">Expired</span><div class="maker">Temp password expired</div>`;
+  if(u.pending) return `<span class="ustat wait">Pending</span><div class="maker">${u.tempExpires ? 'Temp password good until ' + fmtDay(u.tempExpires) : 'Hasn’t signed in yet'}</div>`;
   return '<span class="ustat ok">Active</span>';
 }
 const sw = (attrs, on, title) => `<label class="switch" title="${esc(title || '')}"><input type="checkbox" ${attrs}${on ? ' checked' : ''}><span></span></label>`;
@@ -92,12 +93,12 @@ function renderOwnPeople(){
   const st = OWN.stores, P = Object.keys(PERM_LABELS);
   $('ownPeople').innerHTML = `<div class="tscroll"><table class="people"><thead><tr><th>Person</th><th>Status</th><th>Mobile</th>
       ${st.map(s => `<th class="c" title="${esc(s.name)}">${esc(s.id)}</th>`).join('')}
-      ${P.map(p => `<th class="c">${PERM_LABELS[p]}</th>`).join('')}<th class="c">Login on</th><th></th><th class="c" title="Copy sign-in details">Copy</th></tr></thead><tbody>
-    ${OWN.users.map(u => u.owner ? `<tr><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Account Manager</div></td><td data-l="Status">${statusBadge(u)}</td><td data-l="Mobile">${esc(u.phone)}</td>
-        <td colspan="${st.length + P.length + 3}" class="hint">Full access to every pharmacy (can’t be changed)</td></tr>`
+      ${P.map(p => `<th class="c" title="${PERM_LABELS[p]}">${PERM_HEADS[p]}</th>`).join('')}<th class="c">Login on</th><th></th><th></th></tr></thead><tbody>
+    ${OWN.users.map(u => u.owner ? `<tr><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Acct Manager</div></td><td data-l="Status">${statusBadge(u)}</td><td data-l="Mobile">${esc(u.phone)}</td>
+        <td colspan="${st.length + P.length + 3}" class="hint">Full access to every pharmacy</td></tr>`
       : u.host ? `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Host (IronLedger)</div></td><td data-l="Status">${statusBadge(u)}</td><td data-l="Mobile">${esc(u.phone)}</td>
         ${st.map(s => `<td class="c" data-l="${esc(s.id)}">${sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Let the host open ' + s.name)}</td>`).join('')}
-        <td colspan="${P.length + 3}" class="hint">Runs the program for you: passwords, phones, logins. Sees a pharmacy’s list only if you switch it on here.</td></tr>`
+        <td colspan="${P.length + 3}" class="hint" title="Runs the program for you: passwords, phones, logins. Sees a pharmacy’s list only if you switch it on here.">IronLedger support · sees a list only if switched on</td></tr>`
       : `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)}</div></td><td data-l="Status">${statusBadge(u)}</td>
         <td data-l="Mobile">${esc(u.phone)} <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button></td>
         ${st.map(s => `<td class="c" data-l="${esc(s.id)}">${sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name)}</td>`).join('')}
