@@ -266,7 +266,7 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
       <div id="ownStores"></div>
       <h2 style="margin-top:14px;">Add A Pharmacy</h2>
       <div class="formgrid">
-        <label><span>Pharmacy ID (typed at sign-in)</span><input type="text" id="psId" autocapitalize="characters" placeholder="e.g. NTX2"></label>
+        <label><span>Pharmacy ID (typed at sign-in)</span><input type="text" id="psId" autocapitalize="characters" placeholder="e.g. NTX2" style="text-transform:uppercase"></label>
         <label><span>Pharmacy name</span><input type="text" id="ps_name"></label>
         <label><span>Street address</span><input type="text" id="ps_address" maxlength="200"></label>
         <label><span>Suite / unit (if any)</span><input type="text" id="ps_suite" maxlength="40"></label>

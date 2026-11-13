@@ -66,7 +66,11 @@ async function loadOwner(){
     renderOwner();
   }catch(e){ if(!e.auth) $('ownPeople').innerHTML = `<div class="banner warn">${esc(e.message)}</div>`; }
 }
-function renderOwner(){ renderOwnStores(); renderOwnPeople(); paintNewPerson(); $('impStore').innerHTML = OWN.stores.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join(''); }
+let npStoresSig = '';
+function renderOwner(){ renderOwnStores(); renderOwnPeople();
+  const sig = OWN.stores.map(s => s.id + ':' + s.name).join('|');
+  if(sig !== npStoresSig || !$('npPerms').innerHTML){ npStoresSig = sig; paintNewPerson(); }   // don't undo switches someone is setting for the next person
+  $('impStore').innerHTML = OWN.stores.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join(''); }
 const SF = [['name','Pharmacy name'],['address','Street address'],['suite','Suite / unit (if any)'],['city','City'],['state','State'],['zip','ZIP code'],['phone','Phone'],['fax','Fax'],['email','Email'],['license','License #'],['timezone','Time zone']];
 const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
 const stateSelect = (attrs, cur) => `<select ${attrs}><option value=""></option>${US_STATES.map(v => `<option${v === (cur || '') ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
@@ -132,8 +136,8 @@ $('npAdd').onclick = async () => {
       <span class="hint">They choose their own password the first time they sign in. The temporary password works for 7 days and isn’t shown again.</span>`);
     ['npName','npLogin','npPhone'].forEach(k => $(k).value = ''); $('npPass').value = genTemp(); $('npConsent').checked = false;
     say(`Added ${body.name}. They are at the top of the list as Pending until they sign in for the first time. The form is clear for the next person.`, true);
+    paintNewPerson(); $('npName').focus({preventScroll: true});      // pharmacies and permissions back to their defaults too, straight away
     await loadOwner();
-    paintNewPerson(); $('npName').focus({preventScroll: true});      // pharmacies and permissions back to their defaults too
   }catch(e){ if(!e.auth) say('Not added: ' + e.message); }
   finally{ busy($('npAdd'), false); }
 };

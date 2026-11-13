@@ -216,7 +216,7 @@ function render(){
   const keep = $('impStore').value;
   $('impStore').innerHTML = st.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join('');
   if(keep && st.some(s => s.id === keep)) $('impStore').value = keep;
-  if(!$('addStore').innerHTML) $('addStore').innerHTML = `<label class="f">Pharmacy ID<input type="text" id="psId" maxlength="20" placeholder="e.g. NTX2" autocapitalize="characters"></label>`
+  if(!$('addStore').innerHTML) $('addStore').innerHTML = `<label class="f">Pharmacy ID<input type="text" id="psId" maxlength="20" placeholder="e.g. NTX2" autocapitalize="characters" style="text-transform:uppercase"></label>`
     + SF.map(([k, l]) => `<label class="f">${l}${k === 'timezone' ? tzSel('id="ps_timezone"') : k === 'state' ? stSel('id="ps_state"', 'TX') : `<input type="text" id="ps_${k}" maxlength="${MAXLEN[k] || 120}"${k === 'zip' ? ' inputmode="numeric"' : ''}>`}</label>`).join('');
   for(const s of st) if(s.hasLogo && LOGOS[s.id] === undefined) loadLogo(s.id);
 }

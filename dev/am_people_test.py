@@ -12,13 +12,14 @@ def check(name, ok):
 def sign_in(p, pharm, user, pw, newpw):
     if not p.is_visible('#liUser'): p.goto(BASE); p.wait_for_selector('#liUser')
     p.fill('#liPharm', pharm); p.fill('#liUser', user); p.fill('#liPass', pw); p.click('#liGo')
-    p.wait_for_selector('#liNew:visible, #liCode:visible, #tabs:visible, #liMsg:not(:empty)', timeout=10000)
+    p.wait_for_selector('#liNew:visible, #liCode:visible, #tabs:visible, #liMsg:not(:empty)', timeout=10000); p.wait_for_timeout(300)
     if p.is_visible('#liNew'):
         p.fill('#liNew1', newpw); p.fill('#liNew2', newpw); p.click('#liNewGo')
         p.wait_for_selector('#liCode:visible, #tabs:visible, #liMsg:not(:empty)', timeout=10000)
     if p.is_visible('#liCode'):
         p.fill('#liCodeIn', '123456'); p.click('#liCodeGo')
-    p.wait_for_selector('#tabs:visible', timeout=10000)
+    try: p.wait_for_selector('#tabs:visible', timeout=10000)
+    except Exception: print('    sign-in message:', p.inner_text('#liMsg')); raise
 
 PROMPT = ['']
 with sync_playwright() as pw:
@@ -45,7 +46,7 @@ with sync_playwright() as pw:
     check('added: temp password shown', len(temp) >= 10)
     check('added: confirmation next to the button', 'Pending' in am.inner_text('#npMsg'))
     try: am.wait_for_function("document.activeElement && document.activeElement.id === 'npName'", timeout=5000)
-    except Exception: pass
+    except Exception: print('    focus on:', am.evaluate("document.activeElement && (document.activeElement.id || document.activeElement.tagName)"), '| msg:', am.inner_text('#npMsg'), '| submit:', am.is_checked('[data-npperm=submit]'))
     check('form cleared for the next person', [am.input_value(k) for k in ('#npName', '#npLogin', '#npPhone')] == ['', '', '']
           and not am.is_checked('#npConsent') and am.input_value('#npPass') not in ('', temp))
     check('pharmacy and permission switches back to defaults', am.is_checked('[data-npperm=submit]') and not am.is_checked('[data-npperm=export]'))
@@ -53,7 +54,7 @@ with sync_playwright() as pw:
     am.wait_for_selector('table.people tbody tr:has-text("dtech")')
     rows = am.locator('table.people tbody tr')
     row = am.locator('table.people tbody tr:has-text("dtech")')
-    check('new person is listed as Pending', 'Pending' in row.inner_text() and 'Hasn’t signed in yet' in row.inner_text())
+    check('new person is listed as Pending', 'Pending' in row.inner_text() and 'Temp password good until' in row.inner_text())
     check('pending person sits right under the Account Manager', 'dtech' in rows.nth(1).inner_text())
     check('pending row offers Cancel invite', row.locator('[data-del]').inner_text() == 'Cancel invite')
     row.locator('[data-copy]').click(); am.wait_for_timeout(300)
@@ -107,6 +108,8 @@ with sync_playwright() as pw:
     ktemp = am.locator('#passBox b.mono').nth(2).inner_text()
     am.click('#signOutBtn'); am.wait_for_selector('#liUser:visible')
     check('after sign-out on a shared computer, no Login ID is left filled in', am.input_value('#liUser') == '' and am.input_value('#liPass') == '')
+    am.fill('#liPharm', ''); am.type('#liPharm', 'ntx1')
+    check('Pharmacy ID shows in capitals as it is typed', am.input_value('#liPharm') == 'NTX1')
     am.fill('#liPass', 'ownerpass99'); am.fill('#liUser', 'kshared')
     check('typing a different Login ID clears a password the browser filled in', am.input_value('#liPass') == '')
     sign_in(am, 'NTX1', 'kshared', ' ' + ktemp + ' ', 'kimpass1234')          # pasted with stray spaces

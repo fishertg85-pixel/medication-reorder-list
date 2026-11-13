@@ -46,6 +46,8 @@ async function afterAuth(res){
   paintLogin('Sign-in needs a step this app doesn’t support (' + res.ChallengeName + '). Tell the Account Manager.');
 }
 $('liUser').addEventListener('input', () => { $('liPass').value = ''; });
+// Pharmacy ID isn't case-sensitive: show it in capitals as it's typed (ntx -> NTX)
+$('liPharm').addEventListener('input', e => { const i = e.target, a = i.selectionStart, b = i.selectionEnd, up = i.value.toUpperCase(); if(up !== i.value){ i.value = up; try{ i.setSelectionRange(a, b); }catch(x){} } });
 $('liGo').onclick = async () => {
   const pharm = $('liPharm').value.trim().toUpperCase(), user = $('liUser').value.trim().toLowerCase(), pw = $('liPass').value.trim();
   if(!pharm || !user || !pw) return paintLogin('Enter Pharmacy ID, Login ID and password.');
