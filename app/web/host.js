@@ -204,35 +204,41 @@ async function copyText(t){
     let ok = false; try{ ok = document.execCommand('copy'); }catch(e2){} a.remove(); return ok; }
 }
 // never a sideways scroll: if the people table is wider than its space, each person becomes a card
-function fitPeople(){
-  const t = $('people').querySelector('table'); if(!t) return;
-  t.classList.remove('cards');
-  if(window.innerWidth > 820 && t.scrollWidth > t.parentElement.clientWidth + 1) t.classList.add('cards');
-}
+function fitPeople(){}   // the two-line layout fits any width
 let fitTimer = 0;
 window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitPeople, 120); });
 const box = (attrs, on, title) => `<input type="checkbox" ${attrs}${on ? ' checked' : ''} title="${esc(title || '')}">`;
 function render(){
   const st = DATA.stores, P = Object.keys(PERMS);
-  $('people').innerHTML = `<div class="tscroll"><table class="stack"><thead><tr><th>Person</th><th>Status</th><th>Mobile</th>
-      ${st.map(s => `<th class="c" title="${esc(s.name)}">${esc(s.id)}</th>`).join('')}
-      ${P.map(p => `<th class="c" title="${PERMS[p]}">${({submit:'Submit', archive:'Archive', remove:'Remove', export:'Backup'})[p]}</th>`).join('')}<th class="c">Login on</th><th></th><th></th></tr></thead><tbody>
+  // two lines per user, like the Account Manager tab: user / username / mobile / status, then Pharmacies, then Privileges
+  const priv = (b, label, title) => `<label class="priv" title="${esc(title || label)}">${b}<span>${esc(label)}</span></label>`;
+  $('people').innerHTML = `<div class="ulist">
+    <div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div><div></div></div>
     ${DATA.users.map(effUser).map(u => {
       const self = u.sub === (ME && ME.sub) || (u.host && u.login === ME.login);
       const role = u.owner ? 'Account Manager' : u.host ? 'Host (IronLedger)' : '';
-      const who = `<td data-l="Person"><b>${esc(u.name || u.login)}</b> ${role ? `<span class="tag">${role}</span>` : ''}<div class="role mono">${esc(u.login)}</div></td><td data-l="Status">${statusBadge(u)}</td>
-        <td data-l="Mobile"><span class="mono">${esc(u.phone)}</span> <button class="btn2 small" data-phone="${esc(u.sub)}" title="Change mobile number">Change</button></td>`;
-      let mid;
-      if(u.owner) mid = `<td colspan="${st.length + P.length}" class="hint" data-l="Access">Full access to every pharmacy</td>`;
-      else if(u.host) mid = `<td colspan="${st.length + P.length}" class="hint" data-l="Access">Pharmacies: ${esc(st.filter(s => u.stores[s.id] === true).map(s => s.id).join(', ') || 'none')} (set by the Account Manager)</td>`;
-      else mid = st.map(s => `<td class="c" data-l="${esc(s.id)}">${box(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name)}</td>`).join('')
-        + P.map(p => `<td class="c" data-l="${PERMS[p]}">${box(`data-uperm="${p}"`, u.perms[p], PERMS[p])}</td>`).join('');
-      const on = self ? `<td class="c hint" data-l="Login on">yours</td>` : `<td class="c" data-l="Login on">${box('data-uon="1"', !u.disabled, 'Switch this login on or off')}</td>`;
-      return `<tr data-sub="${esc(u.sub)}" class="${u.disabled ? 'off' : ''}${STAGED[u.sub] ? ' dirty' : ''}">${who}${mid}${on}
-        <td class="acts">${STAGED[u.sub] ? `<button class="btn small" data-upd="${esc(u.sub)}">Update</button> <button class="btn2 small" data-undo="${esc(u.sub)}">Undo</button>` : self ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`}${u.owner || u.host ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`}</td>
-        <td class="c copycell" data-l="Copy sign-in">${u.pending && TEMPS[u.sub] ? `<button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${COPY_SVG}</button>` : ''}</td></tr>`;
+      const on = self ? '' : priv(box('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on');
+      const pharm = u.owner ? '<span class="hint">All pharmacies</span>'
+        : u.host ? `<span class="hint">${esc(st.filter(s => u.stores[s.id] === true).map(s => s.id).join(', ') || 'None')} (set by the Account Manager)</span>`
+        : st.map(s => priv(box(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('');
+      const privs = u.owner ? `<span class="hint">Full access</span>${on}` : u.host ? `<span class="hint">IronLedger support</span>${on}`
+        : P.map(p => priv(box(`data-uperm="${p}"`, u.perms[p], PERMS[p]), PERMS[p])).join('') + on;
+      const acts = STAGED[u.sub] ? `<button class="btn small" data-upd="${esc(u.sub)}">Update</button> <button class="btn2 small" data-undo="${esc(u.sub)}">Undo</button>`
+        : (self ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`) + (u.owner || u.host ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`);
+      return `<div class="urow${u.disabled ? ' off' : ''}${STAGED[u.sub] ? ' dirty' : ''}" data-sub="${esc(u.sub)}">
+        <div class="ucols">
+          <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${role ? `<span class="urole">${role}</span>` : ''}</div>
+          <div class="ucell mono" data-l="Username">${esc(u.login)}</div>
+          <div class="ucell" data-l="Mobile"><span class="mono">${esc(u.phone)}</span> <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button></div>
+          <div class="ucell" data-l="Status">${statusBadge(u)}</div>
+          <div class="ucell acts">${acts}</div>
+          <div class="ucell copycell">${u.pending && TEMPS[u.sub] ? `<button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${COPY_SVG}</button>` : ''}</div>
+        </div>
+        <div class="upriv"><span class="plabel">Pharmacies</span><span class="pgroup">${pharm}</span></div>
+        <div class="upriv"><span class="plabel">Privileges</span><span class="pgroup">${privs}</span></div>
+      </div>`;
     }).join('')}
-    </tbody></table></div>`;
+  </div>`;
   fitPeople();
   $('nStores').innerHTML = st.map(s => `<label class="chk"><input type="checkbox" data-nst="${esc(s.id)}"${st.length === 1 ? ' checked' : ''}> ${esc(s.id)} · ${esc(s.name)}</label>`).join('') || '<span class="hint">Add a pharmacy first.</span>';
   $('nPerms').innerHTML = Object.entries(PERMS).map(([p, l]) => `<label class="chk"><input type="checkbox" data-nperm="${p}"${p !== 'export' ? ' checked' : ''}> ${l}</label>`).join('');
@@ -266,7 +272,7 @@ const nameOf = sub => { const u = DATA.users.find(x => x.sub === sub); return u 
 
 $('people').addEventListener('change', async e => {
   const c = e.target.closest('input[type=checkbox]'); if(!c) return;
-  const sub = c.closest('tr').dataset.sub, u = DATA.users.find(x => x.sub === sub); if(!u) return;
+  const sub = c.closest('[data-sub]').dataset.sub, u = DATA.users.find(x => x.sub === sub); if(!u) return;
   stageChange(u, c); $('peopleMsg').textContent = ''; render();      // saved only when Update is pressed
 });
 $('people').addEventListener('click', async e => {
