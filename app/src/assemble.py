@@ -325,19 +325,17 @@ rep('''      <td class="chk"><input type="checkbox" data-f="ordered" ${r.ordered
 rep('''      <td><button class="x" data-del="${r.id}" title="Remove from list">×</button></td>''',
     '''      <td>${PERM('remove') ? `<button class="x" data-del="${r.id}" title="Remove from list">×</button>` : ''}</td>''')
 rep('''function renderList(){
-  const rows = STATE.reorder;''', '''function renderList(){
+  const rows = STATE.reorder.filter''', '''function renderList(){
   if(!STORE) return;
-  const rows = STATE.reorder;''')
+  const rows = STATE.reorder.filter''')
 rep('''  $('submitBtn').disabled = !rows.length;''', '''  $('submitBtn').disabled = !rows.length || !PERM('submit');''')
 
 # ---------- archive: who submitted, phone labels, load older, day lookups
-rep('''      <td colspan="8"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b> · <span class="maker">${esc(preview)}</span></td></tr>`;''',
-    '''      <td colspan="8"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b>${first.submittedBy ? ` <span class="maker">· by ${esc(first.submittedBy)}</span>` : ''} · <span class="maker">${esc(preview)}</span></td></tr>`;''')
+rep('''      <td colspan="7"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b> · <span class="maker">${esc(preview)}</span></td></tr>`;''',
+    '''      <td colspan="7"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b>${first.submittedBy ? ` <span class="maker">· by ${esc(first.submittedBy)}</span>` : ''} · <span class="maker">${esc(preview)}</span></td></tr>`;''')
 rep('''      <td><b>${esc(r.item)}</b></td>
-      <td>${needTag(r.need)}</td>
       <td>${r.ndc ? ndcHtml(r.ndc) : '<span class="maker">any NDC</span>'}</td><td class="mfr">${esc(r.mfr || '')}</td><td class="mfr">${esc(r.dist || '')}</td><td>${esc(r.pkgSize || '')}</td><td>${esc(r.qty)}</td><td>${dm(r.ndc10 || r.ndc, r.setid)}</td>''',
     '''      <td class="drug"><b>${esc(r.item)}</b></td>
-      <td data-l="Need">${needTag(r.need) || '<span class="maker">—</span>'}</td>
       <td data-l="NDC">${r.ndc ? ndcHtml(r.ndc) : '<span class="maker">any NDC</span>'}</td><td class="mfr" data-l="Manufacturer">${esc(r.mfr || '')}</td><td class="mfr" data-l="Distributor">${esc(r.dist || '')}</td><td data-l="Pkg Size">${esc(r.pkgSize || '')}</td><td data-l="Qty">${esc(r.qty)}</td><td>${dm(r.ndc10 || r.ndc, r.setid)}</td>''')
 rep('''function renderArchive(){
   const day = $('archDate').value, orders = archiveOrders();''', '''function renderArchive(){

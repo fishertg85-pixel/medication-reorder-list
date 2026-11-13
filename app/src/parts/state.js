@@ -104,7 +104,7 @@ function storeTZ(){ try{ return (STORE && STORE.timezone) || 'America/Chicago'; 
 /* ---- saving: every change is worked out as a small list of edits and sent in one request ----
    Only the fields that changed are sent, so two people editing different things don't overwrite each other.
    Submitted lines go to the archive first; the server never deletes or overwrites archived lines. */
-const LINE_FIELDS = ['dateAdded','item','mfr','ndc','ndc10','pkgSize','qty','src','setid','rxcui','autoPkg','dist','autoDist','need','ordered','orderedAt','itemEdited'];
+const LINE_FIELDS = ['dateAdded','item','mfr','ndc','ndc10','pkgSize','qty','src','setid','rxcui','autoPkg','dist','autoDist','need','autoQty','ordered','orderedAt','itemEdited'];
 let saving = 0;
 async function change(mutator){
   if(!STORE) return false;

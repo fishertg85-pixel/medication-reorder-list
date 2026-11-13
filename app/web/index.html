@@ -99,7 +99,7 @@
   td{border-bottom:1px solid var(--line);padding:6px;vertical-align:middle;}
   tbody tr:nth-child(even) td{background:var(--row-alt);}
   td input[type=text], td input[type=number]{width:100%;padding:5px 7px;font-size:13px;}
-  td input.ndcin{font-family:Consolas,Menlo,monospace;font-size:13px;width:100%;max-width:190px;}
+  td input.ndcin{font-family:Consolas,Menlo,monospace;font-size:13px;width:100%;max-width:150px;min-width:130px;}
   #ndcPop > div{padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px;}
   #ndcPop > div.hi, #ndcPop > div[data-p]:hover{background:var(--hover);}
   .mono{font-family:Consolas,Menlo,monospace;}
@@ -107,11 +107,13 @@
   .ndcmid{font-weight:800;font-size:1.12em;color:var(--text);background:var(--sect);padding:0 2px;border-radius:3px;}
   td select{background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:5px 6px;font-size:12.5px;font-family:inherit;width:100%;max-width:330px;}
   td.ndc{min-width:170px;}
-  td.mfr{font-size:12.5px;min-width:140px;max-width:220px;}
+  td.mfr{font-size:12.5px;min-width:120px;max-width:180px;}
   #listBody td:nth-child(2), #archBody td:nth-child(2){min-width:200px;}
   td.pkg{width:140px;}
-  td.dist select{min-width:190px;max-width:230px;font-size:12.5px;}
-  td.need select{min-width:120px;font-size:12.5px;} td.need select.need{border-color:#e0a100;background:var(--new-bg);}
+  td.dist select{min-width:165px;max-width:210px;font-size:12.5px;}
+  td.qty input.lastqty{border-color:#e0a100;background:var(--new-bg);}
+  #listBody td.qty input{min-width:58px;width:58px;} #listBody td.pkg input{min-width:90px;width:90px;}
+  td.need select{min-width:112px;font-size:12.5px;} td.need select.need{border-color:#e0a100;background:var(--new-bg);}
   td.need select.out{border-color:#c0392b;color:#b03020;font-weight:700;}
   #listBody tr.is-out td:first-child{box-shadow:inset 4px 0 0 #c0392b;}
   .needtag{font-size:12px;font-weight:600;white-space:nowrap;} .needtag.out{color:#b03020;}
@@ -388,7 +390,7 @@
       </div>
       <div class="hint" id="archCount" style="margin-bottom:8px;"></div>
       <table id="archTable">
-        <thead><tr><th>Submitted</th><th>Drug</th><th>Need</th><th>NDC</th><th>Manufacturer</th><th>Distributor</th><th>Pkg Size</th><th>Qty</th><th></th></tr></thead>
+        <thead><tr><th>Submitted</th><th>Drug</th><th>NDC</th><th>Manufacturer</th><th>Distributor</th><th>Pkg Size</th><th>Qty</th><th></th></tr></thead>
         <tbody id="archBody"></tbody>
       </table>
       <div class="toolbar" style="margin-top:10px;"><button class="btn2" id="archMore" style="display:none;">Load older orders</button></div>

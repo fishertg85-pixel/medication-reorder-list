@@ -26,7 +26,7 @@ s, r = api(T, "POST", "/owner/users", {"login": "tech2", "name": "Tech Two", "ph
 tech_pw = "techpass123"; tok("tech2", r["tempPassword"], tech_pw)
 # Need column on the server
 s, r = api(T, "POST", "/stores/NTX1/commit", {"create": [
-    {"id": "l1", "dateAdded": "2026-11-13", "item": "ATENOLOL 25 MG TAB", "qty": 2, "need": "out"},
+    {"id": "l1", "dateAdded": "2026-11-13", "item": "ATENOLOL 25 MG TAB", "ndc": "00093075201", "mfr": "Teva", "qty": 2, "need": "out"},
     {"id": "l2", "dateAdded": "2026-11-13", "item": "LISINOPRIL 10 MG TAB", "qty": 1, "need": "restock"},
     {"id": "l3", "dateAdded": "2026-11-13", "item": "METFORMIN 500 MG TAB", "qty": 1, "need": "bogus"}], "set": [], "del": [], "archive": [], "mem": {}})
 lines = {l["id"]: l for l in api(T, "GET", "/stores/NTX1/lines")[1]["lines"]}
@@ -71,15 +71,30 @@ with sync_playwright() as pw:
     lines = {l["id"]: l for l in api(T, "GET", "/stores/NTX1/lines")[1]["lines"]}
     check('choosing Out of stock saves it', lines["l3"].get("need") == "out")
     check('count updates', 'Out of stock: 2' in bp.inner_text('#orderedCount'))
+    order = bp.eval_on_selector_all('#listBody tr[data-id]', 'els => els.map(e => e.dataset.id)')
+    check('out-of-stock lines move to the top', order == ['l1', 'l3', 'l2'])
     bp.screenshot(path='screenshots/need_column.png')
     # submit -> archive keeps it
     bp.click('#submitBtn'); bp.wait_for_timeout(2500)
     arch = api(T, "GET", "/stores/NTX1/archive")[1]
     items = arch.get("items") or arch.get("archive") or []
-    check('the archive keeps Out of stock / Replenish', any(x.get("need") == "out" for x in items) and any(x.get("need") == "restock" for x in items))
+    check('Need is not kept after submission', len(items) >= 3 and not any(x.get("need") for x in items))
+    mem = api(T, "GET", "/stores/NTX1/memory")[1]
+    rem = mem.get("remember") or mem.get("memory") or mem
+    check("last order's quantity is remembered for the NDC", (rem.get("00093075201") or {}).get("qty") == 2)
     bp.click('#tabs [data-tab=archive]'); bp.wait_for_timeout(1200)
     bp.locator('#archBody tr.order').first.click(); bp.wait_for_timeout(400)
-    check('archive shows the Need column', 'Out of stock' in bp.inner_text('#archBody') and 'Replenish' in bp.inner_text('#archBody'))
+    check('archive has no Need column', 'Out of stock' not in bp.inner_text('#archBody') and 'Need' not in bp.inner_text('#panel-archive thead'))
+    bp.click('#tabs [data-tab=list]'); bp.wait_for_timeout(300)
+    bp.evaluate("addLine({ndc:'00093075201', ndc10:'0093-0752-01', name:'atenolol', strength:'25 mg', form:'Tab', mfr:'Teva Pharmaceuticals USA', src:'rxnav'})")
+    bp.wait_for_selector('#listBody tr[data-ndc="00093075201"]')
+    nr = bp.locator('#listBody tr[data-ndc="00093075201"]'); q = nr.locator('input[data-f=qty]')
+    check('same NDC again: quantity from last time, shown yellow', q.input_value() == '2' and 'lastqty' in (q.get_attribute('class') or ''))
+    check('same NDC again: Need is not filled in', nr.locator('select[data-f=need]').input_value() == '')
+    bp.screenshot(path='screenshots/last_qty.png')
+    q.fill('3'); q.press('Tab'); bp.wait_for_timeout(1500)
+    q = bp.locator('#listBody tr[data-ndc="00093075201"] input[data-f=qty]')
+    check('changing the quantity clears the yellow', q.input_value() == '3' and 'lastqty' not in (q.get_attribute('class') or ''))
     bp.screenshot(path='screenshots/need_archive.png')
     # idle sign-out
     bp.click('#tabs [data-tab=list]')

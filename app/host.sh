@@ -9,6 +9,7 @@
 #   bash host.sh assign LOGIN PHARMACY_ID     give a person access to a pharmacy
 #   bash host.sh unassign LOGIN PHARMACY_ID   take that access away
 #   bash host.sh make-host LOGIN "NAME" NUMBER  create your own host login for the host page (web address/host.html)
+#   bash host.sh remove-host LOGIN           remove an extra host login (never the last one)
 # Optional: APP=other-name bash host.sh ...   for a separate copy
 set -euo pipefail
 APP="${APP:-nortex-reorder}"
@@ -84,5 +85,19 @@ case "$cmd" in
     site="$(out SiteUrl 2>/dev/null || true)"
     [ -n "$site" ] && [ "$site" != "None" ] && echo "Host page: ${site%/}/host.html"
     echo "Sign in there with that Login ID and temporary password (no Pharmacy ID). A code is texted to your phone." ;;
-  *) sed -n '2,12p' "$0" ;;
+  remove-host)
+    need_login
+    p="$(aws dynamodb query --table-name "$MAIN" --region "$REGION" --key-condition-expression "pk = :p" --expression-attribute-values '{":p":{"S":"USERS"}}' --output json | jq -c --arg l "$login" '[.Items[] | select(.login.S == $l and (.deleted.BOOL // false | not))][0]')"
+    [ "$p" != "null" ] || { echo "No login \"$login\" in the list."; exit 1; }
+    [ "$(echo "$p" | jq -r '.host.BOOL // false')" = true ] || { echo "\"$login\" is not a host login. Delete staff from the Account Manager tab or the host page."; exit 1; }
+    hosts="$(aws dynamodb query --table-name "$MAIN" --region "$REGION" --key-condition-expression "pk = :p" --expression-attribute-values '{":p":{"S":"USERS"}}' --output json | jq '[.Items[] | select((.host.BOOL // false) and (.deleted.BOOL // false | not))] | length')"
+    [ "$hosts" -gt 1 ] || { echo "That is the only host login. Not removed."; exit 1; }
+    sub="$(echo "$p" | jq -r '.sk.S')"
+    aws cognito-idp admin-user-global-sign-out --user-pool-id "$POOL" --username "$login" --region "$REGION" >/dev/null 2>&1 || true
+    aws cognito-idp admin-delete-user --user-pool-id "$POOL" --username "$login" --region "$REGION" 2>/dev/null || true
+    aws dynamodb update-item --table-name "$MAIN" --region "$REGION" --key "{\"pk\":{\"S\":\"USERS\"},\"sk\":{\"S\":\"$sub\"}}" \
+      --update-expression "SET deleted = :t, disabled = :t, deletedAt = :n, deletedBy = :b" \
+      --expression-attribute-values "{\":t\":{\"BOOL\":true},\":n\":{\"S\":\"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\"},\":b\":{\"S\":\"host (CloudShell)\"}}" >/dev/null
+    echo "Host login \"$login\" removed." ;;
+  *) sed -n '2,13p' "$0" ;;
 esac

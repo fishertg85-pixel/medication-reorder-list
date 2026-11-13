@@ -18,7 +18,7 @@ const MAIN = process.env.MAIN_TABLE, ARCH = process.env.ARCHIVE_TABLE, POOL = pr
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
 const idp = new CognitoIdentityProviderClient({});
 
-const LINE_FIELDS = ['dateAdded','item','mfr','ndc','ndc10','pkgSize','qty','src','setid','rxcui','autoPkg','dist','autoDist','need','ordered','orderedAt','itemEdited'];
+const LINE_FIELDS = ['dateAdded','item','mfr','ndc','ndc10','pkgSize','qty','src','setid','rxcui','autoPkg','dist','autoDist','need','autoQty','ordered','orderedAt','itemEdited'];
 const NEEDS = ['', 'out', 'restock'];             // why it's on the list: out of stock (holding up dispensing) or replenish (ordering ahead)
 const ARCH_FIELDS = ['id','lineId','dateAdded','dateSubmitted','submittedAt','item','mfr','ndc','ndc10','setid','pkgSize','qty','dist','need','ordered','orderedAt'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/, STAMP = /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/;

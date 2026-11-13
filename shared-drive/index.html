@@ -89,7 +89,7 @@
   td{border-bottom:1px solid var(--line);padding:6px;vertical-align:middle;}
   tbody tr:nth-child(even) td{background:var(--row-alt);}
   td input[type=text], td input[type=number]{width:100%;padding:5px 7px;font-size:13px;}
-  td input.ndcin{font-family:Consolas,Menlo,monospace;font-size:13px;width:100%;max-width:190px;}
+  td input.ndcin{font-family:Consolas,Menlo,monospace;font-size:13px;width:100%;max-width:150px;min-width:130px;}
   #ndcPop > div{padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px;}
   #ndcPop > div.hi, #ndcPop > div[data-p]:hover{background:var(--hover);}
   .mono{font-family:Consolas,Menlo,monospace;}
@@ -97,11 +97,13 @@
   .ndcmid{font-weight:800;font-size:1.12em;color:var(--text);background:var(--sect);padding:0 2px;border-radius:3px;}
   td select{background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:5px 6px;font-size:12.5px;font-family:inherit;width:100%;max-width:330px;}
   td.ndc{min-width:170px;}
-  td.mfr{font-size:12.5px;min-width:140px;max-width:220px;}
+  td.mfr{font-size:12.5px;min-width:120px;max-width:180px;}
   #listBody td:nth-child(2), #archBody td:nth-child(2){min-width:200px;}
   td.pkg{width:140px;}
-  td.dist select{min-width:190px;max-width:230px;font-size:12.5px;}
-  td.need select{min-width:120px;font-size:12.5px;} td.need select.need{border-color:#e0a100;background:var(--new-bg);}
+  td.dist select{min-width:165px;max-width:210px;font-size:12.5px;}
+  td.qty input.lastqty{border-color:#e0a100;background:var(--new-bg);}
+  #listBody td.qty input{min-width:58px;width:58px;} #listBody td.pkg input{min-width:90px;width:90px;}
+  td.need select{min-width:112px;font-size:12.5px;} td.need select.need{border-color:#e0a100;background:var(--new-bg);}
   td.need select.out{border-color:#c0392b;color:#b03020;font-weight:700;}
   #listBody tr.is-out td:first-child{box-shadow:inset 4px 0 0 #c0392b;}
   .needtag{font-size:12px;font-weight:600;white-space:nowrap;} .needtag.out{color:#b03020;}
@@ -211,7 +213,7 @@
       </div>
       <div class="hint" id="archCount" style="margin-bottom:8px;"></div>
       <table>
-        <thead><tr><th>Submitted</th><th>Drug</th><th>Need</th><th>NDC</th><th>Manufacturer</th><th>Distributor</th><th>Pkg Size</th><th>Qty</th><th></th></tr></thead>
+        <thead><tr><th>Submitted</th><th>Drug</th><th>NDC</th><th>Manufacturer</th><th>Distributor</th><th>Pkg Size</th><th>Qty</th><th></th></tr></thead>
         <tbody id="archBody"></tbody>
       </table>
     </div>
@@ -862,7 +864,7 @@ async function addLine(o){
   if(dup){ toast('Already on the list: ' + item); flashRowId(dup.id); return; }
   const mem = (o.ndc && STATE.remember[o.ndc]) || {};
   const line = {id:uid(), dateAdded:todayISO(), item, mfr:o.mfr || '', ndc:o.ndc, ndc10:o.ndc10 || '', setid:o.setid || '',
-    pkgSize: mem.pkgSize || shortPkg(o.pkg), qty:1, src:o.src || 'rxnav', rxcui:o.rxcui || ''};
+    pkgSize: mem.pkgSize || shortPkg(o.pkg), qty: +mem.qty > 0 ? +mem.qty : 1, autoQty: +mem.qty > 0 ? +mem.qty : '', src:o.src || 'rxnav', rxcui:o.rxcui || ''};
   line.autoPkg = line.pkgSize;
   line.dist = line.autoDist = lastDist(STATE, o.ndc, item);
   if(!await change(s => { if(s.reorder.some(same)) return; s.reorder.push(line);
@@ -971,7 +973,7 @@ function distOptions(cur, hist){
     + `<optgroup label="All distributors">${all.filter(n => !hist.includes(n)).map(opt).join('')}</optgroup>` + add;
 }
 function renderList(){
-  const rows = STATE.reorder;
+  const rows = STATE.reorder.filter(r => r.need === 'out').concat(STATE.reorder.filter(r => r.need !== 'out'));   // out of stock goes to the top
   $('openCount').textContent = rows.length;
   const done = rows.filter(r => r.ordered).length;
   const outN = rows.filter(r => r.need === 'out').length;
@@ -987,7 +989,7 @@ function renderList(){
       <td class="dist"><select data-f="dist" class="${r.dist ? '' : 'need'}" title="${r.dist && r.dist === r.autoDist ? 'Filled in from the last time this was ordered' : 'Where this is ordered from'}">
         <option value="">Choose distributor…</option>${distOptions(r.dist, distHistory(STATE, r.ndc, r.item))}</select>${r.dist && r.dist === r.autoDist ? '<div class="maker">last used</div>' : ''}</td>
       <td class="pkg"><input type="text" data-f="pkgSize" value="${esc(r.pkgSize)}" placeholder="e.g. 100 ct"></td>
-      <td class="qty"><input type="number" min="1" data-f="qty" value="${esc(r.qty)}"></td>
+      <td class="qty"><input type="number" min="1" data-f="qty" value="${esc(r.qty)}"${r.autoQty && +r.qty === +r.autoQty ? ' class="lastqty" title="Same quantity as the last order. Change it if you need a different amount."' : ''}></td>
       <td class="chk"><input type="checkbox" data-f="ordered" ${r.ordered ? 'checked' : ''} title="${r.ordered ? 'Ordered' + (r.orderedAt ? ' ' + new Date(r.orderedAt).toLocaleString([], {month:'numeric', day:'numeric', hour:'numeric', minute:'2-digit'}) : '') : 'Tick once this has been ordered'}"></td>
       <td>${dm(r.ndc10 || r.ndc, r.setid)}</td>
       <td><button class="x" data-del="${r.id}" title="Remove from list">×</button></td>
@@ -1044,6 +1046,9 @@ function setNdc(id, o){
     if(o && o.rxcui) r.rxcui = o.rxcui;
     if(o && o.ndc) memTouch(s, o.ndc);
     if(!r.pkgSize || r.pkgSize === r.autoPkg){ r.pkgSize = o ? (mem.pkgSize || shortPkg(o.pkg)) : ''; r.autoPkg = r.pkgSize; }
+    if(+r.qty === 1 || (r.autoQty && +r.qty === +r.autoQty)){       // quantity nobody has changed: last time's for this NDC
+      if(+mem.qty > 0){ r.qty = +mem.qty; r.autoQty = +mem.qty; } else if(r.autoQty){ r.qty = 1; r.autoQty = ''; }
+    }
     if(!r.dist || r.dist === r.autoDist){ const d = lastDist(s, r.ndc, r.item); if(d || !r.dist){ r.dist = d; r.autoDist = d; } }
   });
 }
@@ -1122,7 +1127,8 @@ $('listBody').addEventListener('change', async e => {
   }
   change(s => { const r = s.reorder.find(x => x.id === id); if(!r) return; r[f] = val;
     if(f === 'dist'){ r.autoDist = ''; if(val){ memDist(s, r.ndc, val); memDist(s, 'item:' + r.item, val); } }
-    if(f === 'ordered') r.orderedAt = val ? new Date().toISOString() : ''; });
+    if(f === 'ordered') r.orderedAt = val ? new Date().toISOString() : '';
+    if(f === 'qty') r.autoQty = ''; });
 });
 $('listBody').addEventListener('click', e => {
   const ed = e.target.closest('[data-edit]');
@@ -1155,9 +1161,10 @@ $('submitBtn').onclick = async () => {
   const saved = await change(s => {
     const today = todayISO(), at = new Date().toISOString();
     for(const r of s.reorder){
-      s.archive.push({id:uid(), dateAdded:r.dateAdded, dateSubmitted:today, submittedAt:at, item:r.item, mfr:r.mfr, ndc:r.ndc, ndc10:r.ndc10 || '', setid:r.setid || '', pkgSize:r.pkgSize, qty:r.qty, dist:r.dist || '', need:r.need || '', ordered:!!r.ordered, orderedAt:r.orderedAt || ''});
+      s.archive.push({id:uid(), dateAdded:r.dateAdded, dateSubmitted:today, submittedAt:at, item:r.item, mfr:r.mfr, ndc:r.ndc, ndc10:r.ndc10 || '', setid:r.setid || '', pkgSize:r.pkgSize, qty:r.qty, dist:r.dist || '', ordered:!!r.ordered, orderedAt:r.orderedAt || ''});
       // remembered for next time: package size by NDC; distributor by NDC and by drug + strength
       if(r.ndc && r.pkgSize) s.remember[r.ndc] = Object.assign({}, s.remember[r.ndc], {pkgSize:r.pkgSize});
+      if(r.ndc && +r.qty > 0) s.remember[r.ndc] = Object.assign({}, s.remember[r.ndc], {qty:+r.qty});
       if(r.dist){ memDist(s, r.ndc, r.dist); memDist(s, 'item:' + r.item, r.dist); }
       memSubmitted(s, r.ndc, r.dist); memSubmitted(s, r.rxcui && 'rx:' + r.rxcui, r.dist); memSubmitted(s, 'item:' + r.item, r.dist);
       done++;
@@ -1181,7 +1188,6 @@ function archiveOrders(){
   }
   return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 }
-const needTag = n => n === 'out' ? '<span class="needtag out">Out of stock</span>' : n === 'restock' ? '<span class="needtag">Replenish</span>' : '';
 function renderArchive(){
   const day = $('archDate').value, orders = archiveOrders();
   const lines = orders.reduce((n, o) => n + o[1].length, 0);
@@ -1192,14 +1198,13 @@ function renderArchive(){
     const names = rows.map(r => r.item), preview = names.slice(0, 3).join(', ') + (names.length > 3 ? `, +${names.length - 3} more` : '');
     const head = `<tr class="order${open ? ' open' : ''}" data-order="${esc(k)}" title="${open ? 'Hide' : 'Show'} the lines in this order">
       <td><span class="caret">${open ? '▾' : '▸'}</span> ${fmtDate(first.dateSubmitted)} <span class="maker">${fmtTime(first.submittedAt)}</span></td>
-      <td colspan="8"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b> · <span class="maker">${esc(preview)}</span></td></tr>`;
+      <td colspan="7"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b> · <span class="maker">${esc(preview)}</span></td></tr>`;
     return head + (open ? rows.map(r => `<tr class="order-line">
       <td></td>
       <td><b>${esc(r.item)}</b></td>
-      <td>${needTag(r.need)}</td>
       <td>${r.ndc ? ndcHtml(r.ndc) : '<span class="maker">any NDC</span>'}</td><td class="mfr">${esc(r.mfr || '')}</td><td class="mfr">${esc(r.dist || '')}</td><td>${esc(r.pkgSize || '')}</td><td>${esc(r.qty)}</td><td>${dm(r.ndc10 || r.ndc, r.setid)}</td>
     </tr>`).join('') : '');
-  }).join('') : '<tr><td colspan="9" class="empty">Nothing here.</td></tr>';
+  }).join('') : '<tr><td colspan="8" class="empty">Nothing here.</td></tr>';
 }
 $('archBody').addEventListener('click', e => {
   if(e.target.closest('a')) return;

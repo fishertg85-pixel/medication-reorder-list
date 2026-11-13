@@ -142,7 +142,7 @@ function storeTZ(){ try{ return (STORE && STORE.timezone) || 'America/Chicago'; 
 /* ---- saving: every change is worked out as a small list of edits and sent in one request ----
    Only the fields that changed are sent, so two people editing different things don't overwrite each other.
    Submitted lines go to the archive first; the server never deletes or overwrites archived lines. */
-const LINE_FIELDS = ['dateAdded','item','mfr','ndc','ndc10','pkgSize','qty','src','setid','rxcui','autoPkg','dist','autoDist','need','ordered','orderedAt','itemEdited'];
+const LINE_FIELDS = ['dateAdded','item','mfr','ndc','ndc10','pkgSize','qty','src','setid','rxcui','autoPkg','dist','autoDist','need','autoQty','ordered','orderedAt','itemEdited'];
 let saving = 0;
 async function change(mutator){
   if(!STORE) return false;
@@ -821,7 +821,7 @@ async function addLine(o){
   if(dup){ toast('Already on the list: ' + item); flashRowId(dup.id); return; }
   const mem = (o.ndc && STATE.remember[o.ndc]) || {};
   const line = {id:uid(), dateAdded:todayISO(), item, mfr:o.mfr || '', ndc:o.ndc, ndc10:o.ndc10 || '', setid:o.setid || '',
-    pkgSize: mem.pkgSize || shortPkg(o.pkg), qty:1, src:o.src || 'rxnav', rxcui:o.rxcui || ''};
+    pkgSize: mem.pkgSize || shortPkg(o.pkg), qty: +mem.qty > 0 ? +mem.qty : 1, autoQty: +mem.qty > 0 ? +mem.qty : '', src:o.src || 'rxnav', rxcui:o.rxcui || ''};
   line.autoPkg = line.pkgSize;
   line.dist = line.autoDist = lastDist(STATE, o.ndc, item);
   if(!await change(s => { if(s.reorder.some(same)) return; s.reorder.push(line);
@@ -931,7 +931,7 @@ function distOptions(cur, hist){
 }
 function renderList(){
   if(!STORE) return;
-  const rows = STATE.reorder;
+  const rows = STATE.reorder.filter(r => r.need === 'out').concat(STATE.reorder.filter(r => r.need !== 'out'));   // out of stock goes to the top
   $('openCount').textContent = rows.length;
   const done = rows.filter(r => r.ordered).length;
   const outN = rows.filter(r => r.need === 'out').length;
@@ -947,7 +947,7 @@ function renderList(){
       <td class="dist" data-l="Distributor"><select data-f="dist" class="${r.dist ? '' : 'need'}" title="${r.dist && r.dist === r.autoDist ? 'Filled in from the last time this was ordered' : 'Where this is ordered from'}">
         <option value="">Choose distributor…</option>${distOptions(r.dist, distHistory(STATE, r.ndc, r.item))}</select>${r.dist && r.dist === r.autoDist ? '<div class="maker">last used</div>' : ''}</td>
       <td class="pkg" data-l="Pkg Size"><input type="text" data-f="pkgSize" value="${esc(r.pkgSize)}" placeholder="e.g. 100 ct"></td>
-      <td class="qty" data-l="Qty"><input type="number" inputmode="numeric" min="1" data-f="qty" value="${esc(r.qty)}"></td>
+      <td class="qty" data-l="Qty"><input type="number" inputmode="numeric" min="1" data-f="qty" value="${esc(r.qty)}"${r.autoQty && +r.qty === +r.autoQty ? ' class="lastqty" title="Same quantity as the last order. Change it if you need a different amount."' : ''}></td>
       <td class="chk" data-l="Ordered"><input type="checkbox" data-f="ordered" ${r.ordered ? 'checked' : ''} title="${r.ordered ? 'Ordered' + (r.orderedBy ? ' by ' + esc(r.orderedBy) : '') + (r.orderedAt ? ' ' + new Date(r.orderedAt).toLocaleString([], {month:'numeric', day:'numeric', hour:'numeric', minute:'2-digit', timeZone:storeTZ(), timeZoneName:'short'}) : '') : 'Tick once this has been ordered'}"></td>
       <td>${dm(r.ndc10 || r.ndc, r.setid)}</td>
       <td>${PERM('remove') ? `<button class="x" data-del="${esc(r.id)}" title="Remove from list">×</button>` : ''}</td>
@@ -1004,6 +1004,9 @@ function setNdc(id, o){
     if(o && o.rxcui) r.rxcui = o.rxcui;
     if(o && o.ndc) memTouch(s, o.ndc);
     if(!r.pkgSize || r.pkgSize === r.autoPkg){ r.pkgSize = o ? (mem.pkgSize || shortPkg(o.pkg)) : ''; r.autoPkg = r.pkgSize; }
+    if(+r.qty === 1 || (r.autoQty && +r.qty === +r.autoQty)){       // quantity nobody has changed: last time's for this NDC
+      if(+mem.qty > 0){ r.qty = +mem.qty; r.autoQty = +mem.qty; } else if(r.autoQty){ r.qty = 1; r.autoQty = ''; }
+    }
     if(!r.dist || r.dist === r.autoDist){ const d = lastDist(s, r.ndc, r.item); if(d || !r.dist){ r.dist = d; r.autoDist = d; } }
   });
 }
@@ -1082,7 +1085,8 @@ $('listBody').addEventListener('change', async e => {
   }
   change(s => { const r = s.reorder.find(x => x.id === id); if(!r) return; r[f] = val;
     if(f === 'dist'){ r.autoDist = ''; if(val){ memDist(s, r.ndc, val); memDist(s, 'item:' + r.item, val); } }
-    if(f === 'ordered') r.orderedAt = val ? new Date().toISOString() : ''; });
+    if(f === 'ordered') r.orderedAt = val ? new Date().toISOString() : '';
+    if(f === 'qty') r.autoQty = ''; });
 });
 $('listBody').addEventListener('click', e => {
   const ed = e.target.closest('[data-edit]');
@@ -1115,9 +1119,10 @@ $('submitBtn').onclick = async () => {
   const saved = await change(s => {
     const today = todayISO(), at = new Date().toISOString();
     for(const r of s.reorder){
-      s.archive.push({id:uid(), lineId:r.id, dateAdded:r.dateAdded, dateSubmitted:today, submittedAt:at, item:r.item, mfr:r.mfr, ndc:r.ndc, ndc10:r.ndc10 || '', setid:r.setid || '', pkgSize:r.pkgSize, qty:r.qty, dist:r.dist || '', need:r.need || '', ordered:!!r.ordered, orderedAt:r.orderedAt || ''});
+      s.archive.push({id:uid(), lineId:r.id, dateAdded:r.dateAdded, dateSubmitted:today, submittedAt:at, item:r.item, mfr:r.mfr, ndc:r.ndc, ndc10:r.ndc10 || '', setid:r.setid || '', pkgSize:r.pkgSize, qty:r.qty, dist:r.dist || '', ordered:!!r.ordered, orderedAt:r.orderedAt || ''});
       // remembered for next time: package size by NDC; distributor by NDC and by drug + strength
       if(r.ndc && r.pkgSize) s.remember[r.ndc] = Object.assign({}, s.remember[r.ndc], {pkgSize:r.pkgSize});
+      if(r.ndc && +r.qty > 0) s.remember[r.ndc] = Object.assign({}, s.remember[r.ndc], {qty:+r.qty});
       if(r.dist){ memDist(s, r.ndc, r.dist); memDist(s, 'item:' + r.item, r.dist); }
       memSubmitted(s, r.ndc, r.dist); memSubmitted(s, r.rxcui && 'rx:' + r.rxcui, r.dist); memSubmitted(s, 'item:' + r.item, r.dist);
       done++;
@@ -1141,7 +1146,6 @@ function archiveOrders(){
   }
   return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 }
-const needTag = n => n === 'out' ? '<span class="needtag out">Out of stock</span>' : n === 'restock' ? '<span class="needtag">Replenish</span>' : '';
 function renderArchive(){
   if(!STORE) return;
   $('archMore').style.display = archCursor && !$('archDate').value ? '' : 'none';
@@ -1154,14 +1158,13 @@ function renderArchive(){
     const names = rows.map(r => r.item), preview = names.slice(0, 3).join(', ') + (names.length > 3 ? `, +${names.length - 3} more` : '');
     const head = `<tr class="order${open ? ' open' : ''}" data-order="${esc(k)}" title="${open ? 'Hide' : 'Show'} the lines in this order">
       <td><span class="caret">${open ? '▾' : '▸'}</span> ${fmtDate(first.dateSubmitted)} <span class="maker">${fmtTime(first.submittedAt)}</span></td>
-      <td colspan="8"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b>${first.submittedBy ? ` <span class="maker">· by ${esc(first.submittedBy)}</span>` : ''} · <span class="maker">${esc(preview)}</span></td></tr>`;
+      <td colspan="7"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b>${first.submittedBy ? ` <span class="maker">· by ${esc(first.submittedBy)}</span>` : ''} · <span class="maker">${esc(preview)}</span></td></tr>`;
     return head + (open ? rows.map(r => `<tr class="order-line">
       <td></td>
       <td class="drug"><b>${esc(r.item)}</b></td>
-      <td data-l="Need">${needTag(r.need) || '<span class="maker">—</span>'}</td>
       <td data-l="NDC">${r.ndc ? ndcHtml(r.ndc) : '<span class="maker">any NDC</span>'}</td><td class="mfr" data-l="Manufacturer">${esc(r.mfr || '')}</td><td class="mfr" data-l="Distributor">${esc(r.dist || '')}</td><td data-l="Pkg Size">${esc(r.pkgSize || '')}</td><td data-l="Qty">${esc(r.qty)}</td><td>${dm(r.ndc10 || r.ndc, r.setid)}</td>
     </tr>`).join('') : '');
-  }).join('') : '<tr><td colspan="9" class="empty">Nothing here.</td></tr>';
+  }).join('') : '<tr><td colspan="8" class="empty">Nothing here.</td></tr>';
 }
 $('archBody').addEventListener('click', e => {
   if(e.target.closest('a')) return;
