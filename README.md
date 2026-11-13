@@ -38,6 +38,7 @@ python3 dist_test.py       # adding a distributor
 python3 host_test.py       # the host page: its own gate, sign-in and lock
 python3 am_people_test.py  # Account Manager: add (pending), first sign-in (active), cancel invite, delete
 python3 edge_test.py       # half-made logins from a failed add; expired temporary passwords
+python3 session_test.py    # shared computers: a sign-in per tab, idle sign-out; Need column (out of stock / replenish)
 ```
 
 ## Deploy

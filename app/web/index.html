@@ -111,6 +111,10 @@
   #listBody td:nth-child(2), #archBody td:nth-child(2){min-width:200px;}
   td.pkg{width:140px;}
   td.dist select{min-width:190px;max-width:230px;font-size:12.5px;}
+  td.need select{min-width:120px;font-size:12.5px;} td.need select.need{border-color:#e0a100;background:var(--new-bg);}
+  td.need select.out{border-color:#c0392b;color:#b03020;font-weight:700;}
+  #listBody tr.is-out td:first-child{box-shadow:inset 4px 0 0 #c0392b;}
+  .needtag{font-size:12px;font-weight:600;white-space:nowrap;} .needtag.out{color:#b03020;}
   td.dist select.need{border-color:#e0a100;background:var(--new-bg);}
   td.qty{width:80px;}
   button.edit{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 3px;}
@@ -179,6 +183,7 @@
   table.people td.acts{white-space:nowrap;} table.people td.copycell{padding-left:18px;}
   @media (max-width:820px){ table.people td.copycell:empty{display:none;}
     table.people td.acts, table.people td.hint, table.people td[data-l="Status"]{grid-column:1 / -1;} }
+  #idleWarn{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:60;max-width:min(560px,calc(100vw - 32px));background:#fff4d6;color:#3a2a00;border:2px solid #e0a100;border-radius:10px;padding:12px 16px;font-weight:600;box-shadow:0 6px 24px rgba(0,0,0,.25);}
   .npmsg{min-height:1.4em;margin-top:8px;font-weight:600;color:var(--bad, #a33);} .npmsg.ok{color:var(--ok, #2f6b4e);}
   .ustat{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:1px 9px;white-space:nowrap;}
   .ustat.ok{background:var(--ok-soft, #d5e6dc);color:var(--ok, #2f6b4e);} .ustat.wait{background:var(--warn-soft, #f3e7d8);color:var(--warn, #8a5a22);}
@@ -364,7 +369,7 @@
         <button class="btn" id="submitBtn">Submit order</button>
       </div>
       <table id="listTable">
-        <thead><tr><th>Added</th><th>Drug</th><th>NDC</th><th>Manufacturer</th><th>Distributor</th><th>Pkg Size</th><th>Qty</th><th class="chk" title="Tick once this line's order has been placed">Ordered</th><th></th><th></th></tr></thead>
+        <thead><tr><th>Added</th><th>Drug</th><th title="Out of stock: holding up dispensing (none, or not enough). Replenish: ordering ahead after a cycle count or while dispensing.">Need</th><th>NDC</th><th>Manufacturer</th><th>Distributor</th><th>Pkg Size</th><th>Qty</th><th class="chk" title="Tick once this line's order has been placed">Ordered</th><th></th><th></th></tr></thead>
         <tbody id="listBody"></tbody>
       </table>
     </div>
@@ -383,7 +388,7 @@
       </div>
       <div class="hint" id="archCount" style="margin-bottom:8px;"></div>
       <table id="archTable">
-        <thead><tr><th>Submitted</th><th>Drug</th><th>NDC</th><th>Manufacturer</th><th>Distributor</th><th>Pkg Size</th><th>Qty</th><th></th></tr></thead>
+        <thead><tr><th>Submitted</th><th>Drug</th><th>Need</th><th>NDC</th><th>Manufacturer</th><th>Distributor</th><th>Pkg Size</th><th>Qty</th><th></th></tr></thead>
         <tbody id="archBody"></tbody>
       </table>
       <div class="toolbar" style="margin-top:10px;"><button class="btn2" id="archMore" style="display:none;">Load older orders</button></div>

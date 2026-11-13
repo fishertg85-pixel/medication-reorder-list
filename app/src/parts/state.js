@@ -53,8 +53,16 @@ async function cog(target, body){
 }
 const SESSION_KEY = 'nortex-cloud-session';
 let SESSION = null;                                 // {id, refresh, exp, login}
-function saveSession(){ try{ SESSION ? localStorage.setItem(SESSION_KEY, JSON.stringify(SESSION)) : localStorage.removeItem(SESSION_KEY); }catch(e){} }
-function loadSession(){ try{ SESSION = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); }catch(e){ SESSION = null; } }
+// Where the sign-in is kept. A phone with the app on its home screen is one person's device, so it stays signed in.
+// On a computer (often shared), each browser tab keeps its own sign-in: a tab stays whoever signed into it, and
+// closing the tab signs them out, so the next person never opens someone else's session.
+const STANDALONE = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+const sessStore = () => STANDALONE ? localStorage : sessionStorage;
+function saveSession(){ try{ SESSION ? sessStore().setItem(SESSION_KEY, JSON.stringify(SESSION)) : sessStore().removeItem(SESSION_KEY); }catch(e){} }
+function loadSession(){
+  if(!STANDALONE){ try{ localStorage.removeItem(SESSION_KEY); }catch(e){} }   // a shared sign-in left by an older version
+  try{ SESSION = JSON.parse(sessStore().getItem(SESSION_KEY) || 'null'); }catch(e){ SESSION = null; }
+}
 const tokenExp = t => { try{ return JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).exp * 1000; }catch(e){ return 0; } };
 function setTokens(a, login){
   SESSION = {id:a.IdToken, access:a.AccessToken || (SESSION && SESSION.access), refresh:a.RefreshToken || (SESSION && SESSION.refresh), exp:tokenExp(a.IdToken), login:login || (SESSION && SESSION.login)};
@@ -96,7 +104,7 @@ function storeTZ(){ try{ return (STORE && STORE.timezone) || 'America/Chicago'; 
 /* ---- saving: every change is worked out as a small list of edits and sent in one request ----
    Only the fields that changed are sent, so two people editing different things don't overwrite each other.
    Submitted lines go to the archive first; the server never deletes or overwrites archived lines. */
-const LINE_FIELDS = ['dateAdded','item','mfr','ndc','ndc10','pkgSize','qty','src','setid','rxcui','autoPkg','dist','autoDist','ordered','orderedAt','itemEdited'];
+const LINE_FIELDS = ['dateAdded','item','mfr','ndc','ndc10','pkgSize','qty','src','setid','rxcui','autoPkg','dist','autoDist','need','ordered','orderedAt','itemEdited'];
 let saving = 0;
 async function change(mutator){
   if(!STORE) return false;

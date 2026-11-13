@@ -91,8 +91,16 @@ async function cog(target, body){
 }
 const SESSION_KEY = 'nortex-cloud-session';
 let SESSION = null;                                 // {id, refresh, exp, login}
-function saveSession(){ try{ SESSION ? localStorage.setItem(SESSION_KEY, JSON.stringify(SESSION)) : localStorage.removeItem(SESSION_KEY); }catch(e){} }
-function loadSession(){ try{ SESSION = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); }catch(e){ SESSION = null; } }
+// Where the sign-in is kept. A phone with the app on its home screen is one person's device, so it stays signed in.
+// On a computer (often shared), each browser tab keeps its own sign-in: a tab stays whoever signed into it, and
+// closing the tab signs them out, so the next person never opens someone else's session.
+const STANDALONE = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+const sessStore = () => STANDALONE ? localStorage : sessionStorage;
+function saveSession(){ try{ SESSION ? sessStore().setItem(SESSION_KEY, JSON.stringify(SESSION)) : sessStore().removeItem(SESSION_KEY); }catch(e){} }
+function loadSession(){
+  if(!STANDALONE){ try{ localStorage.removeItem(SESSION_KEY); }catch(e){} }   // a shared sign-in left by an older version
+  try{ SESSION = JSON.parse(sessStore().getItem(SESSION_KEY) || 'null'); }catch(e){ SESSION = null; }
+}
 const tokenExp = t => { try{ return JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).exp * 1000; }catch(e){ return 0; } };
 function setTokens(a, login){
   SESSION = {id:a.IdToken, access:a.AccessToken || (SESSION && SESSION.access), refresh:a.RefreshToken || (SESSION && SESSION.refresh), exp:tokenExp(a.IdToken), login:login || (SESSION && SESSION.login)};
@@ -134,7 +142,7 @@ function storeTZ(){ try{ return (STORE && STORE.timezone) || 'America/Chicago'; 
 /* ---- saving: every change is worked out as a small list of edits and sent in one request ----
    Only the fields that changed are sent, so two people editing different things don't overwrite each other.
    Submitted lines go to the archive first; the server never deletes or overwrites archived lines. */
-const LINE_FIELDS = ['dateAdded','item','mfr','ndc','ndc10','pkgSize','qty','src','setid','rxcui','autoPkg','dist','autoDist','ordered','orderedAt','itemEdited'];
+const LINE_FIELDS = ['dateAdded','item','mfr','ndc','ndc10','pkgSize','qty','src','setid','rxcui','autoPkg','dist','autoDist','need','ordered','orderedAt','itemEdited'];
 let saving = 0;
 async function change(mutator){
   if(!STORE) return false;
@@ -926,11 +934,14 @@ function renderList(){
   const rows = STATE.reorder;
   $('openCount').textContent = rows.length;
   const done = rows.filter(r => r.ordered).length;
-  $('orderedCount').textContent = rows.length ? `Ordered: ${done} of ${rows.length}` : '';
+  const outN = rows.filter(r => r.need === 'out').length;
+  $('orderedCount').textContent = rows.length ? `Ordered: ${done} of ${rows.length}` + (outN ? ` · Out of stock: ${outN}` : '') : '';
   $('submitBtn').disabled = !rows.length || !PERM('submit');
-  $('listBody').innerHTML = rows.length ? rows.map(r => `<tr data-id="${esc(r.id)}" data-ndc="${esc(r.ndc)}"${r.ordered ? ' class="is-ordered"' : ''}>
+  $('listBody').innerHTML = rows.length ? rows.map(r => `<tr data-id="${esc(r.id)}" data-ndc="${esc(r.ndc)}" class="${[r.ordered ? 'is-ordered' : '', r.need === 'out' ? 'is-out' : ''].join(' ').trim()}">
       <td class="added">${fmtDate(r.dateAdded)}${r.addedBy ? `<div class="added-by">by ${esc(r.addedBy)}</div>` : ''}</td>
       <td class="drug"><b>${esc(r.item)}</b> <button class="edit" data-edit="${esc(r.id)}" title="Edit to match the bottle or box (remembered for next time)">✎</button>${r.src === 'manual' ? '<div class="maker">entered by hand</div>' : ''}</td>
+      <td class="need" data-l="Need"><select data-f="need" class="${r.need === 'out' ? 'out' : r.need ? '' : 'need'}" title="Out of stock: holding up dispensing. Replenish: ordering ahead.">
+        <option value=""${r.need ? '' : ' selected'}>Choose…</option><option value="out"${r.need === 'out' ? ' selected' : ''}>Out of stock</option><option value="restock"${r.need === 'restock' ? ' selected' : ''}>Replenish</option></select></td>
       <td class="ndc" data-l="NDC"><input type="text" class="ndcin" data-ndcin="${esc(r.id)}" data-rx="${esc(r.rxcui || '')}" value="${esc(r.ndc)}" placeholder="${r.rxcui ? 'Pick or type NDC' : 'Type NDC'}" autocomplete="off" spellcheck="false"></td>
       <td class="mfr" data-l="Manufacturer">${r.mfr ? esc(r.mfr) : '<span class="maker">' + (r.ndc ? '—' : 'choose an NDC') + '</span>'}</td>
       <td class="dist" data-l="Distributor"><select data-f="dist" class="${r.dist ? '' : 'need'}" title="${r.dist && r.dist === r.autoDist ? 'Filled in from the last time this was ordered' : 'Where this is ordered from'}">
@@ -940,7 +951,7 @@ function renderList(){
       <td class="chk" data-l="Ordered"><input type="checkbox" data-f="ordered" ${r.ordered ? 'checked' : ''} title="${r.ordered ? 'Ordered' + (r.orderedBy ? ' by ' + esc(r.orderedBy) : '') + (r.orderedAt ? ' ' + new Date(r.orderedAt).toLocaleString([], {month:'numeric', day:'numeric', hour:'numeric', minute:'2-digit', timeZone:storeTZ(), timeZoneName:'short'}) : '') : 'Tick once this has been ordered'}"></td>
       <td>${dm(r.ndc10 || r.ndc, r.setid)}</td>
       <td>${PERM('remove') ? `<button class="x" data-del="${esc(r.id)}" title="Remove from list">×</button>` : ''}</td>
-    </tr>`).join('') : '<tr><td colspan="10" class="empty">Nothing to order yet. Search above to add a drug.</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="11" class="empty">Nothing to order yet. Search above to add a drug.</td></tr>';
 }
 /* ---- NDC box in each row: pick from the drug's NDCs OR type an exact NDC ----
    One shared pop-up list sits under whichever NDC box is active. The list shows NDC · manufacturer ·
@@ -1104,7 +1115,7 @@ $('submitBtn').onclick = async () => {
   const saved = await change(s => {
     const today = todayISO(), at = new Date().toISOString();
     for(const r of s.reorder){
-      s.archive.push({id:uid(), lineId:r.id, dateAdded:r.dateAdded, dateSubmitted:today, submittedAt:at, item:r.item, mfr:r.mfr, ndc:r.ndc, ndc10:r.ndc10 || '', setid:r.setid || '', pkgSize:r.pkgSize, qty:r.qty, dist:r.dist || '', ordered:!!r.ordered, orderedAt:r.orderedAt || ''});
+      s.archive.push({id:uid(), lineId:r.id, dateAdded:r.dateAdded, dateSubmitted:today, submittedAt:at, item:r.item, mfr:r.mfr, ndc:r.ndc, ndc10:r.ndc10 || '', setid:r.setid || '', pkgSize:r.pkgSize, qty:r.qty, dist:r.dist || '', need:r.need || '', ordered:!!r.ordered, orderedAt:r.orderedAt || ''});
       // remembered for next time: package size by NDC; distributor by NDC and by drug + strength
       if(r.ndc && r.pkgSize) s.remember[r.ndc] = Object.assign({}, s.remember[r.ndc], {pkgSize:r.pkgSize});
       if(r.dist){ memDist(s, r.ndc, r.dist); memDist(s, 'item:' + r.item, r.dist); }
@@ -1130,6 +1141,7 @@ function archiveOrders(){
   }
   return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 }
+const needTag = n => n === 'out' ? '<span class="needtag out">Out of stock</span>' : n === 'restock' ? '<span class="needtag">Replenish</span>' : '';
 function renderArchive(){
   if(!STORE) return;
   $('archMore').style.display = archCursor && !$('archDate').value ? '' : 'none';
@@ -1142,13 +1154,14 @@ function renderArchive(){
     const names = rows.map(r => r.item), preview = names.slice(0, 3).join(', ') + (names.length > 3 ? `, +${names.length - 3} more` : '');
     const head = `<tr class="order${open ? ' open' : ''}" data-order="${esc(k)}" title="${open ? 'Hide' : 'Show'} the lines in this order">
       <td><span class="caret">${open ? '▾' : '▸'}</span> ${fmtDate(first.dateSubmitted)} <span class="maker">${fmtTime(first.submittedAt)}</span></td>
-      <td colspan="7"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b>${first.submittedBy ? ` <span class="maker">· by ${esc(first.submittedBy)}</span>` : ''} · <span class="maker">${esc(preview)}</span></td></tr>`;
+      <td colspan="8"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b>${first.submittedBy ? ` <span class="maker">· by ${esc(first.submittedBy)}</span>` : ''} · <span class="maker">${esc(preview)}</span></td></tr>`;
     return head + (open ? rows.map(r => `<tr class="order-line">
       <td></td>
       <td class="drug"><b>${esc(r.item)}</b></td>
+      <td data-l="Need">${needTag(r.need) || '<span class="maker">—</span>'}</td>
       <td data-l="NDC">${r.ndc ? ndcHtml(r.ndc) : '<span class="maker">any NDC</span>'}</td><td class="mfr" data-l="Manufacturer">${esc(r.mfr || '')}</td><td class="mfr" data-l="Distributor">${esc(r.dist || '')}</td><td data-l="Pkg Size">${esc(r.pkgSize || '')}</td><td data-l="Qty">${esc(r.qty)}</td><td>${dm(r.ndc10 || r.ndc, r.setid)}</td>
     </tr>`).join('') : '');
-  }).join('') : '<tr><td colspan="8" class="empty">Nothing here.</td></tr>';
+  }).join('') : '<tr><td colspan="9" class="empty">Nothing here.</td></tr>';
 }
 $('archBody').addEventListener('click', e => {
   if(e.target.closest('a')) return;
@@ -1440,6 +1453,32 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   if(b.dataset.tab === 'archive') loadArchive(false).catch(() => {});
 });
 function renderAll(){ renderList(); renderArchive(); }
+
+/* ---- computers sign out by themselves after a while without use (shared front-counter computers) ----
+   Any typing, click, scroll or barcode scan counts as use. A notice shows for the last minute. Changes are
+   saved as they're made; a save still in progress finishes before the sign-out. Home-screen phones are left
+   alone: a phone locks with its own screen lock. */
+const IDLE_MIN = Number(CFG.idleMinutes) > 0 ? Number(CFG.idleMinutes) : 15, IDLE_MS = IDLE_MIN * 60000, WARN_MS = 60000;
+let lastUse = Date.now();
+const idleWarn = document.createElement('div');
+idleWarn.id = 'idleWarn'; idleWarn.setAttribute('role', 'alert'); idleWarn.style.display = 'none';
+document.body.appendChild(idleWarn);
+function markUse(){ lastUse = Date.now(); if(idleWarn.style.display !== 'none') idleWarn.style.display = 'none'; }
+['keydown', 'pointerdown', 'wheel', 'input', 'touchstart'].forEach(t => document.addEventListener(t, markUse, {capture:true, passive:true}));
+setInterval(async () => {
+  if(STANDALONE || !ME || !SESSION){ idleWarn.style.display = 'none'; return; }
+  const left = IDLE_MS - (Date.now() - lastUse);
+  if(left > WARN_MS){ idleWarn.style.display = 'none'; return; }
+  if(left > 0){
+    idleWarn.textContent = `Signing out in ${Math.ceil(left / 1000)} seconds because nobody has used this for a while. Any click keeps you signed in.`;
+    idleWarn.style.display = ''; return;
+  }
+  if(saving > 0) return;                              // let a save finish first
+  idleWarn.style.display = 'none';
+  await signOut(true);
+  $('liUser').value = '';
+  showLogin(`Signed out after ${IDLE_MIN} minutes without use.`);
+}, 1000);
 if('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 $('npPass').value = genTemp();
 

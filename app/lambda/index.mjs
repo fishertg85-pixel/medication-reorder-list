@@ -18,8 +18,9 @@ const MAIN = process.env.MAIN_TABLE, ARCH = process.env.ARCHIVE_TABLE, POOL = pr
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), { marshallOptions: { removeUndefinedValues: true } });
 const idp = new CognitoIdentityProviderClient({});
 
-const LINE_FIELDS = ['dateAdded','item','mfr','ndc','ndc10','pkgSize','qty','src','setid','rxcui','autoPkg','dist','autoDist','ordered','orderedAt','itemEdited'];
-const ARCH_FIELDS = ['id','lineId','dateAdded','dateSubmitted','submittedAt','item','mfr','ndc','ndc10','setid','pkgSize','qty','dist','ordered','orderedAt'];
+const LINE_FIELDS = ['dateAdded','item','mfr','ndc','ndc10','pkgSize','qty','src','setid','rxcui','autoPkg','dist','autoDist','need','ordered','orderedAt','itemEdited'];
+const NEEDS = ['', 'out', 'restock'];             // why it's on the list: out of stock (holding up dispensing) or replenish (ordering ahead)
+const ARCH_FIELDS = ['id','lineId','dateAdded','dateSubmitted','submittedAt','item','mfr','ndc','ndc10','setid','pkgSize','qty','dist','need','ordered','orderedAt'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/, STAMP = /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/;
 // date-ish fields must look like dates (they are shown on screen); anything else is dropped
 function fixDates(o){
@@ -43,7 +44,9 @@ function clean(v, max = 400){                       // strings/numbers/booleans 
   if(typeof v === 'number') return Number.isFinite(v) ? v : undefined;
   return String(v).slice(0, max);
 }
-function pick(obj, fields){ const o = {}; for(const f of fields) if(obj && obj[f] !== undefined){ const c = clean(obj[f]); if(c !== undefined) o[f] = c; } return fixDates(o); }
+function pick(obj, fields){ const o = {}; for(const f of fields) if(obj && obj[f] !== undefined){ const c = clean(obj[f]); if(c !== undefined) o[f] = c; }
+  if('need' in o && !NEEDS.includes(o.need)) delete o.need;
+  return fixDates(o); }
 const okId = s => typeof s === 'string' && /^[A-Za-z0-9_.:-]{1,64}$/.test(s);
 async function queryAll(params){
   const out = []; let ExclusiveStartKey;

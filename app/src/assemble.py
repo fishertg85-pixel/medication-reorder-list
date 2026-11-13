@@ -66,6 +66,7 @@ rep('</style>\n</head>', r'''
   table.people td.acts{white-space:nowrap;} table.people td.copycell{padding-left:18px;}
   @media (max-width:820px){ table.people td.copycell:empty{display:none;}
     table.people td.acts, table.people td.hint, table.people td[data-l="Status"]{grid-column:1 / -1;} }
+  #idleWarn{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:60;max-width:min(560px,calc(100vw - 32px));background:#fff4d6;color:#3a2a00;border:2px solid #e0a100;border-radius:10px;padding:12px 16px;font-weight:600;box-shadow:0 6px 24px rgba(0,0,0,.25);}
   .npmsg{min-height:1.4em;margin-top:8px;font-weight:600;color:var(--bad, #a33);} .npmsg.ok{color:var(--ok, #2f6b4e);}
   .ustat{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:1px 9px;white-space:nowrap;}
   .ustat.ok{background:var(--ok-soft, #d5e6dc);color:var(--ok, #2f6b4e);} .ustat.wait{background:var(--warn-soft, #f3e7d8);color:var(--warn, #8a5a22);}
@@ -330,11 +331,13 @@ rep('''function renderList(){
 rep('''  $('submitBtn').disabled = !rows.length;''', '''  $('submitBtn').disabled = !rows.length || !PERM('submit');''')
 
 # ---------- archive: who submitted, phone labels, load older, day lookups
-rep('''      <td colspan="7"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b> · <span class="maker">${esc(preview)}</span></td></tr>`;''',
-    '''      <td colspan="7"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b>${first.submittedBy ? ` <span class="maker">· by ${esc(first.submittedBy)}</span>` : ''} · <span class="maker">${esc(preview)}</span></td></tr>`;''')
+rep('''      <td colspan="8"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b> · <span class="maker">${esc(preview)}</span></td></tr>`;''',
+    '''      <td colspan="8"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b>${first.submittedBy ? ` <span class="maker">· by ${esc(first.submittedBy)}</span>` : ''} · <span class="maker">${esc(preview)}</span></td></tr>`;''')
 rep('''      <td><b>${esc(r.item)}</b></td>
+      <td>${needTag(r.need)}</td>
       <td>${r.ndc ? ndcHtml(r.ndc) : '<span class="maker">any NDC</span>'}</td><td class="mfr">${esc(r.mfr || '')}</td><td class="mfr">${esc(r.dist || '')}</td><td>${esc(r.pkgSize || '')}</td><td>${esc(r.qty)}</td><td>${dm(r.ndc10 || r.ndc, r.setid)}</td>''',
     '''      <td class="drug"><b>${esc(r.item)}</b></td>
+      <td data-l="Need">${needTag(r.need) || '<span class="maker">—</span>'}</td>
       <td data-l="NDC">${r.ndc ? ndcHtml(r.ndc) : '<span class="maker">any NDC</span>'}</td><td class="mfr" data-l="Manufacturer">${esc(r.mfr || '')}</td><td class="mfr" data-l="Distributor">${esc(r.dist || '')}</td><td data-l="Pkg Size">${esc(r.pkgSize || '')}</td><td data-l="Qty">${esc(r.qty)}</td><td>${dm(r.ndc10 || r.ndc, r.setid)}</td>''')
 rep('''function renderArchive(){
   const day = $('archDate').value, orders = archiveOrders();''', '''function renderArchive(){

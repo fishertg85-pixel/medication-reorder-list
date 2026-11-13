@@ -101,6 +101,10 @@
   #listBody td:nth-child(2), #archBody td:nth-child(2){min-width:200px;}
   td.pkg{width:140px;}
   td.dist select{min-width:190px;max-width:230px;font-size:12.5px;}
+  td.need select{min-width:120px;font-size:12.5px;} td.need select.need{border-color:#e0a100;background:var(--new-bg);}
+  td.need select.out{border-color:#c0392b;color:#b03020;font-weight:700;}
+  #listBody tr.is-out td:first-child{box-shadow:inset 4px 0 0 #c0392b;}
+  .needtag{font-size:12px;font-weight:600;white-space:nowrap;} .needtag.out{color:#b03020;}
   td.dist select.need{border-color:#e0a100;background:var(--new-bg);}
   td.qty{width:80px;}
   button.edit{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 3px;}
@@ -188,7 +192,7 @@
         <button class="btn" id="submitBtn">Submit order</button>
       </div>
       <table>
-        <thead><tr><th>Added</th><th>Drug</th><th>NDC</th><th>Manufacturer</th><th>Distributor</th><th>Pkg Size</th><th>Qty</th><th class="chk" title="Tick once this line's order has been placed">Ordered</th><th></th><th></th></tr></thead>
+        <thead><tr><th>Added</th><th>Drug</th><th title="Out of stock: holding up dispensing (none, or not enough). Replenish: ordering ahead after a cycle count or while dispensing.">Need</th><th>NDC</th><th>Manufacturer</th><th>Distributor</th><th>Pkg Size</th><th>Qty</th><th class="chk" title="Tick once this line's order has been placed">Ordered</th><th></th><th></th></tr></thead>
         <tbody id="listBody"></tbody>
       </table>
     </div>
@@ -207,7 +211,7 @@
       </div>
       <div class="hint" id="archCount" style="margin-bottom:8px;"></div>
       <table>
-        <thead><tr><th>Submitted</th><th>Drug</th><th>NDC</th><th>Manufacturer</th><th>Distributor</th><th>Pkg Size</th><th>Qty</th><th></th></tr></thead>
+        <thead><tr><th>Submitted</th><th>Drug</th><th>Need</th><th>NDC</th><th>Manufacturer</th><th>Distributor</th><th>Pkg Size</th><th>Qty</th><th></th></tr></thead>
         <tbody id="archBody"></tbody>
       </table>
     </div>
@@ -970,11 +974,14 @@ function renderList(){
   const rows = STATE.reorder;
   $('openCount').textContent = rows.length;
   const done = rows.filter(r => r.ordered).length;
-  $('orderedCount').textContent = rows.length ? `Ordered: ${done} of ${rows.length}` : '';
+  const outN = rows.filter(r => r.need === 'out').length;
+  $('orderedCount').textContent = rows.length ? `Ordered: ${done} of ${rows.length}` + (outN ? ` · Out of stock: ${outN}` : '') : '';
   $('submitBtn').disabled = !rows.length;
-  $('listBody').innerHTML = rows.length ? rows.map(r => `<tr data-id="${r.id}" data-ndc="${esc(r.ndc)}"${r.ordered ? ' class="is-ordered"' : ''}>
+  $('listBody').innerHTML = rows.length ? rows.map(r => `<tr data-id="${r.id}" data-ndc="${esc(r.ndc)}" class="${[r.ordered ? 'is-ordered' : '', r.need === 'out' ? 'is-out' : ''].join(' ').trim()}">
       <td>${fmtDate(r.dateAdded)}</td>
       <td><b>${esc(r.item)}</b> <button class="edit" data-edit="${r.id}" title="Edit to match the bottle or box (remembered for next time)">✎</button>${r.src === 'manual' ? '<div class="maker">entered by hand</div>' : ''}</td>
+      <td class="need" data-l="Need"><select data-f="need" class="${r.need === 'out' ? 'out' : r.need ? '' : 'need'}" title="Out of stock: holding up dispensing. Replenish: ordering ahead.">
+        <option value=""${r.need ? '' : ' selected'}>Choose…</option><option value="out"${r.need === 'out' ? ' selected' : ''}>Out of stock</option><option value="restock"${r.need === 'restock' ? ' selected' : ''}>Replenish</option></select></td>
       <td class="ndc"><input type="text" class="ndcin" data-ndcin="${r.id}" data-rx="${esc(r.rxcui || '')}" value="${esc(r.ndc)}" placeholder="${r.rxcui ? 'Pick or type NDC' : 'Type NDC'}" autocomplete="off" spellcheck="false"></td>
       <td class="mfr">${r.mfr ? esc(r.mfr) : '<span class="maker">' + (r.ndc ? '—' : 'choose an NDC') + '</span>'}</td>
       <td class="dist"><select data-f="dist" class="${r.dist ? '' : 'need'}" title="${r.dist && r.dist === r.autoDist ? 'Filled in from the last time this was ordered' : 'Where this is ordered from'}">
@@ -984,7 +991,7 @@ function renderList(){
       <td class="chk"><input type="checkbox" data-f="ordered" ${r.ordered ? 'checked' : ''} title="${r.ordered ? 'Ordered' + (r.orderedAt ? ' ' + new Date(r.orderedAt).toLocaleString([], {month:'numeric', day:'numeric', hour:'numeric', minute:'2-digit'}) : '') : 'Tick once this has been ordered'}"></td>
       <td>${dm(r.ndc10 || r.ndc, r.setid)}</td>
       <td><button class="x" data-del="${r.id}" title="Remove from list">×</button></td>
-    </tr>`).join('') : '<tr><td colspan="10" class="empty">Nothing to order yet. Search above to add a drug.</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="11" class="empty">Nothing to order yet. Search above to add a drug.</td></tr>';
 }
 /* ---- NDC box in each row: pick from the drug's NDCs OR type an exact NDC ----
    One shared pop-up list sits under whichever NDC box is active. The list shows NDC · manufacturer ·
@@ -1148,7 +1155,7 @@ $('submitBtn').onclick = async () => {
   const saved = await change(s => {
     const today = todayISO(), at = new Date().toISOString();
     for(const r of s.reorder){
-      s.archive.push({id:uid(), dateAdded:r.dateAdded, dateSubmitted:today, submittedAt:at, item:r.item, mfr:r.mfr, ndc:r.ndc, ndc10:r.ndc10 || '', setid:r.setid || '', pkgSize:r.pkgSize, qty:r.qty, dist:r.dist || '', ordered:!!r.ordered, orderedAt:r.orderedAt || ''});
+      s.archive.push({id:uid(), dateAdded:r.dateAdded, dateSubmitted:today, submittedAt:at, item:r.item, mfr:r.mfr, ndc:r.ndc, ndc10:r.ndc10 || '', setid:r.setid || '', pkgSize:r.pkgSize, qty:r.qty, dist:r.dist || '', need:r.need || '', ordered:!!r.ordered, orderedAt:r.orderedAt || ''});
       // remembered for next time: package size by NDC; distributor by NDC and by drug + strength
       if(r.ndc && r.pkgSize) s.remember[r.ndc] = Object.assign({}, s.remember[r.ndc], {pkgSize:r.pkgSize});
       if(r.dist){ memDist(s, r.ndc, r.dist); memDist(s, 'item:' + r.item, r.dist); }
@@ -1174,6 +1181,7 @@ function archiveOrders(){
   }
   return [...groups.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 }
+const needTag = n => n === 'out' ? '<span class="needtag out">Out of stock</span>' : n === 'restock' ? '<span class="needtag">Replenish</span>' : '';
 function renderArchive(){
   const day = $('archDate').value, orders = archiveOrders();
   const lines = orders.reduce((n, o) => n + o[1].length, 0);
@@ -1184,13 +1192,14 @@ function renderArchive(){
     const names = rows.map(r => r.item), preview = names.slice(0, 3).join(', ') + (names.length > 3 ? `, +${names.length - 3} more` : '');
     const head = `<tr class="order${open ? ' open' : ''}" data-order="${esc(k)}" title="${open ? 'Hide' : 'Show'} the lines in this order">
       <td><span class="caret">${open ? '▾' : '▸'}</span> ${fmtDate(first.dateSubmitted)} <span class="maker">${fmtTime(first.submittedAt)}</span></td>
-      <td colspan="7"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b> · <span class="maker">${esc(preview)}</span></td></tr>`;
+      <td colspan="8"><b>${rows.length} line${rows.length === 1 ? '' : 's'}</b> · <span class="maker">${esc(preview)}</span></td></tr>`;
     return head + (open ? rows.map(r => `<tr class="order-line">
       <td></td>
       <td><b>${esc(r.item)}</b></td>
+      <td>${needTag(r.need)}</td>
       <td>${r.ndc ? ndcHtml(r.ndc) : '<span class="maker">any NDC</span>'}</td><td class="mfr">${esc(r.mfr || '')}</td><td class="mfr">${esc(r.dist || '')}</td><td>${esc(r.pkgSize || '')}</td><td>${esc(r.qty)}</td><td>${dm(r.ndc10 || r.ndc, r.setid)}</td>
     </tr>`).join('') : '');
-  }).join('') : '<tr><td colspan="8" class="empty">Nothing here.</td></tr>';
+  }).join('') : '<tr><td colspan="9" class="empty">Nothing here.</td></tr>';
 }
 $('archBody').addEventListener('click', e => {
   if(e.target.closest('a')) return;
