@@ -69,7 +69,7 @@ async function api(method, path, body, retried){
 let ME = null, UNTIL = 0, lastAct = 0, pingAt = 0, DATA = {stores:[], users:[]}, LOGOS = {};
 const SIGN = {step:'start', session:null, user:'', pw:''};
 function only(id){ ['gSign', 'gLock', 'gBody'].forEach(k => $(k).style.display = k === id ? '' : 'none'); }
-function clearData(){ DATA = {stores:[], users:[]}; LOGOS = {}; $('people').innerHTML = ''; $('stores').innerHTML = ''; $('passBox').style.display = 'none'; $('passBox').innerHTML = ''; }
+function clearData(){ for(const k in STAGED) delete STAGED[k]; if($('peopleMsg')) $('peopleMsg').textContent = ''; DATA = {stores:[], users:[]}; LOGOS = {}; $('people').innerHTML = ''; $('stores').innerHTML = ''; $('passBox').style.display = 'none'; $('passBox').innerHTML = ''; }
 function showSign(msg, ok){
   ME = null; UNTIL = 0; clearData(); only('gSign');
   SIGN.step = 'start'; SIGN.pw = ''; $('sPass').value = '';
@@ -165,6 +165,7 @@ async function load(){
     const [s, u] = await Promise.all([api('GET', '/host/stores'), api('GET', '/host/users')]);
     DATA = {stores:s.stores, users:u.users};
     for(const k in TEMPS) if(!DATA.users.some(x => x.sub === k && x.pending)) delete TEMPS[k];
+    for(const k in STAGED) if(!DATA.users.some(x => x.sub === k)) delete STAGED[k];
     render();
   }catch(e){ if(!e.auth) $('people').innerHTML = `<div class="msg">${esc(e.message)}</div>`; }
 }
@@ -177,6 +178,21 @@ function statusBadge(u){
 }
 // temporary passwords made on this page, kept only in this tab's memory so they can be copied again while the person is pending
 const TEMPS = {};
+// switch changes wait on the row until Update is pressed (Undo puts them back)
+const STAGED = {};
+function effUser(u){
+  const s = STAGED[u.sub]; if(!s) return u;
+  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}),
+    disabled:s.disabled !== undefined ? s.disabled : u.disabled});
+}
+function stageChange(u, c){
+  const s = STAGED[u.sub] || (STAGED[u.sub] = {});
+  const put = (grp, k, v, was) => { s[grp] = s[grp] || {}; if(v === was) delete s[grp][k]; else s[grp][k] = v; if(!Object.keys(s[grp]).length) delete s[grp]; };
+  if(c.dataset.ust) put('stores', c.dataset.ust, c.checked, (u.stores || {})[c.dataset.ust] === true);
+  else if(c.dataset.uperm) put('perms', c.dataset.uperm, c.checked, !!(u.perms || {})[c.dataset.uperm]);
+  else if(c.dataset.uon){ if(!c.checked === !!u.disabled) delete s.disabled; else s.disabled = !c.checked; }
+  if(!Object.keys(s).length) delete STAGED[u.sub];
+}
 const COPY_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
 function signInText(u, pw){
   const on = DATA.stores.filter(s => u.stores && u.stores[s.id] === true).map(s => s.id);
@@ -193,7 +209,7 @@ function render(){
   $('people').innerHTML = `<div class="tscroll"><table class="stack"><thead><tr><th>Person</th><th>Status</th><th>Mobile</th>
       ${st.map(s => `<th class="c" title="${esc(s.name)}">${esc(s.id)}</th>`).join('')}
       ${P.map(p => `<th class="c" title="${PERMS[p]}">${({submit:'Submit', archive:'Archive', remove:'Remove', export:'Backup'})[p]}</th>`).join('')}<th class="c">Login on</th><th></th><th></th></tr></thead><tbody>
-    ${DATA.users.map(u => {
+    ${DATA.users.map(effUser).map(u => {
       const self = u.sub === (ME && ME.sub) || (u.host && u.login === ME.login);
       const role = u.owner ? 'Account Manager' : u.host ? 'Host (IronLedger)' : '';
       const who = `<td data-l="Person"><b>${esc(u.name || u.login)}</b> ${role ? `<span class="tag">${role}</span>` : ''}<div class="role mono">${esc(u.login)}</div></td><td data-l="Status">${statusBadge(u)}</td>
@@ -204,8 +220,8 @@ function render(){
       else mid = st.map(s => `<td class="c" data-l="${esc(s.id)}">${box(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name)}</td>`).join('')
         + P.map(p => `<td class="c" data-l="${PERMS[p]}">${box(`data-uperm="${p}"`, u.perms[p], PERMS[p])}</td>`).join('');
       const on = self ? `<td class="c hint" data-l="Login on">yours</td>` : `<td class="c" data-l="Login on">${box('data-uon="1"', !u.disabled, 'Switch this login on or off')}</td>`;
-      return `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}>${who}${mid}${on}
-        <td class="acts">${self ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`}${u.owner || u.host ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`}</td>
+      return `<tr data-sub="${esc(u.sub)}" class="${u.disabled ? 'off' : ''}${STAGED[u.sub] ? ' dirty' : ''}">${who}${mid}${on}
+        <td class="acts">${STAGED[u.sub] ? `<button class="btn small" data-upd="${esc(u.sub)}">Update</button> <button class="btn2 small" data-undo="${esc(u.sub)}">Undo</button>` : self ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`}${u.owner || u.host ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`}</td>
         <td class="c copycell" data-l="Copy sign-in">${u.pending && TEMPS[u.sub] ? `<button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${COPY_SVG}</button>` : ''}</td></tr>`;
     }).join('')}
     </tbody></table></div>`;
@@ -242,21 +258,26 @@ const nameOf = sub => { const u = DATA.users.find(x => x.sub === sub); return u 
 $('people').addEventListener('change', async e => {
   const c = e.target.closest('input[type=checkbox]'); if(!c) return;
   const sub = c.closest('tr').dataset.sub, u = DATA.users.find(x => x.sub === sub); if(!u) return;
-  let body;
-  if(c.dataset.ust) body = {stores:{[c.dataset.ust]:c.checked}};
-  else if(c.dataset.uperm) body = {perms:{[c.dataset.uperm]:c.checked}};
-  else if(c.dataset.uon){
-    const am = u.owner ? '\n\nThis is the Account Manager.' : '';
-    if(!c.checked && !confirm(`Switch off ${nameOf(sub)}'s login? They are signed out everywhere and can't sign in until it's switched back on.${am}`)){ c.checked = true; return; }
-    body = {disabled:!c.checked};
-  }
-  c.disabled = true;
-  try{ await api('POST', '/host/users/' + encodeURIComponent(sub), body); await load(); }
-  catch(err){ c.checked = !c.checked; if(!err.auth) alert(err.message); }
-  finally{ c.disabled = false; }
+  stageChange(u, c); $('peopleMsg').textContent = ''; render();      // saved only when Update is pressed
 });
 $('people').addEventListener('click', async e => {
   const ph = e.target.closest('[data-phone]'), rs = e.target.closest('[data-reset]'), dl = e.target.closest('[data-del]'), cp = e.target.closest('[data-copy]');
+  const up = e.target.closest('[data-upd]'), un = e.target.closest('[data-undo]');
+  if(un){ delete STAGED[un.dataset.undo]; $('peopleMsg').textContent = ''; render(); return; }
+  if(up){
+    const u = DATA.users.find(x => x.sub === up.dataset.upd), body = STAGED[up.dataset.upd]; if(!u || !body) return;
+    const am = u.owner ? '\n\nThis is the Account Manager.' : '';
+    if(body.disabled === true && !confirm(`Switch off ${nameOf(u.sub)}'s login? They are signed out everywhere and can't sign in until it's switched back on.${am}`)) return;
+    busy(up, true);
+    try{
+      await api('POST', '/host/users/' + encodeURIComponent(u.sub), body);
+      delete STAGED[u.sub];
+      $('peopleMsg').textContent = body.disabled === true ? `${nameOf(u.sub)}'s login was switched off. They were signed out.`
+        : `${nameOf(u.sub)}'s account access was updated. It takes effect after they sign out and sign back in.`;
+      await load();
+    }catch(err){ busy(up, false); if(!err.auth) alert(err.message); }
+    return;
+  }
   if(cp){
     const u = DATA.users.find(x => x.sub === cp.dataset.copy); if(!u || !TEMPS[u.sub]) return;
     const ok = await copyText(signInText(u, TEMPS[u.sub])); cp.title = ok ? 'Copied' : 'Couldn’t copy';

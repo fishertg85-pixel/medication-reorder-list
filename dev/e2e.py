@@ -174,7 +174,8 @@ with sync_playwright() as pw:
     # owner switches off maria's "remove" permission → her × disappears after refresh
     p.click('#tabs [data-tab=owner]'); p.wait_for_timeout(900)
     if p.is_visible('#ownLock'): p.fill('#ownPw', REALPW['owner']); p.click('#ownUnlock'); p.wait_for_timeout(1200)
-    p.locator('tr[data-sub] [data-uperm=remove]').locator('xpath=..').click(); p.wait_for_timeout(900)
+    p.locator('tr[data-sub] [data-uperm=remove]').locator('xpath=..').click(); p.wait_for_timeout(300)
+    p.locator('tr[data-sub] [data-upd]').first.click(); p.wait_for_timeout(1200); print('11a update message:', p.inner_text('#ownPeopleMsg'))
     m.reload(); m.wait_for_timeout(1800); print('11 maria remove buttons after switch-off:', m.locator('#listBody [data-del]').count())
     # maria submits
     m.click('#submitBtn'); m.wait_for_timeout(1500)
@@ -183,7 +184,8 @@ with sync_playwright() as pw:
     print('13 archive (maria):', m.inner_text('#archCount'), '|', m.locator('#archBody tr.order').first.inner_text().replace('\n', ' ')[:140])
     m.locator('#archBody tr.order').first.click(); m.wait_for_timeout(300); m.screenshot(path=OUT + 'archive_phone.png', full_page=True)
     # owner switches off maria's access to NTX1 → she's told on next /me check; on reload she can't get in
-    p.locator('tr[data-sub] [data-ust=NTX1]').locator('xpath=..').click(); p.wait_for_timeout(900)
+    p.locator('tr[data-sub] [data-ust=NTX1]').locator('xpath=..').click(); p.wait_for_timeout(300)
+    p.locator('tr[data-sub] [data-upd]').first.click(); p.wait_for_timeout(1200)
     m.reload(); m.wait_for_timeout(1500); print('14 maria after access switched off:', m.inner_text('#liMsg') if m.is_visible('#login') else 'STILL IN APP')
     # import old shared-drive file into NTX2 (owner)
     old = {"reorder": [{"id": "o1", "dateAdded": "2026-11-01", "item": "AMPHETAMINE-DEXTROAMPHETAMINE 5-5-5-5 MG TAB", "qty": 2}],

@@ -38,6 +38,7 @@
   th { font-size: 12.5px; color: var(--muted); font-weight: 600; }
   th.c, td.c { text-align: center; }
   tr.off td { opacity: .55; }
+  tr.dirty td { background: color-mix(in srgb, #e0a100 14%, var(--panel)); }
   .role { font-size: 12px; color: var(--muted); }
   .ust { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
   .ust.ok { background: var(--ok-soft); color: var(--ok); } .ust.wait { background: var(--warn-soft); color: var(--warn); }
@@ -112,7 +113,8 @@
 
     <section class="card">
       <h2>People</h2>
-      <div class="hint" style="margin-bottom:8px">Switches save as soon as you change them. Resetting a password signs that person out everywhere.</div>
+      <div class="hint" style="margin-bottom:8px">Change a person’s switches, then press <b>Update</b> on their row to save. Resetting a password signs that person out everywhere.</div>
+      <div class="msg ok" id="peopleMsg" role="status" style="margin:0 0 8px"></div>
       <div id="people"><div class="hint">Loading…</div></div>
     </section>
 

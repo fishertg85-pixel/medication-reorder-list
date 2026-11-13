@@ -12,6 +12,7 @@ function showOwnLock(msg){
 function ownerLockNow(msg, serverSaid){
   const was = OWN_UNTIL > 0; OWN_UNTIL = 0;
   if(was && !serverSaid) api('POST', '/owner-lock', {}).catch(() => {});
+  for(const k in STAGED) delete STAGED[k]; peopleMsg('');
   OWN = {stores:[], users:[]}; $('ownPeople').innerHTML = ''; $('ownStores').innerHTML = '';   // nothing left on screen
   if(ownerTabActive()) showOwnLock(msg);
 }
@@ -44,6 +45,15 @@ let OWN = {stores:[], users:[]};
 // temporary passwords made on this screen, kept only in this page (never saved anywhere) so they can be copied again
 // while the person is still pending; gone on sign-out or reload, or once the person has signed in
 const TEMPS = {};
+// switch changes on a person's row wait here until Update is pressed on that row (Undo puts them back)
+const STAGED = {};
+function effUser(u){
+  const s = STAGED[u.sub]; if(!s) return u;
+  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}),
+    disabled:s.disabled !== undefined ? s.disabled : u.disabled});
+}
+const stageBtns = sub => `<button class="btn small" data-upd="${esc(sub)}">Update</button> <button class="btn2 small" data-undo="${esc(sub)}">Undo</button>`;
+function peopleMsg(m){ $('ownPeopleMsg').textContent = m || ''; }
 const COPY_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
 function signInText(u, pw){
   const on = (OWN.stores || []).filter(s => u.stores && u.stores[s.id] === true).map(s => s.id);
@@ -62,6 +72,7 @@ async function loadOwner(){
     const [s, u] = await Promise.all([api('GET', '/owner/stores'), api('GET', '/owner/users')]);
     OWN = {stores:s.stores, users:u.users};
     for(const k in TEMPS) if(!OWN.users.some(x => x.sub === k && x.pending)) delete TEMPS[k];
+    for(const k in STAGED) if(!OWN.users.some(x => x.sub === k)) delete STAGED[k];
     for(const st of OWN.stores) if(st.hasLogo && LOGOS[st.id] === undefined) loadLogo(st.id).then(renderOwnStores);
     renderOwner();
   }catch(e){ if(!e.auth) $('ownPeople').innerHTML = `<div class="banner warn">${esc(e.message)}</div>`; }
@@ -98,17 +109,18 @@ function renderOwnPeople(){
   $('ownPeople').innerHTML = `<div class="tscroll"><table class="people"><thead><tr><th>Person</th><th>Status</th><th>Mobile</th>
       ${st.map(s => `<th class="c" title="${esc(s.name)}">${esc(s.id)}</th>`).join('')}
       ${P.map(p => `<th class="c" title="${PERM_LABELS[p]}">${PERM_HEADS[p]}</th>`).join('')}<th class="c">Login on</th><th></th><th></th></tr></thead><tbody>
-    ${OWN.users.map(u => u.owner ? `<tr><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Acct Manager</div></td><td data-l="Status">${statusBadge(u)}</td><td data-l="Mobile">${esc(u.phone)}</td>
+    ${OWN.users.map(effUser).map(u => u.owner ? `<tr><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Acct Manager</div></td><td data-l="Status">${statusBadge(u)}</td><td data-l="Mobile">${esc(u.phone)}</td>
         <td colspan="${st.length + P.length + 3}" class="hint">Full access to every pharmacy</td></tr>`
-      : u.host ? `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Host (IronLedger)</div></td><td data-l="Status">${statusBadge(u)}</td><td data-l="Mobile">${esc(u.phone)}</td>
+      : u.host ? `<tr data-sub="${esc(u.sub)}" class="${u.disabled ? 'off' : ''}${STAGED[u.sub] ? ' dirty' : ''}"><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Host (IronLedger)</div></td><td data-l="Status">${statusBadge(u)}</td><td data-l="Mobile">${esc(u.phone)}</td>
         ${st.map(s => `<td class="c" data-l="${esc(s.id)}">${sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Let the host open ' + s.name)}</td>`).join('')}
-        <td colspan="${P.length + 3}" class="hint" title="Runs the program for you: passwords, phones, logins. Sees a pharmacy’s list only if you switch it on here.">IronLedger support · sees a list only if switched on</td></tr>`
-      : `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)}</div></td><td data-l="Status">${statusBadge(u)}</td>
+        ${STAGED[u.sub] ? `<td colspan="${P.length + 1}" class="hint">IronLedger support</td><td class="acts">${stageBtns(u.sub)}</td><td></td>`
+          : `<td colspan="${P.length + 3}" class="hint" title="Runs the program for you: passwords, phones, logins. Sees a pharmacy’s list only if you switch it on here.">IronLedger support · sees a list only if switched on</td>`}</tr>`
+      : `<tr data-sub="${esc(u.sub)}" class="${u.disabled ? 'off' : ''}${STAGED[u.sub] ? ' dirty' : ''}"><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)}</div></td><td data-l="Status">${statusBadge(u)}</td>
         <td data-l="Mobile">${esc(u.phone)} <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button></td>
         ${st.map(s => `<td class="c" data-l="${esc(s.id)}">${sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name)}</td>`).join('')}
         ${P.map(p => `<td class="c" data-l="${PERM_LABELS[p]}">${sw(`data-uperm="${p}"`, u.perms[p], PERM_LABELS[p])}</td>`).join('')}
         <td class="c" data-l="Login on">${sw('data-uon="1"', !u.disabled, 'Switch this login on or off')}</td>
-        <td class="acts"><button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button> <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button></td>
+        <td class="acts">${STAGED[u.sub] ? stageBtns(u.sub) : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button> <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`}</td>
         <td class="c copycell" data-l="Copy sign-in">${u.pending && TEMPS[u.sub] ? `<button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${COPY_SVG}</button>` : ''}</td></tr>`).join('')}
     </tbody></table></div>`;
 }
@@ -145,20 +157,34 @@ $('npGen').onclick = () => { $('npPass').value = genTemp(); };
 $('ownPeople').addEventListener('change', async e => {
   const c = e.target.closest('input[type=checkbox]'); if(!c) return;
   const sub = c.closest('tr').dataset.sub, u = OWN.users.find(x => x.sub === sub); if(!u) return;
-  let body;
-  if(c.dataset.ust) body = {stores:{[c.dataset.ust]:c.checked}};
-  else if(c.dataset.uperm) body = {perms:{[c.dataset.uperm]:c.checked}};
-  else if(c.dataset.uon){
-    if(!c.checked && !confirm(`Switch off ${u.name || u.login}'s login? They are signed out everywhere and can't sign in until you switch it back on.`)){ c.checked = true; return; }
-    body = {disabled:!c.checked};
-  }
-  c.disabled = true;
-  try{ await api('POST', '/owner/users/' + encodeURIComponent(sub), body); toast('Saved: ' + (u.name || u.login)); await loadOwner(); }
-  catch(e){ c.checked = !c.checked; if(!e.auth) alert(e.message); }
-  finally{ c.disabled = false; }
+  stageChange(STAGED, u, c); peopleMsg(''); renderOwnPeople();   // nothing is saved until Update is pressed on the row
 });
+// record one switch change against the person's saved settings; a change back to the saved value cancels itself
+function stageChange(staged, u, c){
+  const s = staged[u.sub] || (staged[u.sub] = {});
+  const put = (grp, k, v, was) => { s[grp] = s[grp] || {}; if(v === was) delete s[grp][k]; else s[grp][k] = v; if(!Object.keys(s[grp]).length) delete s[grp]; };
+  if(c.dataset.ust) put('stores', c.dataset.ust, c.checked, (u.stores || {})[c.dataset.ust] === true);
+  else if(c.dataset.uperm) put('perms', c.dataset.uperm, c.checked, !!(u.perms || {})[c.dataset.uperm]);
+  else if(c.dataset.uon){ if(!c.checked === !!u.disabled) delete s.disabled; else s.disabled = !c.checked; }
+  if(!Object.keys(s).length) delete staged[u.sub];
+}
 $('ownPeople').addEventListener('click', async e => {
   const r = e.target.closest('[data-reset]'), ph = e.target.closest('[data-phone]'), dl = e.target.closest('[data-del]'), cp = e.target.closest('[data-copy]');
+  const up = e.target.closest('[data-upd]'), un = e.target.closest('[data-undo]');
+  if(un){ delete STAGED[un.dataset.undo]; peopleMsg(''); renderOwnPeople(); return; }
+  if(up){
+    const u = OWN.users.find(x => x.sub === up.dataset.upd), body = STAGED[up.dataset.upd]; if(!u || !body) return;
+    if(body.disabled === true && !confirm(`Switch off ${u.name || u.login}'s login? They are signed out everywhere and can't sign in until you switch it back on.`)) return;
+    busy(up, true);
+    try{
+      await api('POST', '/owner/users/' + encodeURIComponent(u.sub), body);
+      delete STAGED[u.sub];
+      peopleMsg(body.disabled === true ? `${u.name || u.login}'s login was switched off. They were signed out.`
+        : `${u.name || u.login}'s account access was updated. It takes effect after they sign out and sign back in.`);
+      await loadOwner();
+    }catch(err){ busy(up, false); if(!err.auth) alert(err.message); }
+    return;
+  }
   if(cp){
     const u = OWN.users.find(x => x.sub === cp.dataset.copy); if(!u || !TEMPS[u.sub]) return;
     toast(await copyText(signInText(u, TEMPS[u.sub])) ? `Copied ${u.name || u.login}'s sign-in details.` : 'Couldn’t copy. Select the text in the box at the top instead.');

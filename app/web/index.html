@@ -181,7 +181,8 @@
   .btn.small,.btn2.small{padding:5px 10px;font-size:12.5px;}
   .btn2.danger{color:var(--bad, #a33);border-color:currentColor;}
   .copyb{padding:4px 8px;vertical-align:middle;line-height:0;} .copyb svg{display:block;}
-  table.people th, table.people td{white-space:nowrap;}   /* no wrapping in the people list */
+  table.people th, table.people td{white-space:nowrap;}
+  table.people tr.dirty td{background:color-mix(in srgb, #e0a100 14%, var(--panel)) !important;}   /* no wrapping in the people list */
   table.people td.acts{white-space:nowrap;} table.people td.copycell{padding-left:18px;}
   @media (max-width:820px){ table.people td.copycell:empty{display:none;}
     table.people td.acts, table.people td.hint, table.people td[data-l="Status"]{grid-column:1 / -1;} }
@@ -437,7 +438,8 @@
     <div class="banner info" id="passBox"></div>
     <div class="card">
       <h2>People</h2>
-      <div class="hint" style="margin-bottom:8px;">Switch each person’s access on or off for each pharmacy, and what they may do. Changes apply within a few seconds.</div>
+      <div class="hint" style="margin-bottom:8px;">Change a person’s switches, then press <b>Update</b> on their row to save. <b>Undo</b> puts them back.</div>
+      <div id="ownPeopleMsg" class="npmsg ok" role="status"></div>
       <div id="ownPeople"></div>
     </div>
     <div class="card">
