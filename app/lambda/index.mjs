@@ -277,16 +277,24 @@ async function publicPharmacy(id){
   const l = s.Item.hasLogo ? await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'LOGO', sk: id } })) : null;
   return { found: true, id, name: s.Item.name, logo: (l && l.Item && l.Item.dataUrl) || '' };
 }
+const TEMP_DAYS = 7;                                   // matches TemporaryPasswordValidityDays in template.yaml
+function pendingOf(p, c){
+  if(!c || c.status !== 'FORCE_CHANGE_PASSWORD') return { pending: false };
+  const issued = p.tempIssuedAt || p.createdAt || (c.created ? new Date(c.created).toISOString() : null);
+  const expires = issued ? new Date(Date.parse(issued) + TEMP_DAYS * 86400000).toISOString() : null;
+  return { pending: true, tempIssuedAt: issued, tempExpires: expires, tempExpired: !!expires && Date.parse(expires) < Date.now() };
+}
 async function listPeople(){
   const profiles = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'USERS' } });
   const status = {}; let PaginationToken;
   do { const r = await idp.send(new ListUsersCommand({ UserPoolId: POOL, PaginationToken, Limit: 60 }));
-    for(const u of r.Users || []){ const sub = (u.Attributes || []).find(a => a.Name === 'sub'); if(sub) status[sub.Value] = { status: u.UserStatus, enabled: u.Enabled }; }
+    for(const u of r.Users || []){ const sub = (u.Attributes || []).find(a => a.Name === 'sub'); if(sub) status[sub.Value] = { status: u.UserStatus, enabled: u.Enabled, created: u.UserCreateDate }; }
     PaginationToken = r.PaginationToken; } while(PaginationToken);
   return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host,
     stores: p.stores || {}, perms: permsOf(p), disabled: status[p.sk] ? !status[p.sk].enabled : !!p.disabled,
-    status: (status[p.sk] || {}).status || 'UNKNOWN' }))
-    .sort((a, b) => (b.owner - a.owner) || (b.host - a.host) || (a.name || a.login).localeCompare(b.name || b.login));
+    status: (status[p.sk] || {}).status || 'UNKNOWN', ...pendingOf(p, status[p.sk]) }))
+    // Account Manager, host, then people still waiting to sign in for the first time, then everyone else
+    .sort((a, b) => (b.owner - a.owner) || (b.host - a.host) || (b.pending - a.pending) || (a.name || a.login).localeCompare(b.name || b.login));
 }
 async function cleanStoreToggles(obj){
   const all = new Set((await allStores()).map(s => s.id)), out = {};
@@ -302,7 +310,15 @@ async function createLogin(b){
   let r;
   try{ r = await idp.send(new AdminCreateUserCommand({ UserPoolId: POOL, Username: login, TemporaryPassword: pw, MessageAction: 'SUPPRESS',
     UserAttributes: [{ Name: 'phone_number', Value: phone }, { Name: 'phone_number_verified', Value: 'true' }, ...(name ? [{ Name: 'name', Value: name }] : [])] })); }
-  catch(e){ if(e.name === 'UsernameExistsException') throw bad('That Login ID is already taken.'); throw e; }
+  catch(e){
+    if(e.name !== 'UsernameExistsException') throw e;
+    const people = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'USERS' } });
+    if(people.some(p => p.login === login && !p.deleted)) throw bad('That Login ID is already taken.');
+    // nobody in the list owns it: an earlier add stopped halfway. Remove that half-made login and start again.
+    await idp.send(new AdminDeleteUserCommand({ UserPoolId: POOL, Username: login }));
+    r = await idp.send(new AdminCreateUserCommand({ UserPoolId: POOL, Username: login, TemporaryPassword: pw, MessageAction: 'SUPPRESS',
+      UserAttributes: [{ Name: 'phone_number', Value: phone }, { Name: 'phone_number_verified', Value: 'true' }, ...(name ? [{ Name: 'name', Value: name }] : [])] }));
+  }
   await idp.send(new AdminSetUserMFAPreferenceCommand({ UserPoolId: POOL, Username: login, SMSMfaSettings: { Enabled: true, PreferredMfa: true } })).catch(() => {});
   const sub = ((r.User && r.User.Attributes) || []).find(a => a.Name === 'sub').Value;
   return { sub, login, name, phone, tempPassword: pw };
@@ -334,6 +350,7 @@ async function updatePerson(me, sub, seg3, body){
     if(pw.length < 10 || !/[a-z]/.test(pw) || !/\d/.test(pw)) throw bad('Temporary password: at least 10 characters with a lowercase letter and a number.');
     await idp.send(new AdminSetUserPasswordCommand({ UserPoolId: POOL, Username: p.login, Password: pw, Permanent: false }));
     await idp.send(new AdminUserGlobalSignOutCommand({ UserPoolId: POOL, Username: p.login })).catch(() => {});
+    await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: sub }, UpdateExpression: 'SET tempIssuedAt = :n', ExpressionAttributeValues: { ':n': now() } }));
     return { ok: true, tempPassword: pw };
   }
   if(p.owner && (body.stores !== undefined || body.perms !== undefined || (body.disabled !== undefined && !me.host)))
@@ -452,8 +469,10 @@ async function route(method, path, q, body, me, claims){
       const stores = await cleanStoreToggles(body.stores), perms = Object.assign({}, DEFAULT_PERMS, cleanPerms(body.perms));
       if(body.smsConsent !== true) throw bad('Have the person sign the SMS consent form first, then tick the box.');
       const u = await createLogin(body);
-      await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'USERS', sk: u.sub, login: u.login, name: u.name, phone: u.phone,
-        stores, perms, owner: false, createdAt: now(), createdBy: who(me), smsConsentAt: now(), smsConsentRecordedBy: who(me) } }));
+      try{
+        await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'USERS', sk: u.sub, login: u.login, name: u.name, phone: u.phone,
+          stores, perms, owner: false, createdAt: now(), createdBy: who(me), tempIssuedAt: now(), smsConsentAt: now(), smsConsentRecordedBy: who(me) } }));
+      }catch(e){ await idp.send(new AdminDeleteUserCommand({ UserPoolId: POOL, Username: u.login })).catch(() => {}); throw e; }
       return { ok: true, user: { sub: u.sub, login: u.login, name: u.name, phone: u.phone, stores, perms }, tempPassword: u.tempPassword };
     }
     if(method === 'POST' && seg[1] === 'users' && seg[2]) return await updatePerson(me, seg[2], seg[3], body);
@@ -530,7 +549,11 @@ export const handler = async (event) => {
     }
     return json(200, await route(method, path, event.queryStringParameters || {}, body || {}, me, claims));
   }catch(e){
-    if(e instanceof HttpError) return json(e.code, { error: e.message, ...(e.locked ? { locked: true } : {}) });
+    if(e instanceof HttpError){
+      // refusals are logged (what was asked and why, never the request body) so a "it didn't work" can be traced
+      if(e.code !== 423) console.log(JSON.stringify({ refused: e.code, method: (event.requestContext && event.requestContext.http || {}).method, path: event.rawPath, why: e.message }));
+      return json(e.code, { error: e.message, ...(e.locked ? { locked: true } : {}) });
+    }
     console.error(e);
     return json(500, { error: 'Something went wrong on the server. Try again; if it keeps happening tell the Account Manager.' });
   }

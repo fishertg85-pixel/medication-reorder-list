@@ -29,6 +29,8 @@ async function cog(target, body){
     const code = String(j.__type || '').split('#').pop();
     let msg = COG_ERR[code] || j.message || 'Sign-in failed.';
     if(code === 'NotAuthorizedException' && /disabled/i.test(j.message || '')) msg = 'This login is switched off.';
+    if(code === 'NotAuthorizedException' && /expired/i.test(j.message || '')) msg = 'The temporary password has expired. Run host.sh make-host again for a new one.';
+    if(code === 'NotAuthorizedException' && /attempts exceeded/i.test(j.message || '')) msg = 'Too many wrong tries. Wait 15 minutes, then try once more.';
     if(code === 'InvalidPasswordException' || code === 'InvalidParameterException') msg = 'Password must be at least 10 characters with a lowercase letter and a number.';
     const e = new Error(msg); e.code = code; throw e;
   }
@@ -165,17 +167,23 @@ async function load(){
     render();
   }catch(e){ if(!e.auth) $('people').innerHTML = `<div class="msg">${esc(e.message)}</div>`; }
 }
+const fmtDay = iso => { try{ return new Date(iso).toLocaleDateString('en-US', {month:'short', day:'numeric'}); }catch(e){ return ''; } };
+function statusBadge(u){
+  if(u.disabled) return '<span class="ust off">Login off</span>';
+  if(u.pending && u.tempExpired) return '<span class="ust bad">Temporary password expired</span><div class="role">Reset password for a new one</div>';
+  if(u.pending) return `<span class="ust wait">Pending</span><div class="role">Hasn’t signed in yet${u.tempExpires ? ' · good until ' + fmtDay(u.tempExpires) : ''}</div>`;
+  return '<span class="ust ok">Active</span>';
+}
 const box = (attrs, on, title) => `<input type="checkbox" ${attrs}${on ? ' checked' : ''} title="${esc(title || '')}">`;
 function render(){
   const st = DATA.stores, P = Object.keys(PERMS);
-  $('people').innerHTML = `<div class="tscroll"><table class="stack"><thead><tr><th>Person</th><th>Mobile</th>
+  $('people').innerHTML = `<div class="tscroll"><table class="stack"><thead><tr><th>Person</th><th>Status</th><th>Mobile</th>
       ${st.map(s => `<th class="c" title="${esc(s.name)}">${esc(s.id)}</th>`).join('')}
       ${P.map(p => `<th class="c">${PERMS[p]}</th>`).join('')}<th class="c">Login on</th><th></th></tr></thead><tbody>
     ${DATA.users.map(u => {
       const self = u.sub === (ME && ME.sub) || (u.host && u.login === ME.login);
       const role = u.owner ? 'Account Manager' : u.host ? 'Host (IronLedger)' : '';
-      const waiting = u.status === 'FORCE_CHANGE_PASSWORD' ? ' · hasn’t signed in yet' : '';
-      const who = `<td data-l="Person"><b>${esc(u.name || u.login)}</b> ${role ? `<span class="tag">${role}</span>` : ''}<div class="role mono">${esc(u.login)}${waiting}</div></td>
+      const who = `<td data-l="Person"><b>${esc(u.name || u.login)}</b> ${role ? `<span class="tag">${role}</span>` : ''}<div class="role mono">${esc(u.login)}</div></td><td data-l="Status">${statusBadge(u)}</td>
         <td data-l="Mobile"><span class="mono">${esc(u.phone)}</span> <button class="btn2 small" data-phone="${esc(u.sub)}" title="Change mobile number">Change</button></td>`;
       let mid;
       if(u.owner) mid = `<td colspan="${st.length + P.length}" class="hint" data-l="Access">Full access to every pharmacy</td>`;
@@ -184,7 +192,7 @@ function render(){
         + P.map(p => `<td class="c" data-l="${PERMS[p]}">${box(`data-uperm="${p}"`, u.perms[p], PERMS[p])}</td>`).join('');
       const on = self ? `<td class="c hint" data-l="Login on">yours</td>` : `<td class="c" data-l="Login on">${box('data-uon="1"', !u.disabled, 'Switch this login on or off')}</td>`;
       return `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}>${who}${mid}${on}
-        <td>${self ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`}${u.owner || u.host ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">Delete</button>`}</td></tr>`;
+        <td>${self ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`}${u.owner || u.host ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`}</td></tr>`;
     }).join('')}
     </tbody></table></div>`;
   $('nStores').innerHTML = st.map(s => `<label class="chk"><input type="checkbox" data-nst="${esc(s.id)}"${st.length === 1 ? ' checked' : ''}> ${esc(s.id)} · ${esc(s.name)}</label>`).join('') || '<span class="hint">Add a pharmacy first.</span>';
@@ -237,7 +245,7 @@ $('people').addEventListener('click', async e => {
   const ph = e.target.closest('[data-phone]'), rs = e.target.closest('[data-reset]'), dl = e.target.closest('[data-del]');
   if(dl){
     const u = DATA.users.find(x => x.sub === dl.dataset.del);
-    const typed = prompt(`Delete ${u.name || u.login} for good?\n\nTheir login is removed and can't be switched back on. Orders and archive lines they entered stay, under their name.\nTo just stop them signing in for now, switch their login off instead.\n\nType their Login ID (${u.login}) to delete:`);
+    const typed = prompt(u.pending ? `Cancel ${u.name || u.login}'s invitation?\n\nThey haven't signed in yet. Their login and temporary password are removed, and the Login ID can be used again.\n\nType their Login ID (${u.login}) to cancel it:` : `Delete ${u.name || u.login} for good?\n\nTheir login is removed and can't be switched back on. Orders and archive lines they entered stay, under their name.\nTo just stop them signing in for now, switch their login off instead.\n\nType their Login ID (${u.login}) to delete:`);
     if(typed === null) return;
     if(typed.trim().toLowerCase() !== u.login) return alert('The Login ID didn’t match. Nothing was deleted.');
     try{ await api('POST', '/host/users/' + encodeURIComponent(u.sub) + '/delete', {}); await load(); alert(`${u.name || u.login} was deleted.`); }catch(err){ if(!err.auth) alert(err.message); }

@@ -61,6 +61,10 @@ rep('</style>\n</head>', r'''
   .pfields input,.pfields select,.formgrid select{width:100%;background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:7px 9px;font-size:14px;font-family:inherit;} .pfields label:has(.wide){grid-column:span 2;}
   .btn.small,.btn2.small{padding:5px 10px;font-size:12.5px;}
   .btn2.danger{color:var(--bad, #a33);border-color:currentColor;}
+  .npmsg{min-height:1.4em;margin-top:8px;font-weight:600;color:var(--bad, #a33);} .npmsg.ok{color:var(--ok, #2f6b4e);}
+  .ustat{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:1px 9px;white-space:nowrap;}
+  .ustat.ok{background:var(--ok-soft, #d5e6dc);color:var(--ok, #2f6b4e);} .ustat.wait{background:var(--warn-soft, #f3e7d8);color:var(--warn, #8a5a22);}
+  .ustat.bad{background:var(--bad-soft, #f2ded9);color:var(--bad, #8e3d2b);} .ustat.off{background:var(--panel-2, #ddd);color:var(--muted, #555);}
   label.btn2{display:inline-block;}
   .tscroll{overflow-x:auto;}
   table.people th.c, table.people td.c{text-align:center;}
@@ -246,10 +250,11 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
         <label><span>Mobile number (for sign-in codes)</span><input type="tel" id="npPhone" placeholder="817-555-1234"></label>
         <label><span>Temporary password</span><input type="text" id="npPass" class="mono" spellcheck="false"></label>
       </div>
-      <label class="chk" style="margin-top:10px;"><input type="checkbox" id="npConsent" style="width:18px;height:18px;"> The employee has signed the <a href="sms-consent.html" target="_blank" rel="noopener">SMS consent form</a> for this mobile number (print it, have them sign, keep it on file).</label>
+      <label class="chk" style="margin-top:10px;"><input type="checkbox" id="npConsent" style="width:18px;height:18px;"> The employee has signed the <a href="https://ironledgerrx.com/sms-consent.html" target="_blank" rel="noopener">SMS consent form</a> for this mobile number (print it, have them sign, keep it on file).</label>
       <div style="margin-top:8px;"><b class="hint">Pharmacies:</b><div id="npStores"></div></div>
       <div style="margin-top:4px;"><b class="hint">May:</b><div id="npPerms"></div></div>
       <div class="toolbar" style="margin-top:10px;"><button class="btn" id="npAdd">Add person</button> <button class="btn2" id="npGen">New temporary password</button></div>
+      <div id="npMsg" class="npmsg" role="status"></div>
     </div>
     <div class="card">
       <h2>Pharmacies</h2>

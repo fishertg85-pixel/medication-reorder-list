@@ -81,6 +81,8 @@ async function cog(target, body){
     const code = String(j.__type || '').split('#').pop();
     let msg = COG_ERR[code] || j.message || 'Sign-in failed.';
     if(code === 'NotAuthorizedException' && /disabled/i.test(j.message || '')) msg = 'This login is switched off. Ask the account owner.';
+    if(code === 'NotAuthorizedException' && /expired/i.test(j.message || '')) msg = 'Your temporary password has expired. Ask the Account Manager for a new one.';
+    if(code === 'NotAuthorizedException' && /attempts exceeded/i.test(j.message || '')) msg = 'Too many wrong tries. Wait 15 minutes, then try once more.';
     if(code === 'NotAuthorizedException' && /attempts exceeded/i.test(j.message || '')) msg = 'Too many wrong passwords. Wait a few minutes, or use “Forgot password?”.';
     if(code === 'InvalidPasswordException' || code === 'InvalidParameterException') msg = 'Password must be at least 10 characters and include a lowercase letter and a number.';
     const e = new Error(msg); e.code = code; throw e;
@@ -1232,23 +1234,30 @@ function renderOwnStores(){
         <div><button class="btn small" data-savestore="${esc(s.id)}">Save details</button></div></div>
     </div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
 }
+const fmtDay = iso => { try{ return new Date(iso).toLocaleDateString('en-US', {month:'short', day:'numeric'}); }catch(e){ return ''; } };
+function statusBadge(u){
+  if(u.disabled) return '<span class="ustat off">Login off</span>';
+  if(u.pending && u.tempExpired) return `<span class="ustat bad">Temporary password expired</span><div class="maker">Reset password to send a new one</div>`;
+  if(u.pending) return `<span class="ustat wait">Pending</span><div class="maker">Hasn’t signed in yet${u.tempExpires ? ' · temporary password good until ' + fmtDay(u.tempExpires) : ''}</div>`;
+  return '<span class="ustat ok">Active</span>';
+}
 const sw = (attrs, on, title) => `<label class="switch" title="${esc(title || '')}"><input type="checkbox" ${attrs}${on ? ' checked' : ''}><span></span></label>`;
 function renderOwnPeople(){
   const st = OWN.stores, P = Object.keys(PERM_LABELS);
-  $('ownPeople').innerHTML = `<div class="tscroll"><table class="people"><thead><tr><th>Person</th><th>Mobile</th>
+  $('ownPeople').innerHTML = `<div class="tscroll"><table class="people"><thead><tr><th>Person</th><th>Status</th><th>Mobile</th>
       ${st.map(s => `<th class="c" title="${esc(s.name)}">${esc(s.id)}</th>`).join('')}
       ${P.map(p => `<th class="c">${PERM_LABELS[p]}</th>`).join('')}<th class="c">Login on</th><th></th></tr></thead><tbody>
-    ${OWN.users.map(u => u.owner ? `<tr><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Account Manager</div></td><td data-l="Mobile">${esc(u.phone)}</td>
+    ${OWN.users.map(u => u.owner ? `<tr><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Account Manager</div></td><td data-l="Status">${statusBadge(u)}</td><td data-l="Mobile">${esc(u.phone)}</td>
         <td colspan="${st.length + P.length + 2}" class="hint">Full access to every pharmacy (can’t be changed)</td></tr>`
-      : u.host ? `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Host (IronLedger)</div></td><td data-l="Mobile">${esc(u.phone)}</td>
+      : u.host ? `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Host (IronLedger)</div></td><td data-l="Status">${statusBadge(u)}</td><td data-l="Mobile">${esc(u.phone)}</td>
         ${st.map(s => `<td class="c" data-l="${esc(s.id)}">${sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Let the host open ' + s.name)}</td>`).join('')}
         <td colspan="${P.length + 2}" class="hint">Runs the program for you: passwords, phones, logins. Sees a pharmacy’s list only if you switch it on here.</td></tr>`
-      : `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)}${u.status === 'FORCE_CHANGE_PASSWORD' ? ' · hasn’t signed in yet' : ''}</div></td>
+      : `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)}</div></td><td data-l="Status">${statusBadge(u)}</td>
         <td data-l="Mobile">${esc(u.phone)} <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button></td>
         ${st.map(s => `<td class="c" data-l="${esc(s.id)}">${sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name)}</td>`).join('')}
         ${P.map(p => `<td class="c" data-l="${PERM_LABELS[p]}">${sw(`data-uperm="${p}"`, u.perms[p], PERM_LABELS[p])}</td>`).join('')}
         <td class="c" data-l="Login on">${sw('data-uon="1"', !u.disabled, 'Switch this login on or off')}</td>
-        <td><button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button> <button class="btn2 small danger" data-del="${esc(u.sub)}">Delete</button></td></tr>`).join('')}
+        <td><button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button> <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button></td></tr>`).join('')}
     </tbody></table></div>`;
 }
 function paintNewPerson(){
@@ -1261,18 +1270,21 @@ $('npAdd').onclick = async () => {
   const stores = {}; document.querySelectorAll('[data-npst]').forEach(c => stores[c.dataset.npst] = c.checked);
   const perms = {}; document.querySelectorAll('[data-npperm]').forEach(c => perms[c.dataset.npperm] = c.checked);
   const body = {name:$('npName').value.trim(), login:$('npLogin').value.trim().toLowerCase(), phone:$('npPhone').value.trim(), tempPassword:$('npPass').value.trim() || undefined, stores, perms, smsConsent:$('npConsent').checked};
-  if(!body.name || !body.login || !body.phone) return toast('Name, Login ID and mobile number are all needed.');
-  if(!body.smsConsent) return toast('Have them sign the SMS consent form first, then tick the box.');
+  const say = (m, ok) => { $('npMsg').textContent = m; $('npMsg').className = 'npmsg' + (ok ? ' ok' : ''); };
+  say('');
+  if(!body.name || !body.login || !body.phone) return say('Name, Login ID and mobile number are all needed.');
+  if(!body.smsConsent) return say('Tick the box to confirm they signed the SMS consent form for this number.');
   busy($('npAdd'), true);
   try{
     const r = await api('POST', '/owner/users', body);
     const ids = Object.keys(stores).filter(k => stores[k]);
     showPassBox(`<b>${esc(body.name)} can sign in now.</b> Give them:<br>Pharmacy ID: <b class="mono">${esc(ids.join(' or ') || '(switch one on first)')}</b><br>
       Login ID: <b class="mono">${esc(r.user.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b><br>
-      <span class="hint">They choose their own password the first time, then a code is texted to ${esc(r.user.phone)}. This temporary password isn’t shown again.</span>`);
+      <span class="hint">They choose their own password the first time they sign in. The temporary password works for 7 days and isn’t shown again.</span>`);
     ['npName','npLogin','npPhone'].forEach(k => $(k).value = ''); $('npPass').value = genTemp(); $('npConsent').checked = false;
+    say(`Added ${body.name}. They are at the top of the list as Pending until they sign in for the first time.`, true);
     await loadOwner();
-  }catch(e){ if(!e.auth) alert(e.message); }
+  }catch(e){ if(!e.auth) say('Not added: ' + e.message); }
   finally{ busy($('npAdd'), false); }
 };
 $('npGen').onclick = () => { $('npPass').value = genTemp(); };
@@ -1295,10 +1307,10 @@ $('ownPeople').addEventListener('click', async e => {
   const r = e.target.closest('[data-reset]'), ph = e.target.closest('[data-phone]'), dl = e.target.closest('[data-del]');
   if(dl){
     const u = OWN.users.find(x => x.sub === dl.dataset.del);
-    const typed = prompt(`Delete ${u.name || u.login} for good?\n\nTheir login is removed and can't be switched back on. Orders and archive lines they entered stay, under their name.\nTo just stop them signing in for now, switch their login off instead.\n\nType their Login ID (${u.login}) to delete:`);
+    const typed = prompt(u.pending ? `Cancel ${u.name || u.login}'s invitation?\n\nThey haven't signed in yet. Their login and temporary password are removed, and the Login ID can be used again.\n\nType their Login ID (${u.login}) to cancel it:` : `Delete ${u.name || u.login} for good?\n\nTheir login is removed and can't be switched back on. Orders and archive lines they entered stay, under their name.\nTo just stop them signing in for now, switch their login off instead.\n\nType their Login ID (${u.login}) to delete:`);
     if(typed === null) return;
     if(typed.trim().toLowerCase() !== u.login) return alert('The Login ID didn’t match. Nothing was deleted.');
-    try{ await api('POST', '/owner/users/' + encodeURIComponent(u.sub) + '/delete', {}); toast(`${u.name || u.login} was deleted.`); loadOwner(); }catch(err){ if(!err.auth) alert(err.message); }
+    try{ await api('POST', '/owner/users/' + encodeURIComponent(u.sub) + '/delete', {}); toast(u.pending ? `${u.name || u.login}'s invitation was cancelled.` : `${u.name || u.login} was deleted.`); loadOwner(); }catch(err){ if(!err.auth) alert(err.message); }
   }
   if(ph){
     const u = OWN.users.find(x => x.sub === ph.dataset.phone);

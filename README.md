@@ -36,6 +36,8 @@ python3 recent_test.py     # used-before ordering (recent, then frequency)
 python3 tz_test.py         # per-pharmacy time zones
 python3 dist_test.py       # adding a distributor
 python3 host_test.py       # the host page: its own gate, sign-in and lock
+python3 am_people_test.py  # Account Manager: add (pending), first sign-in (active), cancel invite, delete
+python3 edge_test.py       # half-made logins from a failed add; expired temporary passwords
 ```
 
 ## Deploy

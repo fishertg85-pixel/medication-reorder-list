@@ -28,7 +28,11 @@ case "$cmd" in
     need_login; pw="$(temp_pw)"
     aws cognito-idp admin-set-user-password --user-pool-id "$POOL" --username "$login" --password "$pw" --no-permanent --region "$REGION"
     aws cognito-idp admin-user-global-sign-out --user-pool-id "$POOL" --username "$login" --region "$REGION" || true
-    echo "Temporary password for ${login}: ${pw}   (they choose their own at the next sign-in)" ;;
+    sub="$(aws cognito-idp admin-get-user --user-pool-id "$POOL" --username "$login" --region "$REGION" --query "UserAttributes[?Name=='sub'].Value | [0]" --output text)"
+    aws dynamodb update-item --table-name "$MAIN" --region "$REGION" --key "{\"pk\":{\"S\":\"USERS\"},\"sk\":{\"S\":\"$sub\"}}" \
+      --update-expression "SET tempIssuedAt = :n" --condition-expression "attribute_exists(sk)" \
+      --expression-attribute-values "{\":n\":{\"S\":\"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\"}}" >/dev/null 2>&1 || true
+    echo "Temporary password for ${login}: ${pw}   (good for 7 days; they choose their own at the next sign-in)" ;;
   set-phone)
     need_login; num="$(echo "${3:-}" | tr -dc '0-9')"
     [ ${#num} -eq 10 ] && num="+1${num}" || { [ ${#num} -eq 11 ] && [ "${num:0:1}" = 1 ] && num="+${num}"; } || { echo "Give a 10-digit US mobile number."; exit 1; }
