@@ -117,7 +117,7 @@ with sync_playwright() as pw:
     print('L1 owner tab locked at first:', p.is_visible('#ownLock'), '| body hidden:', not p.is_visible('#ownBody'))
     p.fill('#ownPw', 'wrongpass99'); p.click('#ownUnlock'); p.wait_for_timeout(700); print('L2 wrong password:', p.inner_text('#ownLockMsg'))
     p.fill('#ownPw', REALPW['owner']); p.click('#ownUnlock'); p.wait_for_timeout(1200)
-    print('L3 unlocked:', p.is_visible('#ownBody'), '| people rows:', p.locator('table.people tbody tr').count())
+    print('L3 unlocked:', p.is_visible('#ownBody'), '| people rows:', p.locator('.ulist .urow').count())
     p.click('#tabs [data-tab=list]'); p.wait_for_timeout(200); p.click('#tabs [data-tab=owner]'); p.wait_for_timeout(600)
     print('L4 back within 5 min, still open:', p.is_visible('#ownBody'))
     card = p.locator('.pcard').first
@@ -152,7 +152,7 @@ with sync_playwright() as pw:
     p.fill('#ownPw', REALPW['owner']); p.click('#ownUnlock'); p.wait_for_timeout(1200); print('L7 unlocked again:', p.is_visible('#ownBody'))
     # client-side idle: pretend the last activity was 6 minutes ago
     p.evaluate("ownLastAct = Date.now() - 6*60*1000"); p.wait_for_timeout(16000)
-    print('L8 client idle lock:', p.is_visible('#ownLock'), '| people table cleared:', p.locator('table.people').count() == 0)
+    print('L8 client idle lock:', p.is_visible('#ownLock'), '| people table cleared:', p.locator('.ulist').count() == 0)
     p.fill('#ownPw', REALPW['owner']); p.click('#ownUnlock'); p.wait_for_timeout(1200)
     # ================= employee, phone
     REALPW['maria.t'] = temp; WANT_CHALLENGE['maria.t'] = {}
@@ -174,8 +174,8 @@ with sync_playwright() as pw:
     # owner switches off maria's "remove" permission → her × disappears after refresh
     p.click('#tabs [data-tab=owner]'); p.wait_for_timeout(900)
     if p.is_visible('#ownLock'): p.fill('#ownPw', REALPW['owner']); p.click('#ownUnlock'); p.wait_for_timeout(1200)
-    p.locator('tr[data-sub] [data-uperm=remove]').locator('xpath=..').click(); p.wait_for_timeout(300)
-    p.locator('tr[data-sub] [data-upd]').first.click(); p.wait_for_timeout(1200); print('11a update message:', p.inner_text('#ownPeopleMsg'))
+    p.locator('[data-sub] [data-uperm=remove]').locator('xpath=..').click(); p.wait_for_timeout(300)
+    p.locator('[data-sub] [data-upd]').first.click(); p.wait_for_timeout(1200); print('11a update message:', p.inner_text('#ownPeopleMsg'))
     m.reload(); m.wait_for_timeout(1800); print('11 maria remove buttons after switch-off:', m.locator('#listBody [data-del]').count())
     # maria submits
     m.click('#submitBtn'); m.wait_for_timeout(1500)
@@ -184,8 +184,8 @@ with sync_playwright() as pw:
     print('13 archive (maria):', m.inner_text('#archCount'), '|', m.locator('#archBody tr.order').first.inner_text().replace('\n', ' ')[:140])
     m.locator('#archBody tr.order').first.click(); m.wait_for_timeout(300); m.screenshot(path=OUT + 'archive_phone.png', full_page=True)
     # owner switches off maria's access to NTX1 → she's told on next /me check; on reload she can't get in
-    p.locator('tr[data-sub] [data-ust=NTX1]').locator('xpath=..').click(); p.wait_for_timeout(300)
-    p.locator('tr[data-sub] [data-upd]').first.click(); p.wait_for_timeout(1200)
+    p.locator('[data-sub] [data-ust=NTX1]').locator('xpath=..').click(); p.wait_for_timeout(300)
+    p.locator('[data-sub] [data-upd]').first.click(); p.wait_for_timeout(1200)
     m.reload(); m.wait_for_timeout(1500); print('14 maria after access switched off:', m.inner_text('#liMsg') if m.is_visible('#login') else 'STILL IN APP')
     # import old shared-drive file into NTX2 (owner)
     old = {"reorder": [{"id": "o1", "dateAdded": "2026-11-01", "item": "AMPHETAMINE-DEXTROAMPHETAMINE 5-5-5-5 MG TAB", "qty": 2}],

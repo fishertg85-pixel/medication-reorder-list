@@ -1295,33 +1295,33 @@ function statusBadge(u){
 const sw = (attrs, on, title) => `<label class="switch" title="${esc(title || '')}"><input type="checkbox" ${attrs}${on ? ' checked' : ''}><span></span></label>`;
 function renderOwnPeople(){
   const st = OWN.stores, P = Object.keys(PERM_LABELS);
-  $('ownPeople').innerHTML = `<div class="tscroll"><table class="people"><thead><tr><th>Person</th><th>Status</th><th>Mobile</th>
-      ${st.map(s => `<th class="c" title="${esc(s.name)}">${esc(s.id)}</th>`).join('')}
-      ${P.map(p => `<th class="c" title="${PERM_LABELS[p]}">${PERM_HEADS[p]}</th>`).join('')}<th class="c">Login on</th><th></th><th></th></tr></thead><tbody>
-    ${OWN.users.map(effUser).map(u => u.owner ? `<tr><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Acct Manager</div></td><td data-l="Status">${statusBadge(u)}</td><td data-l="Mobile">${esc(u.phone)}</td>
-        <td colspan="${st.length + P.length + 3}" class="hint">Full access to every pharmacy</td></tr>`
-      : u.host ? `<tr data-sub="${esc(u.sub)}" class="${u.disabled ? 'off' : ''}${STAGED[u.sub] ? ' dirty' : ''}"><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Host (IronLedger)</div></td><td data-l="Status">${statusBadge(u)}</td><td data-l="Mobile">${esc(u.phone)}</td>
-        ${st.map(s => `<td class="c" data-l="${esc(s.id)}">${sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Let the host open ' + s.name)}</td>`).join('')}
-        ${STAGED[u.sub] ? `<td colspan="${P.length + 1}" class="hint">IronLedger support</td><td class="acts">${stageBtns(u.sub)}</td><td></td>`
-          : `<td colspan="${P.length + 3}" class="hint" title="Runs the program for you: passwords, phones, logins. Sees a pharmacy’s list only if you switch it on here.">IronLedger support · sees a list only if switched on</td>`}</tr>`
-      : `<tr data-sub="${esc(u.sub)}" class="${u.disabled ? 'off' : ''}${STAGED[u.sub] ? ' dirty' : ''}"><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)}</div></td><td data-l="Status">${statusBadge(u)}</td>
-        <td data-l="Mobile">${esc(u.phone)} <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button></td>
-        ${st.map(s => `<td class="c" data-l="${esc(s.id)}">${sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name)}</td>`).join('')}
-        ${P.map(p => `<td class="c" data-l="${PERM_LABELS[p]}">${sw(`data-uperm="${p}"`, u.perms[p], PERM_LABELS[p])}</td>`).join('')}
-        <td class="c" data-l="Login on">${sw('data-uon="1"', !u.disabled, 'Switch this login on or off')}</td>
-        <td class="acts">${STAGED[u.sub] ? stageBtns(u.sub) : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button> <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`}</td>
-        <td class="c copycell" data-l="Copy sign-in">${u.pending && TEMPS[u.sub] ? `<button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${COPY_SVG}</button>` : ''}</td></tr>`).join('')}
-    </tbody></table></div>`;
-  fitPeople();
+  const priv = (sw_, label, title) => `<span class="priv" title="${esc(title || label)}">${sw_}<span>${esc(label)}</span></span>`;
+  const head = u => `
+      <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${u.owner ? '<span class="urole">Account Manager</span>' : u.host ? '<span class="urole">Host (IronLedger)</span>' : ''}</div>
+      <div class="ucell mono" data-l="Username">${esc(u.login)}</div>
+      <div class="ucell" data-l="Mobile">${esc(u.phone)}${u.owner || u.host ? '' : ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>`}</div>
+      <div class="ucell" data-l="Status">${statusBadge(u)}</div>`;
+  const acts = u => `<div class="ucell acts">${STAGED[u.sub] ? stageBtns(u.sub) : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button> <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`}</div>
+      <div class="ucell copycell">${u.pending && TEMPS[u.sub] ? `<button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${COPY_SVG}</button>` : ''}</div>`;
+  const rowCls = u => `urow${u.disabled ? ' off' : ''}${STAGED[u.sub] ? ' dirty' : ''}`;
+  $('ownPeople').innerHTML = `<div class="ulist">
+    <div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div><div></div></div>
+    ${OWN.users.map(effUser).map(u => u.owner
+      ? `<div class="urow"><div class="ucols">${head(u)}<div class="ucell acts"></div><div class="ucell copycell"></div></div>
+         <div class="upriv"><span class="plabel">Privileges</span><span class="hint">Full access to every pharmacy</span></div></div>`
+      : u.host
+      ? `<div class="${rowCls(u)}" data-sub="${esc(u.sub)}"><div class="ucols">${head(u)}<div class="ucell acts">${STAGED[u.sub] ? stageBtns(u.sub) : ''}</div><div class="ucell copycell"></div></div>
+         <div class="upriv"><span class="plabel">Privileges</span>
+           <span class="pgroup"><span class="pg">Pharmacies</span>${st.map(s => priv(sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Let the host open ' + s.name), s.id, 'Let the host open ' + s.name)).join('')}</span>
+           <span class="hint">IronLedger support · sees a pharmacy’s list only if switched on here</span></div></div>`
+      : `<div class="${rowCls(u)}" data-sub="${esc(u.sub)}"><div class="ucols">${head(u)}${acts(u)}</div>
+         <div class="upriv"><span class="plabel">Privileges</span>
+           <span class="pgroup"><span class="pg">Pharmacies</span>${st.map(s => priv(sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('')}</span>
+           <span class="pgroup"><span class="pg">Can</span>${P.map(p => priv(sw(`data-uperm="${p}"`, u.perms[p], PERM_LABELS[p]), PERM_LABELS[p], PERM_LABELS[p])).join('')}</span>
+           <span class="pgroup">${priv(sw('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on')}</span></div></div>`).join('')}
+  </div>`;
 }
-// never a sideways scroll: if the table is wider than its space, show each person as a card
-function fitPeople(){
-  const t = $('ownPeople').querySelector('table.people'); if(!t) return;
-  t.classList.remove('cards');
-  if(t.scrollWidth > t.parentElement.clientWidth + 1) t.classList.add('cards');
-}
-let fitTimer = 0;
-window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitPeople, 120); });
+function fitPeople(){}   // the two-line layout fits any width; nothing to switch
 function paintNewPerson(){
   $('npStores').innerHTML = OWN.stores.map(s => `<label class="chk">${sw(`data-npst="${esc(s.id)}"`, OWN.stores.length === 1)} ${esc(s.id)} · ${esc(s.name)}</label>`).join('');
   $('npPerms').innerHTML = Object.entries(PERM_LABELS).map(([p, l]) => `<label class="chk">${sw(`data-npperm="${p}"`, p !== 'export')} ${l}</label>`).join('');
@@ -1345,7 +1345,7 @@ $('npAdd').onclick = async () => {
       Login ID: <b class="mono">${esc(r.user.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b><br>
       <span class="hint">They choose their own password the first time they sign in. The temporary password works for 3 days and isn’t shown again.</span>`);
     ['npName','npLogin','npPhone'].forEach(k => $(k).value = ''); $('npPass').value = genTemp(); $('npConsent').checked = false;
-    say(`Added ${body.name}. They are at the top of the list as Pending until they sign in for the first time. The form is clear for the next person.`, true);
+    say(`Added ${body.name}. They are at the top of the list as Pending until they sign in for the first time. The form is clear for the next user.`, true);
     paintNewPerson(); $('npName').focus({preventScroll: true});      // pharmacies and permissions back to their defaults too, straight away
     await loadOwner();
   }catch(e){ if(!e.auth) say('Not added: ' + e.message); }
@@ -1354,7 +1354,7 @@ $('npAdd').onclick = async () => {
 $('npGen').onclick = () => { $('npPass').value = genTemp(); };
 $('ownPeople').addEventListener('change', async e => {
   const c = e.target.closest('input[type=checkbox]'); if(!c) return;
-  const sub = c.closest('tr').dataset.sub, u = OWN.users.find(x => x.sub === sub); if(!u) return;
+  const sub = c.closest('[data-sub]').dataset.sub, u = OWN.users.find(x => x.sub === sub); if(!u) return;
   stageChange(STAGED, u, c); peopleMsg(''); renderOwnPeople();   // nothing is saved until Update is pressed on the row
 });
 // record one switch change against the person's saved settings; a change back to the saved value cancels itself

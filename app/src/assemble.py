@@ -75,6 +75,26 @@ rep('</style>\n</head>', r'''
   label.btn2{display:inline-block;}
   .tscroll{overflow-x:auto;} #ownPeople .tscroll{overflow-x:visible;}
   table.people th.c, table.people td.c{text-align:center;}
+  /* users: line 1 = user, username, mobile, status, buttons; line 2 = privileges */
+  .ulist{margin-top:4px;}
+  .ucols{display:grid;grid-template-columns:minmax(170px,1.6fr) minmax(100px,1fr) minmax(130px,1fr) minmax(170px,1.3fr) 240px 40px;gap:12px;align-items:center;}
+  .uhead{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700;padding:8px 8px;border-bottom:2px solid var(--line);}
+  .urow{padding:10px 8px;border-bottom:1px solid var(--line);}
+  .urow.off{opacity:.6;} .urow.dirty{background:color-mix(in srgb, #e0a100 14%, var(--panel));border-radius:6px;}
+  .ucell{white-space:nowrap;min-width:0;} .ucell.uname, .ucell.mono{overflow:hidden;text-overflow:ellipsis;}
+  .ucell.acts{text-align:right;} .ucell.copycell{text-align:center;}
+  .urole{margin-left:8px;font-size:11.5px;font-weight:600;color:var(--muted);}
+  .upriv{display:flex;flex-wrap:wrap;align-items:center;gap:8px 22px;margin-top:9px;}
+  .plabel{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;}
+  .pgroup{display:inline-flex;align-items:center;gap:14px;flex-wrap:wrap;} .pg{font-size:12px;color:var(--muted);font-weight:600;}
+  .priv{display:inline-flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;}
+  @media (max-width:820px){
+    .uhead{display:none;}
+    .ucols{grid-template-columns:1fr 1fr;gap:6px 12px;}
+    .ucell[data-l]:before{content:attr(data-l);display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;}
+    .ucell.uname, .ucell.acts{grid-column:1 / -1;} .ucell.acts{text-align:left;} .ucell.copycell:empty{display:none;}
+    .ucell.uname, .ucell.mono{white-space:normal;}
+  }
   /* when the full table is wider than the space it has, each person becomes a card instead of scrolling sideways */
   table.people.cards thead{display:none;}
   table.people.cards, table.people.cards tbody{display:block;}
@@ -254,13 +274,13 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
     <div id="ownBody" style="display:none;">
     <div class="banner info" id="passBox"></div>
     <div class="card">
-      <h2>People</h2>
-      <div class="hint" style="margin-bottom:8px;">Change a person’s switches, then press <b>Update</b> on their row to save. <b>Undo</b> puts them back.</div>
+      <h2>Users</h2>
+      <div class="hint" style="margin-bottom:8px;">Change a user’s privileges, then press <b>Update</b> on that user to save. <b>Undo</b> puts them back.</div>
       <div id="ownPeopleMsg" class="npmsg ok" role="status"></div>
       <div id="ownPeople"></div>
     </div>
     <div class="card">
-      <h2>Add A Person</h2>
+      <h2>Add A User</h2>
       <div class="formgrid">
         <label><span>Name</span><input type="text" id="npName"></label>
         <label><span>Login ID</span><input type="text" id="npLogin" autocapitalize="none" spellcheck="false" placeholder="e.g. maria.t"></label>
@@ -270,7 +290,7 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
       <label class="chk" style="margin-top:10px;"><input type="checkbox" id="npConsent" style="width:18px;height:18px;"> The employee has signed the <a href="https://ironledgerrx.com/sms-consent.html" target="_blank" rel="noopener">SMS consent form</a> for this mobile number (print it, have them sign, keep it on file).</label>
       <div style="margin-top:8px;"><b class="hint">Pharmacies:</b><div id="npStores"></div></div>
       <div style="margin-top:4px;"><b class="hint">May:</b><div id="npPerms"></div></div>
-      <div class="toolbar" style="margin-top:10px;"><button class="btn" id="npAdd">Add person</button> <button class="btn2" id="npGen">New temporary password</button></div>
+      <div class="toolbar" style="margin-top:10px;"><button class="btn" id="npAdd">Add user</button> <button class="btn2" id="npGen">New temporary password</button></div>
       <div id="npMsg" class="npmsg" role="status"></div>
     </div>
     <div class="card">
