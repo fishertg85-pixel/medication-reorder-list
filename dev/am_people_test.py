@@ -24,7 +24,7 @@ PROMPT = ['']
 with sync_playwright() as pw:
     b = pw.chromium.launch()
     errs = []
-    am = b.new_context(viewport={'width': 1280, 'height': 900}).new_page()
+    actx = b.new_context(viewport={'width': 1280, 'height': 900}, permissions=['clipboard-read', 'clipboard-write']); am = actx.new_page()
     am.on('pageerror', lambda e: errs.append(str(e)))
     am.on('dialog', lambda d: d.accept(PROMPT[0]) if d.type == 'prompt' else d.accept())
     am.route('**/clinicaltables.nlm.nih.gov/**', lambda r, q: r.fulfill(status=200, body='[0,[],{},[]]', headers={'Access-Control-Allow-Origin': '*'}))
@@ -56,6 +56,10 @@ with sync_playwright() as pw:
     check('new person is listed as Pending', 'Pending' in row.inner_text() and 'Hasn’t signed in yet' in row.inner_text())
     check('pending person sits right under the Account Manager', 'dtech' in rows.nth(1).inner_text())
     check('pending row offers Cancel invite', row.locator('[data-del]').inner_text() == 'Cancel invite')
+    row.locator('[data-copy]').click(); am.wait_for_timeout(300)
+    clip = am.evaluate('navigator.clipboard.readText()')
+    check('copy icon copies the sign-in details in the agreed format', clip == f'Pharmacy ID: NTX1\nUser ID: dtech\nTemporary Pass: {temp}')
+    print('    copied:', repr(clip))
     am.screenshot(path=OUT + 'am_people_pending.png', full_page=True)
     # 3. same Login ID again is refused, with the reason on screen
     am.fill('#npName', 'Dup'); am.fill('#npLogin', 'dtech'); am.fill('#npPhone', '8175551313'); am.check('#npConsent'); am.click('#npAdd')
@@ -69,6 +73,15 @@ with sync_playwright() as pw:
     row = am.locator('table.people tbody tr:has-text("dtech")')
     check('after first sign-in the person shows Active', 'Active' in row.inner_text() and 'Pending' not in row.inner_text())
     check('active row offers Delete', row.locator('[data-del]').inner_text() == 'Delete')
+    check('no copy icon once they have signed in', row.locator('[data-copy]').count() == 0)
+    row.locator('[data-reset]').click(); am.wait_for_selector('#passBox:has-text("New temporary password")')
+    rtemp = am.locator('#passBox b.mono').nth(1).inner_text()
+    row = am.locator('table.people tbody tr:has-text("dtech")')
+    am.wait_for_selector('table.people tbody tr:has-text("dtech") [data-copy]')
+    check('after a reset the person is Pending again with a copy icon', 'Pending' in row.inner_text())
+    row.locator('[data-copy]').click(); am.wait_for_timeout(300)
+    check('copy after a reset gives the new temporary password', am.evaluate('navigator.clipboard.readText()') == f'Pharmacy ID: NTX1\nUser ID: dtech\nTemporary Pass: {rtemp}')
+    am.screenshot(path=OUT + 'am_people_copy.png')
     # 5. add a second person and cancel the invite before they sign in
     am.fill('#npName', 'Sam Float'); am.fill('#npLogin', 'sfloat'); am.fill('#npPhone', '8175551414'); am.check('#npConsent'); am.click('#npAdd')
     am.wait_for_selector('table.people tbody tr:has-text("sfloat")')

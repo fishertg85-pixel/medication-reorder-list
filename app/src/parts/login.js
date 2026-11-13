@@ -128,6 +128,7 @@ async function signOut(quiet){
   if(ME && ME.owner && OWN_UNTIL > 0){ OWN_UNTIL = 0; await api('POST', '/owner-lock', {}).catch(() => {}); }
   if(SESSION && SESSION.refresh) cog('RevokeToken', {ClientId:CFG.clientId, Token:SESSION.refresh}).catch(() => {});
   SESSION = null; saveSession();
+  if(typeof TEMPS !== 'undefined') for(const k in TEMPS) delete TEMPS[k];       // copied temporary passwords go with the session
   if(!quiet){ $('liUser').value = ''; showLogin('Signed out. The next person can sign in.'); }   // shared computers: leave nobody's Login ID behind
 }
 $('signOutBtn').onclick = () => { if(confirm('Sign out of the Reorder List on this device?')) signOut(); };

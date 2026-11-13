@@ -40,12 +40,27 @@ setInterval(() => {
 }, 15000);
 const PERM_LABELS = {submit:'Submit orders', archive:'View archive', remove:'Remove lines', export:'Download backup'};
 let OWN = {stores:[], users:[]};
+// temporary passwords made on this screen, kept only in this page (never saved anywhere) so they can be copied again
+// while the person is still pending; gone on sign-out or reload, or once the person has signed in
+const TEMPS = {};
+const COPY_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+function signInText(u, pw){
+  const on = (OWN.stores || []).filter(s => u.stores && u.stores[s.id] === true).map(s => s.id);
+  const here = typeof STORE !== 'undefined' && STORE && on.includes(STORE.id) ? STORE.id : null;
+  return `Pharmacy ID: ${here || on.join(' or ') || '(switch a pharmacy on first)'}\nUser ID: ${u.login}\nTemporary Pass: ${pw}`;
+}
+async function copyText(t){
+  try{ await navigator.clipboard.writeText(t); return true; }
+  catch(e){ const a = document.createElement('textarea'); a.value = t; a.style.position = 'fixed'; a.style.opacity = '0'; document.body.appendChild(a); a.select();
+    let ok = false; try{ ok = document.execCommand('copy'); }catch(e2){} a.remove(); return ok; }
+}
 async function loadOwner(){
   if(!ME || !ME.owner) return;
   $('ownStores').innerHTML = $('ownPeople').innerHTML = '<div class="hint"><span class="spin"></span>Loading…</div>';
   try{
     const [s, u] = await Promise.all([api('GET', '/owner/stores'), api('GET', '/owner/users')]);
     OWN = {stores:s.stores, users:u.users};
+    for(const k in TEMPS) if(!OWN.users.some(x => x.sub === k && x.pending)) delete TEMPS[k];
     for(const st of OWN.stores) if(st.hasLogo && LOGOS[st.id] === undefined) loadLogo(st.id).then(renderOwnStores);
     renderOwner();
   }catch(e){ if(!e.auth) $('ownPeople').innerHTML = `<div class="banner warn">${esc(e.message)}</div>`; }
@@ -77,18 +92,19 @@ function renderOwnPeople(){
   const st = OWN.stores, P = Object.keys(PERM_LABELS);
   $('ownPeople').innerHTML = `<div class="tscroll"><table class="people"><thead><tr><th>Person</th><th>Status</th><th>Mobile</th>
       ${st.map(s => `<th class="c" title="${esc(s.name)}">${esc(s.id)}</th>`).join('')}
-      ${P.map(p => `<th class="c">${PERM_LABELS[p]}</th>`).join('')}<th class="c">Login on</th><th></th></tr></thead><tbody>
+      ${P.map(p => `<th class="c">${PERM_LABELS[p]}</th>`).join('')}<th class="c">Login on</th><th></th><th class="c" title="Copy sign-in details">Copy</th></tr></thead><tbody>
     ${OWN.users.map(u => u.owner ? `<tr><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Account Manager</div></td><td data-l="Status">${statusBadge(u)}</td><td data-l="Mobile">${esc(u.phone)}</td>
-        <td colspan="${st.length + P.length + 2}" class="hint">Full access to every pharmacy (can’t be changed)</td></tr>`
+        <td colspan="${st.length + P.length + 3}" class="hint">Full access to every pharmacy (can’t be changed)</td></tr>`
       : u.host ? `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)} · Host (IronLedger)</div></td><td data-l="Status">${statusBadge(u)}</td><td data-l="Mobile">${esc(u.phone)}</td>
         ${st.map(s => `<td class="c" data-l="${esc(s.id)}">${sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Let the host open ' + s.name)}</td>`).join('')}
-        <td colspan="${P.length + 2}" class="hint">Runs the program for you: passwords, phones, logins. Sees a pharmacy’s list only if you switch it on here.</td></tr>`
+        <td colspan="${P.length + 3}" class="hint">Runs the program for you: passwords, phones, logins. Sees a pharmacy’s list only if you switch it on here.</td></tr>`
       : `<tr data-sub="${esc(u.sub)}"${u.disabled ? ' class="off"' : ''}><td data-l="Person"><b>${esc(u.name || u.login)}</b><div class="maker">${esc(u.login)}</div></td><td data-l="Status">${statusBadge(u)}</td>
         <td data-l="Mobile">${esc(u.phone)} <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button></td>
         ${st.map(s => `<td class="c" data-l="${esc(s.id)}">${sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name)}</td>`).join('')}
         ${P.map(p => `<td class="c" data-l="${PERM_LABELS[p]}">${sw(`data-uperm="${p}"`, u.perms[p], PERM_LABELS[p])}</td>`).join('')}
         <td class="c" data-l="Login on">${sw('data-uon="1"', !u.disabled, 'Switch this login on or off')}</td>
-        <td><button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button> <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button></td></tr>`).join('')}
+        <td class="acts"><button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button> <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button></td>
+        <td class="c copycell" data-l="Copy sign-in">${u.pending && TEMPS[u.sub] ? `<button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${COPY_SVG}</button>` : ''}</td></tr>`).join('')}
     </tbody></table></div>`;
 }
 function paintNewPerson(){
@@ -108,6 +124,7 @@ $('npAdd').onclick = async () => {
   busy($('npAdd'), true);
   try{
     const r = await api('POST', '/owner/users', body);
+    TEMPS[r.user.sub] = r.tempPassword;
     const ids = Object.keys(stores).filter(k => stores[k]);
     showPassBox(`<b>${esc(body.name)} can sign in now.</b> Give them:<br>Pharmacy ID: <b class="mono">${esc(ids.join(' or ') || '(switch one on first)')}</b><br>
       Login ID: <b class="mono">${esc(r.user.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b><br>
@@ -136,7 +153,12 @@ $('ownPeople').addEventListener('change', async e => {
   finally{ c.disabled = false; }
 });
 $('ownPeople').addEventListener('click', async e => {
-  const r = e.target.closest('[data-reset]'), ph = e.target.closest('[data-phone]'), dl = e.target.closest('[data-del]');
+  const r = e.target.closest('[data-reset]'), ph = e.target.closest('[data-phone]'), dl = e.target.closest('[data-del]'), cp = e.target.closest('[data-copy]');
+  if(cp){
+    const u = OWN.users.find(x => x.sub === cp.dataset.copy); if(!u || !TEMPS[u.sub]) return;
+    toast(await copyText(signInText(u, TEMPS[u.sub])) ? `Copied ${u.name || u.login}'s sign-in details.` : 'Couldn’t copy. Select the text in the box at the top instead.');
+    return;
+  }
   if(dl){
     const u = OWN.users.find(x => x.sub === dl.dataset.del);
     const typed = prompt(u.pending ? `Cancel ${u.name || u.login}'s invitation?\n\nThey haven't signed in yet. Their login and temporary password are removed, and the Login ID can be used again.\n\nType their Login ID (${u.login}) to cancel it:` : `Delete ${u.name || u.login} for good?\n\nTheir login is removed and can't be switched back on. Orders and archive lines they entered stay, under their name.\nTo just stop them signing in for now, switch their login off instead.\n\nType their Login ID (${u.login}) to delete:`);
@@ -154,7 +176,9 @@ $('ownPeople').addEventListener('click', async e => {
     const u = OWN.users.find(x => x.sub === r.dataset.reset);
     if(!confirm(`Give ${u.name || u.login} a new temporary password? Their current password stops working and they're signed out everywhere.`)) return;
     try{ const res = await api('POST', '/owner/users/' + encodeURIComponent(u.sub) + '/reset-password', {});
-      showPassBox(`<b>New temporary password for ${esc(u.name || u.login)}</b> (Login ID <b class="mono">${esc(u.login)}</b>): <b class="mono">${esc(res.tempPassword)}</b><br><span class="hint">They choose their own password when they next sign in.</span>`); }
+      TEMPS[u.sub] = res.tempPassword;
+      showPassBox(`<b>New temporary password for ${esc(u.name || u.login)}</b> (Login ID <b class="mono">${esc(u.login)}</b>): <b class="mono">${esc(res.tempPassword)}</b><br><span class="hint">They choose their own password when they next sign in. Use the copy button on their row to copy their sign-in details.</span>`);
+      await loadOwner(); }
     catch(err){ if(!err.auth) alert(err.message); }
   }
 });
