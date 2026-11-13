@@ -275,7 +275,7 @@ $('nAdd').onclick = async () => {
     const r = await api('POST', '/host/users', body), ids = Object.keys(stores).filter(k => stores[k]);
     showPass(`<b>${esc(body.name)} can sign in now.</b> Give them:<br>Pharmacy ID: <b class="mono">${esc(ids.join(' or ') || '(switch one on first)')}</b><br>Login ID: <b class="mono">${esc(r.user.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b><br><span class="hint">This temporary password isn’t shown again.</span>`);
     ['nName', 'nLogin', 'nPhone'].forEach(k => $(k).value = ''); $('nPass').value = genTemp(); $('nConsent').checked = false;
-    await load();
+    await load(); $('nName').focus({preventScroll: true});
   }catch(err){ if(!err.auth) alert(err.message); }
   finally{ busy($('nAdd'), false); }
 };

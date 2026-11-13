@@ -113,8 +113,9 @@ $('npAdd').onclick = async () => {
       Login ID: <b class="mono">${esc(r.user.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b><br>
       <span class="hint">They choose their own password the first time they sign in. The temporary password works for 7 days and isn’t shown again.</span>`);
     ['npName','npLogin','npPhone'].forEach(k => $(k).value = ''); $('npPass').value = genTemp(); $('npConsent').checked = false;
-    say(`Added ${body.name}. They are at the top of the list as Pending until they sign in for the first time.`, true);
+    say(`Added ${body.name}. They are at the top of the list as Pending until they sign in for the first time. The form is clear for the next person.`, true);
     await loadOwner();
+    paintNewPerson(); $('npName').focus({preventScroll: true});      // pharmacies and permissions back to their defaults too
   }catch(e){ if(!e.auth) say('Not added: ' + e.message); }
   finally{ busy($('npAdd'), false); }
 };

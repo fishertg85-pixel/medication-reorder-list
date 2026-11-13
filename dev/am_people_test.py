@@ -37,11 +37,17 @@ with sync_playwright() as pw:
     am.click('#npAdd'); am.wait_for_timeout(300)
     check('without the consent tick: message stays next to the button', 'consent' in am.inner_text('#npMsg'))
     # 2. add
-    am.check('#npConsent'); am.click('#npAdd')
+    am.check('#npConsent')
+    am.locator('label.switch:has([data-npperm=submit])').click()           # change a default before adding
+    am.click('#npAdd')
     am.wait_for_selector('#passBox:has-text("Temporary password")')
     temp = am.locator('#passBox b.mono').nth(2).inner_text()
     check('added: temp password shown', len(temp) >= 10)
     check('added: confirmation next to the button', 'Pending' in am.inner_text('#npMsg'))
+    check('form cleared for the next person', [am.input_value(k) for k in ('#npName', '#npLogin', '#npPhone')] == ['', '', '']
+          and not am.is_checked('#npConsent') and am.input_value('#npPass') not in ('', temp))
+    check('pharmacy and permission switches back to defaults', am.is_checked('[data-npperm=submit]') and not am.is_checked('[data-npperm=export]'))
+    check('cursor is in Name, ready for the next person', am.evaluate("document.activeElement.id") == 'npName')
     am.wait_for_selector('table.people tbody tr:has-text("dtech")')
     rows = am.locator('table.people tbody tr')
     row = am.locator('table.people tbody tr:has-text("dtech")')
