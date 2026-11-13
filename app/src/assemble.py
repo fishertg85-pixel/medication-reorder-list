@@ -84,8 +84,8 @@ rep('</style>\n</head>', r'''
   .ucell{white-space:nowrap;min-width:0;} .ucell.uname, .ucell.mono{overflow:hidden;text-overflow:ellipsis;}
   .ucell.acts{text-align:right;} .ucell.copycell{text-align:center;}
   .urole{margin-left:8px;font-size:11.5px;font-weight:600;color:var(--muted);}
-  .upriv{display:flex;flex-wrap:wrap;align-items:center;gap:8px 22px;margin-top:9px;}
-  .plabel{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;}
+  .upriv{display:flex;flex-wrap:wrap;align-items:center;gap:8px 22px;margin-top:8px;}
+  .plabel{min-width:88px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;}
   .pgroup{display:inline-flex;align-items:center;gap:14px;flex-wrap:wrap;} .pg{font-size:12px;color:var(--muted);font-weight:600;}
   .priv{display:inline-flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;}
   @media (max-width:820px){
