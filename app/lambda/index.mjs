@@ -280,7 +280,7 @@ async function publicPharmacy(id){
   const l = s.Item.hasLogo ? await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'LOGO', sk: id } })) : null;
   return { found: true, id, name: s.Item.name, logo: (l && l.Item && l.Item.dataUrl) || '' };
 }
-const TEMP_DAYS = 7;                                   // matches TemporaryPasswordValidityDays in template.yaml
+const TEMP_DAYS = 3;                                   // matches TemporaryPasswordValidityDays in template.yaml
 function pendingOf(p, c){
   if(!c || c.status !== 'FORCE_CHANGE_PASSWORD') return { pending: false };
   const issued = p.tempIssuedAt || p.createdAt || (c.created ? new Date(c.created).toISOString() : null);

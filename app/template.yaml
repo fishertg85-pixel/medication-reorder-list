@@ -105,7 +105,7 @@ Resources:
           RequireUppercase: false
           RequireNumbers: true
           RequireSymbols: false
-          TemporaryPasswordValidityDays: 7
+          TemporaryPasswordValidityDays: 3
       # passwords are reset only by the Account Manager (a texted code alone must not replace the password)
       AccountRecoverySetting:
         RecoveryMechanisms:

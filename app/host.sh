@@ -33,7 +33,7 @@ case "$cmd" in
     aws dynamodb update-item --table-name "$MAIN" --region "$REGION" --key "{\"pk\":{\"S\":\"USERS\"},\"sk\":{\"S\":\"$sub\"}}" \
       --update-expression "SET tempIssuedAt = :n" --condition-expression "attribute_exists(sk)" \
       --expression-attribute-values "{\":n\":{\"S\":\"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\"}}" >/dev/null 2>&1 || true
-    echo "Temporary password for ${login}: ${pw}   (good for 7 days; they choose their own at the next sign-in)" ;;
+    echo "Temporary password for ${login}: ${pw}   (good for 3 days; they choose their own at the next sign-in)" ;;
   set-phone)
     need_login; num="$(echo "${3:-}" | tr -dc '0-9')"
     [ ${#num} -eq 10 ] && num="+1${num}" || { [ ${#num} -eq 11 ] && [ "${num:0:1}" = 1 ] && num="+${num}"; } || { echo "Give a 10-digit US mobile number."; exit 1; }

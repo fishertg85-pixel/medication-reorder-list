@@ -28,13 +28,13 @@ check("and they can sign in with the new temporary password", bool(login("ghost"
 # expired temporary password shows as expired
 s, r = api(T, "POST", "/owner/users", {"login":"late1","name":"Late One","phone":"8175557777","stores":{},"smsConsent":True})
 tbl = [t for t in d.list_tables()["TableNames"] if "rchive" not in t][0]
-old = (datetime.datetime.utcnow() - datetime.timedelta(days=8)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+old = (datetime.datetime.utcnow() - datetime.timedelta(days=4)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 d.update_item(TableName=tbl, Key={"pk":{"S":"USERS"},"sk":{"S":r["user"]["sub"]}}, UpdateExpression="SET tempIssuedAt = :o", ExpressionAttributeValues={":o":{"S":old}})
 u = [x for x in api(T, "GET", "/owner/users")[1]["users"] if x["login"] == "late1"][0]
-check("temporary password older than 7 days shows as expired", u["pending"] and u["tempExpired"])
+check("temporary password older than 3 days shows as expired", u["pending"] and u["tempExpired"])
 s, r2 = api(T, "POST", f"/owner/users/{u['sub']}/reset-password", {})
 u = [x for x in api(T, "GET", "/owner/users")[1]["users"] if x["login"] == "late1"][0]
-check("a reset starts a fresh 7 days", s == 200 and u["pending"] and not u["tempExpired"])
+check("a reset starts a fresh 3 days", s == 200 and u["pending"] and not u["tempExpired"])
 v = [x for x in api(T, "GET", "/owner/users")[1]["users"] if x["login"] == "ghost"][0]
 check("someone who signed in is not pending", v["pending"] is False)
 print("\n%d failed" % len(FAIL) if FAIL else "\nall passed"); sys.exit(1 if FAIL else 0)
