@@ -10,7 +10,7 @@ def check(name, ok):
     if not ok: FAIL.append(name)
 
 def sign_in(p, pharm, user, pw, newpw):
-    p.goto(BASE); p.wait_for_selector('#liUser')
+    if not p.is_visible('#liUser'): p.goto(BASE); p.wait_for_selector('#liUser')
     p.fill('#liPharm', pharm); p.fill('#liUser', user); p.fill('#liPass', pw); p.click('#liGo')
     p.wait_for_selector('#liNew:visible, #liCode:visible, #tabs:visible, #liMsg:not(:empty)', timeout=10000)
     if p.is_visible('#liNew'):
@@ -44,6 +44,8 @@ with sync_playwright() as pw:
     temp = am.locator('#passBox b.mono').nth(2).inner_text()
     check('added: temp password shown', len(temp) >= 10)
     check('added: confirmation next to the button', 'Pending' in am.inner_text('#npMsg'))
+    try: am.wait_for_function("document.activeElement && document.activeElement.id === 'npName'", timeout=5000)
+    except Exception: pass
     check('form cleared for the next person', [am.input_value(k) for k in ('#npName', '#npLogin', '#npPhone')] == ['', '', '']
           and not am.is_checked('#npConsent') and am.input_value('#npPass') not in ('', temp))
     check('pharmacy and permission switches back to defaults', am.is_checked('[data-npperm=submit]') and not am.is_checked('[data-npperm=export]'))
@@ -86,6 +88,16 @@ with sync_playwright() as pw:
     check('active person deleted', True)
     st.reload(); st.wait_for_timeout(2500)
     check("deleted person's open session is shut out", not st.is_visible('#listBody') or st.is_visible('#liUser'))
+    # 7. one shared computer: the Account Manager signs out, the new person signs in on the same browser
+    am.fill('#npName', 'Kim Shared'); am.fill('#npLogin', 'kshared'); am.fill('#npPhone', '8175551515'); am.check('#npConsent'); am.click('#npAdd')
+    am.wait_for_selector('#passBox:has-text("kshared")')
+    ktemp = am.locator('#passBox b.mono').nth(2).inner_text()
+    am.click('#signOutBtn'); am.wait_for_selector('#liUser:visible')
+    check('after sign-out on a shared computer, no Login ID is left filled in', am.input_value('#liUser') == '' and am.input_value('#liPass') == '')
+    am.fill('#liPass', 'ownerpass99'); am.fill('#liUser', 'kshared')
+    check('typing a different Login ID clears a password the browser filled in', am.input_value('#liPass') == '')
+    sign_in(am, 'NTX1', 'kshared', ' ' + ktemp + ' ', 'kimpass1234')          # pasted with stray spaces
+    check('new person signs in on the same browser with a pasted temporary password', am.is_visible('#tabs') and 'Account Manager' not in am.inner_text('#tabs'))
     check('no script errors', not errs); print(errs) if errs else None
     b.close()
 print("\n%d failed" % len(FAIL) if FAIL else "\nall passed"); sys.exit(1 if FAIL else 0)

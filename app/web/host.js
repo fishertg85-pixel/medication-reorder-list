@@ -93,7 +93,7 @@ async function afterAuth(res){
   paintSign('Sign-in needs a step this page doesn’t support (' + res.ChallengeName + ').');
 }
 $('sGo').onclick = async () => {
-  const user = $('sUser').value.trim().toLowerCase(), pw = $('sPass').value;
+  const user = $('sUser').value.trim().toLowerCase(), pw = $('sPass').value.trim();
   if(!user || !pw) return paintSign('Enter your Login ID and password.');
   SIGN.user = user; SIGN.pw = pw; busy($('sGo'), true);
   try{ await afterAuth(await cog('InitiateAuth', {ClientId:CFG.clientId, AuthFlow:'USER_PASSWORD_AUTH', AuthParameters:{USERNAME:user, PASSWORD:pw}})); }

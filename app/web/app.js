@@ -260,7 +260,6 @@ function showLogin(msg){
   $('app').style.display = 'none'; $('login').style.display = 'flex';
   LOGIN = {step:'start', session:null, user:'', pharm:'', dest:''};
   $('liPharm').value = $('liPharm').value || lget('nortex-last-pharmacy');
-  $('liUser').value = $('liUser').value || lget('nortex-last-login');
   $('liPass').value = '';
   paintLogin(msg || '');
   if($('liPharm').value) checkPharm();
@@ -300,8 +299,9 @@ async function afterAuth(res){
   }
   paintLogin('Sign-in needs a step this app doesn’t support (' + res.ChallengeName + '). Tell the Account Manager.');
 }
+$('liUser').addEventListener('input', () => { $('liPass').value = ''; });
 $('liGo').onclick = async () => {
-  const pharm = $('liPharm').value.trim().toUpperCase(), user = $('liUser').value.trim().toLowerCase(), pw = $('liPass').value;
+  const pharm = $('liPharm').value.trim().toUpperCase(), user = $('liUser').value.trim().toLowerCase(), pw = $('liPass').value.trim();
   if(!pharm || !user || !pw) return paintLogin('Enter Pharmacy ID, Login ID and password.');
   LOGIN.pharm = pharm; LOGIN.user = user;
   busy($('liGo'), true);
@@ -362,7 +362,7 @@ async function enterApp(pharm){
     return showLogin(`Your login isn’t switched on for pharmacy ${want}. Check the Pharmacy ID, or ask the Account Manager.`);
   }
   if(!ME.stores.length){ signOut(true); return showLogin('Your login isn’t switched on for any pharmacy yet. Ask the Account Manager.'); }
-  try{ localStorage.setItem('nortex-last-login', ME.login); }catch(e){}
+  try{ localStorage.removeItem('nortex-last-login'); }catch(e){}
   $('login').style.display = 'none'; $('app').style.display = '';
   await openStore(ME.stores.some(s => s.id === want) ? want : ME.stores[0].id);
   clearInterval(showLogin.poll);
@@ -382,7 +382,7 @@ async function signOut(quiet){
   if(ME && ME.owner && OWN_UNTIL > 0){ OWN_UNTIL = 0; await api('POST', '/owner-lock', {}).catch(() => {}); }
   if(SESSION && SESSION.refresh) cog('RevokeToken', {ClientId:CFG.clientId, Token:SESSION.refresh}).catch(() => {});
   SESSION = null; saveSession();
-  if(!quiet) showLogin('Signed out.');
+  if(!quiet){ $('liUser').value = ''; showLogin('Signed out. The next person can sign in.'); }   // shared computers: leave nobody's Login ID behind
 }
 $('signOutBtn').onclick = () => { if(confirm('Sign out of the Reorder List on this device?')) signOut(); };
 
