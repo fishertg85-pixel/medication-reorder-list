@@ -20,7 +20,7 @@ a = login("owner", "temp12345a", "ownerpass99"); O = a["IdToken"]; api(O, "POST"
 def node(arg): return json.loads(subprocess.check_output(["node", "boot.mjs", json.dumps(arg)]).decode().strip().splitlines()[-1])
 node({"makeHost": {"login": "Neo", "name": "Thomas Fisher", "phone": "8175559999", "tempPassword": "hosttemp12a"}})
 h = login("neo", "hosttemp12a", "hostpass999"); H = h["IdToken"]; api(H, "POST", "/host-unlock", {"password": "hostpass999", "accessToken": h["AccessToken"]})
-st = lambda body: api(H, "POST", "/host/stores/NTX1", body)           # licenses, identifiers, services and the Calendar switch are set by the host
+st = lambda body: api(H, "POST", "/host/stores/NTX1", {**body, "changeReason": "test change reason"})           # licenses, identifiers, services and the Calendar switch are set by the host
 stO = lambda body: api(O, "POST", "/owner/stores/NTX1", body)         # the Account Manager can only change name, address, phone, hours...
 getS = lambda: [x for x in api(H, "GET", "/host/stores")[1]["stores"] if x["id"] == "NTX1"][0]
 good_hours = [None] + [{"o": "09:00", "c": "18:00"}] * 5 + [None]
@@ -76,14 +76,39 @@ check("changing back does not revive it", getS()["deaVerified"], None)
 check("verified flag cannot be set false/edited", api(H, "POST", "/host/stores/NTX1", {"deaVerified": False})[0], 400)
 check("a staff login cannot edit the pharmacy profile", api(U, "POST", "/owner/stores/NTX1", {"npi": "1234567893"})[0], 403)
 # ---- host-only fields: the Account Manager sees them but the server refuses any change; the host (IronLedger) sets them
-for k, v in [("calendar", True), ("services", ["retail"]), ("servicesOther", "x"), ("npi", "1234567893"), ("dea", "AB1234563"), ("deaExpires", "2030-01-01"),
-             ("ncpdp", "1234567"), ("license", "999"), ("licenseExpires", "2030-01-01"), ("deaVerified", True)]:
+for k, v in [("calendar", True), ("services", ["retail"]), ("servicesOther", "x"), ("npi", "1234567893"), ("dea", "AB1234563"), ("name", "Renamed"), ("address", "1 New St"),
+             ("suite", "9"), ("city", "Keller"), ("state", "OK"), ("zip", "76248"), ("email", "a@b.co"), ("ncpdp", "1234567"), ("license", "999"), ("deaVerified", True), ("changeReason", "because I said so")]:
     check("Account Manager cannot change " + k, stO({k: v})[0], 403)
-check("a refused request changes nothing", (getS()["license"], getS()["services"]), ("12345", ["retail", "controlled", "sterile"]))
-check("Account Manager can still edit name, phone and hours", stO({"name": "NorTex Pharmacy", "phone": "(817) 555-0100", "hours": good_hours})[0], 200)
+check("a refused request changes nothing", (getS()["license"], getS()["services"], getS()["name"] != "Renamed"), ("12345", ["retail", "controlled", "sterile"], True))
+check("Account Manager can edit phone, fax, time zone, hours and the two expiration dates", stO({"phone": "(817) 555-0100", "fax": "(817) 555-0101", "timezone": "America/Denver", "hours": good_hours, "licenseExpires": "2027-12-31", "deaExpires": "2028-12-31"})[0], 200)
+check("and they show", (getS()["fax"], getS()["timezone"], getS()["licenseExpires"], getS()["deaExpires"]), ("(817) 555-0101", "America/Denver", "2027-12-31", "2028-12-31"))
+stO({"timezone": "America/Chicago"})
 check("and the new phone shows", getS()["phone"], "(817) 555-0100")
 check("Account Manager cannot add a pharmacy", api(O, "POST", "/owner/stores", {"id": "ZZ9", "name": "Nope"})[0], 403)
 check("Account Manager still sees the identifiers (read-only)", [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0]["npi"], "")
+# identity values on file are hard to change: a reason is required even for the host, and every change is kept in the history
+nm = getS()["name"]
+check("host cannot change the name without a reason", api(H, "POST", "/host/stores/NTX1", {"name": "Different Name LLC"})[0], 400)
+check("a reason that is too short is refused", api(H, "POST", "/host/stores/NTX1", {"name": "Different Name LLC", "changeReason": "typo"})[0], 400)
+check("name unchanged after refusals", getS()["name"], nm)
+check("host changes the name with a reason", api(H, "POST", "/host/stores/NTX1", {"name": "Different Name LLC", "changeReason": "Name corrected to match the license"})[0], 200)
+check("saving the same values again needs no reason", api(H, "POST", "/host/stores/NTX1", {"name": "Different Name LLC", "phone": "(817) 555-0100"})[0], 200)
+api(H, "POST", "/host/stores/NTX1", {"name": nm, "changeReason": "Reverting the test change"})
+hist = api(H, "GET", "/host/stores/NTX1/history")[1]["history"]
+check("history records who, why and what changed", (len(hist) >= 2, hist[0]["reason"], hist[0]["changes"]["name"][1], hist[0]["by"] != ""), (True, "Reverting the test change", nm, True))
+check("Account Manager and staff cannot read the history", (api(O, "GET", "/owner/stores/NTX1/history")[0], api(U, "GET", "/owner/stores/NTX1/history")[0]), (403, 403))
+api(H, "POST", "/host/stores", {"id": "TST3", "name": "Blank Test"})
+check("filling a blank identity value needs no reason", api(H, "POST", "/host/stores/TST3", {"npi": "1234567893", "city": "Haslet"})[0], 200)
+check("changing it afterwards does", api(H, "POST", "/host/stores/TST3", {"city": "Keller"})[0], 400)
+# the client's account number: generated once at creation, never changed
+t3 = [x for x in api(H, "GET", "/host/stores")[1]["stores"] if x["id"] == "TST3"][0]
+check("account number generated at creation", t3["acctNo"][:3], "IL-")
+nos = [x["acctNo"] for x in api(H, "GET", "/host/stores")[1]["stores"] if x["acctNo"]]
+check("account numbers are unique", len(nos), len(set(nos)))
+check("account number cannot be set through an update", api(H, "POST", "/host/stores/TST3", {"acctNo": "IL-999999"})[0] in (200,) and [x for x in api(H, "GET", "/host/stores")[1]["stores"] if x["id"] == "TST3"][0]["acctNo"] == t3["acctNo"], True)
+check("assigning again returns the same number", api(H, "POST", "/host/stores/TST3/acctno", {})[1]["acctNo"], t3["acctNo"])
+check("Account Manager cannot assign or change an account number", api(O, "POST", "/owner/stores/TST3/acctno", {})[0], 403)
+check("Account Manager sees the number (read-only)", [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0].get("acctNo", "x") != "x", True)
 check("host turns the Calendar switch on", (st({"calendar": True})[0], getS()["calendar"]), (200, True))
 check("host creates a new pharmacy with its whole profile", api(H, "POST", "/host/stores", {"id": "tst2", "name": "Test Two", "city": "Haslet", "state": "TX", "zip": "76052", "npi": "1234567893", "dea": "AB1234563",
       "ncpdp": "1234567", "license": "A1", "services": ["retail", "delivery"], "calendar": False, "hours": good_hours})[0], 200)
@@ -103,7 +128,7 @@ check("rep cannot change the Calendar privilege", api(RT, "POST", "/host/users/"
 check("rep cannot change pharmacies, name or phone", [api(RT, "POST", "/host/users/" + sub, b)[0] for b in ({"stores": {"NTX1": False}}, {"name": "X"}, {"phone": "8175550000", "smsConsent": True}, {"disabled": True})], [403, 403, 403, 403])
 check("rep cannot delete a person", api(RT, "POST", "/host/users/" + sub + "/delete", {})[0], 403)
 sub2, tmp2 = mk("acct2", "(817) 555-0202")
-check("rep cannot change privileges of a person who has not signed in yet", api(RT, "POST", "/host/users/" + sub2, {"perms": {"archive": False}})[0], 403)
+check("a person who has not signed in yet is still active (ID is live): rep can change a privilege", api(RT, "POST", "/host/users/" + sub2, {"perms": {"archive": False}})[0], 200)
 api(O, "POST", "/owner/users/" + sub2, {"acctType": ""}); login("acct2", tmp2, "acct2pass12345")
 check("rep cannot change privileges of a person with no account type", api(RT, "POST", "/host/users/" + sub2, {"perms": {"archive": False}})[0], 403)
 api(O, "POST", "/owner/users/" + sub2, {"acctType": "tech"}); api(O, "POST", "/owner/users/" + sub2, {"disabled": True})
@@ -129,4 +154,36 @@ check("rep cannot edit pharmacy details yet", api(RT, "POST", "/host/stores/NTX1
 check("rep cannot create a pharmacy", api(RT, "POST", "/host/stores", {"id": "RR1", "name": "x"})[0], 403)
 check("rep cannot use the registry lookup", api(RT, "GET", "/host/npi/1234567893")[0], 403)
 check("services were not changed by the rep", getS()["services"], ["retail", "controlled", "sterile"])
+# ---- rep drafts: a rep proposes, a supervisor approves; nothing is applied before that
+repsub = [u for u in api(H, "GET", "/host/users")[1]["users"] if u["login"] == "rep1"][0]["sub"]
+check("people list shows the rep role", [u for u in api(H, "GET", "/host/users")[1]["users"] if u["login"] == "rep1"][0]["hostRole"], "rep")
+check("/me tells a host login its role", (api(RT, "GET", "/me")[1]["hostRole"], api(H, "GET", "/me")[1]["hostRole"]), ("rep", "supervisor"))
+dr = lambda store, fields, note="Client moved suites; letter attached": api(RT, "POST", "/host/stores/%s/drafts" % store, {"fields": fields, "note": note})
+check("rep cannot draft for a pharmacy not assigned to them", dr("NTX1", {"city": "Keller"})[0], 403)
+check("rep cannot assign themselves", api(RT, "POST", "/host/users/" + repsub, {"repStores": {"NTX1": True}})[0], 403)
+check("supervisor assigns the rep to NTX1", api(H, "POST", "/host/users/" + repsub, {"repStores": {"NTX1": True}})[0], 200)
+check("only reps have assigned pharmacies", api(H, "POST", "/host/users/" + sub, {"repStores": {"NTX1": True}})[0], 400)
+check("rep draft needs a reason", dr("NTX1", {"city": "Keller"}, "short")[0], 400)
+check("rep draft cannot touch services, Calendar or DEA check", [dr("NTX1", f)[0] for f in ({"services": ["retail"]}, {"calendar": True}, {"deaVerified": True}, {"servicesOther": "x"})], [400, 400, 400, 400])
+check("draft is validated like a direct edit", dr("NTX1", {"zip": "123"})[0], 400)
+check("rep draft for another pharmacy is refused", dr("TST3", {"city": "Keller"})[0], 403)
+cityBefore = getS().get("city")
+r = dr("NTX1", {"city": "Keller", "address": "5 Draft St"}); check("rep submits a draft", r[0], 200)
+check("nothing applied before approval", getS().get("city"), cityBefore)
+check("rep sees only their own drafts", [d["status"] for d in api(RT, "GET", "/host/drafts")[1]["drafts"]], ["pending"])
+pd = api(H, "GET", "/host/drafts")[1]["drafts"]
+check("supervisor sees it with from/to", (len(pd), pd[0]["store"], pd[0]["changes"]["city"][1], pd[0]["by"]), (1, "NTX1", "Keller", "Rep One"))
+did = pd[0]["id"]
+check("a rep cannot approve or reject", (api(RT, "POST", "/host/drafts/NTX1/%s/approve" % did, {})[0], api(RT, "POST", "/host/drafts/NTX1/%s/reject" % did, {"note": "no way"})[0]), (403, 403))
+check("reject needs a reason", api(H, "POST", "/host/drafts/NTX1/%s/reject" % did, {})[0], 400)
+check("supervisor approves", api(H, "POST", "/host/drafts/NTX1/%s/approve" % did, {})[0], 200)
+check("approved draft is applied", (getS()["city"], getS()["address"]), ("Keller", "5 Draft St"))
+check("it cannot be decided twice", api(H, "POST", "/host/drafts/NTX1/%s/approve" % did, {})[0], 400)
+h0 = api(H, "GET", "/host/stores/NTX1/history")[1]["history"][0]
+check("history keeps the rep's reason and both names", ("Client moved suites" in h0["reason"], "Rep One" in h0["reason"], "Neo" in h0["by"] or "Thomas" in h0["by"] or h0["by"] != ""), (True, True, True))
+r2 = dr("NTX1", {"city": "Haslet"}); d2 = [d for d in api(H, "GET", "/host/drafts")[1]["drafts"] if d["status"] == "pending"][0]["id"]
+check("supervisor rejects with a reason", api(H, "POST", "/host/drafts/NTX1/%s/reject" % d2, {"note": "Does not match the license"})[0], 200)
+check("rejected draft changes nothing", getS().get("city"), "Keller")
+check("rep sees the decision", [(d["status"], d["decisionNote"]) for d in api(RT, "GET", "/host/drafts")[1]["drafts"]][0], ("rejected", "Does not match the license"))
+check("Account Manager and staff cannot see drafts", (api(O, "GET", "/owner/drafts")[0], api(U, "GET", "/owner/drafts")[0]), (403, 403))
 print("\nFAILED:", fails if fails else "none"); sys.exit(1 if fails else 0)

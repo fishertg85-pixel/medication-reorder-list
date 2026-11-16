@@ -49,7 +49,7 @@ with sync_playwright() as pw:
     # --- undo, reset, code
     before = code(); p.click('#undo'); p.wait_for_timeout(250); check('undo changes the layout', code() != before, True)
     p.click('#reset'); p.wait_for_timeout(250); check('reset returns to the starting layout', code(), start)
-    new = json.loads(json.dumps(start)); new['act'] = [8, 36, 5, 20]; p.fill('#code', json.dumps({'v': 2, 'cols': 12, 'panels': new})); p.click('#apply'); p.wait_for_timeout(250); check('pasted code applies', code()['act'][3], 20)
+    new = json.loads(json.dumps(start)); new['act'] = [8, 36, 5, 40]; p.fill('#code', json.dumps({'v': 2, 'cols': 12, 'panels': new})); p.click('#apply'); p.wait_for_timeout(250); check('pasted code applies', code()['act'][3], 40)
     p.fill('#code', '{"v":1}'); p.click('#apply'); p.wait_for_timeout(250); check('bad code refused', 'not valid' in p.inner_text('#msg'), True)
     p.click('#reset'); p.wait_for_timeout(250); p.click('#check'); p.wait_for_timeout(600); rep = p.inner_text('#report'); print(rep.replace('\n', ' | '))
     check('default fits sideways at every grid width', 'cut off sideways' in rep, False)

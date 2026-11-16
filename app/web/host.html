@@ -169,6 +169,12 @@
       <div id="stores"><div class="hint">Loading…</div></div>
     </section>
 
+    <section class="card" id="reviewCard" hidden>
+      <h2 id="reviewTitle">Rep drafts waiting for review</h2>
+      <div class="hint" style="margin-bottom:8px">A rep drafts changes for the pharmacies assigned to them; nothing is applied until a supervisor approves it. Services, the Calendar switch and DEA checks are never drafted.</div>
+      <div id="reviews"></div><div id="repAssign"></div>
+    </section>
+
     <section class="card">
       <h2>Set up a new pharmacy</h2>
       <div class="hint" style="margin-bottom:8px">Fill in what you know, then press <b>Create pharmacy</b>. Add the pharmacy’s Account Manager and staff under <b>Add a user</b> above afterwards.</div>
@@ -186,6 +192,7 @@
 </main>
 <footer class="foot"><img src="mark.svg" alt=""><span>2026 IronLedger LLC</span></footer>
 <script src="config.js"></script>
+<script src="layout_engine.js"></script>
 <script src="pharm_panels.js"></script>
 <script src="host.js"></script>
 </body>

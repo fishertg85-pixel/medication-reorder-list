@@ -66,7 +66,9 @@ Each pharmacy's calendar is separate data (`STORE#<id>` / `CAL#...` items in the
 
 The host page has a **Set up a new pharmacy** card (same panels as the pharmacy's own page) and a **Pharmacies** list. Only the host sets a pharmacy's license, NPI, DEA (with the recorded DEA check), NCPDP, Services provided and Calendar switch; the server answers 403 if the pharmacy's Account Manager tries to change them or to add a pharmacy. The Account Manager's card shows those fields read-only and lets them edit name, address, phone, fax, email, time zone and hours. The card and its layout live in `app/src/parts/pharm_panels.js` and `pharm_panels.css` (built into the app and also written to `web/` for the host page).
 
-A host login made with role `rep` (Lambda `makeHost`, `role: "rep"`) is limited: password resets and privilege changes on active people who have an account type, nothing else; no pharmacy writes. A review step for reps entering pharmacy details is planned, not built.
+A host login made with role `rep` (Lambda `makeHost`, `role: "rep"`) is limited: password resets and privilege changes on active people (ID live) who have an account type, nothing else; no direct pharmacy writes. A supervisor assigns a rep to pharmacies on the host page; the rep drafts changes (never services, the Calendar switch or DEA checks) and a supervisor approves or rejects them. Identity values (name, address, license, NPI, DEA, NCPDP) need a written reason to change even for the host, every change is kept in a per-pharmacy history, and each pharmacy has a generated, never-changing IronLedger account number.
+
+**Layout standard:** every page is designed with the layout editor (`dev/build_layout_editor.py <page>`); the engine is `app/src/parts/layout_engine.js`.
 
 ## Data safety
 

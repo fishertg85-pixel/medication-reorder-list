@@ -159,8 +159,8 @@ setInterval(() => {
 /* ---- what the host can do ---- */
 async function load(){
   try{
-    const [s, u] = await Promise.all([api('GET', '/host/stores'), api('GET', '/host/users')]);
-    DATA = {stores:s.stores, users:u.users};
+    const [s, u, me, dr] = await Promise.all([api('GET', '/host/stores'), api('GET', '/host/users'), api('GET', '/me'), api('GET', '/host/drafts')]);
+    DATA = {stores:s.stores, users:u.users, me, drafts:dr.drafts};
     for(const k in TEMPS) if(!DATA.users.some(x => x.sub === k && x.pending)) delete TEMPS[k];
     for(const k in STAGED) if(!DATA.users.some(x => x.sub === k)) delete STAGED[k];
     render();
@@ -240,7 +240,7 @@ function render(){
   $('nStores').innerHTML = st.map(s => `<label class="chk"><input type="checkbox" data-nst="${esc(s.id)}"${st.length === 1 ? ' checked' : ''}> ${esc(s.id)} · ${esc(s.name)}</label>`).join('') || '<span class="hint">Add a pharmacy first.</span>';
   $('nPerms').innerHTML = Object.entries(PERMS).map(([p, l]) => `<label class="chk"><input type="checkbox" data-nperm="${p}"${p !== 'export' ? ' checked' : ''}> ${l}</label>`).join('');
   if(!$('nPass').value) $('nPass').value = genTemp();
-  renderStores();
+  renderStores(); renderReviews();
   const keep = $('impStore').value;
   $('impStore').innerHTML = st.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join('');
   if(keep && st.some(s => s.id === keep)) $('impStore').value = keep;
@@ -248,10 +248,31 @@ function render(){
   for(const s of st) if(s.hasLogo && LOGOS[s.id] === undefined) loadLogo(s.id);
 }
 const holderOf = () => { const h = (DATA.users || []).find(u => u.owner); return h ? (h.name || h.login) + ' (' + h.login + ')' : ''; };
-function renderStores(){
-  $('stores').innerHTML = DATA.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, {logo:LOGOS[s.id], host:true, holder:holderOf()})}</div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
+const isRepMe = () => !!(DATA.me && DATA.me.hostRole === 'rep');
+function renderReviews(){
+  const d = DATA.drafts || [], sup = !isRepMe(), pend = d.filter(x => x.status === 'pending');
+  $('reviewCard').hidden = !(d.length || (sup && DATA.users.some(u => u.hostRole === 'rep')));
+  $('reviewTitle').textContent = sup ? 'Rep drafts waiting for review' : 'Your drafts';
+  const chg = c => Object.entries(c).map(([k, v]) => `<div class="hint">${esc(k)}: ${esc(Array.isArray(v[0]) || typeof v[0] === 'object' ? JSON.stringify(v[0]) : v[0] === '' ? '(blank)' : v[0])} → ${esc(typeof v[1] === 'object' ? JSON.stringify(v[1]) : v[1])}</div>`).join('');
+  $('reviews').innerHTML = (sup ? pend : d).map(x => `<div class="npibox" data-draft="${esc(x.id)}" data-dstore="${esc(x.store)}"><b>${esc(x.store)}</b> · ${esc(x.by)} · ${esc((x.at || '').slice(0, 10))} · <b>${esc(x.status)}</b>
+      <div>“${esc(x.note)}”</div>${chg(x.changes)}${x.decisionNote ? `<div class="hint">Decision by ${esc(x.decidedBy)}: ${esc(x.decisionNote)}</div>` : ''}
+      ${sup && x.status === 'pending' ? '<div class="row" style="margin-top:6px"><button class="btn small" data-dapprove="1">Approve and apply</button><button class="btn2 small" data-dreject="1">Reject…</button></div>' : ''}</div>`).join('') || '<div class="hint">Nothing waiting.</div>';
+  const reps = sup ? DATA.users.filter(u => u.hostRole === 'rep') : [];
+  $('repAssign').innerHTML = reps.length ? '<h3 style="font-size:15px;margin:14px 0 6px">Which pharmacies each rep may draft for</h3>' + reps.map(u => `<div class="npibox" data-repsub="${esc(u.sub)}"><b>${esc(u.name || u.login)}</b> ${DATA.stores.map(s => `<label class="chk"><input type="checkbox" data-repstore="${esc(s.id)}"${(u.repStores || {})[s.id] ? ' checked' : ''}> ${esc(s.id)}</label>`).join('')} <button class="btn2 small" data-repsave="1">Save</button></div>`).join('') : '';
 }
-function renderNew(){ $('newStore').innerHTML = `<div class="pcard" data-is-new="1">${pharmCardHtml({}, {host:true, isNew:true})}</div>`; }
+$('reviewCard').addEventListener('click', async e => {
+  const ap = e.target.closest('[data-dapprove]'), rj = e.target.closest('[data-dreject]'), rs = e.target.closest('[data-repsave]'), box = e.target.closest('[data-draft]');
+  try{
+    if(rs){ const row = rs.closest('[data-repsub]'), st = {}; row.querySelectorAll('[data-repstore]').forEach(i => st[i.dataset.repstore] = i.checked); await api('POST', '/host/users/' + encodeURIComponent(row.dataset.repsub), {repStores:st}); await load(); return; }
+    if(!box) return;
+    if(ap){ await api('POST', `/host/drafts/${encodeURIComponent(box.dataset.dstore)}/${encodeURIComponent(box.dataset.draft)}/approve`, {}); sayStore('Approved and applied.'); await load(); }
+    if(rj){ const n = prompt('Why is this rejected?'); if(!n) return; await api('POST', `/host/drafts/${encodeURIComponent(box.dataset.dstore)}/${encodeURIComponent(box.dataset.draft)}/reject`, {note:n}); await load(); }
+  }catch(err){ if(!err.auth) alert(err.message); }
+});
+function renderStores(){
+  $('stores').innerHTML = DATA.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, {logo:LOGOS[s.id], host:true, rep:isRepMe(), holder:holderOf()})}</div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
+}
+function renderNew(){ if(isRepMe()){ $('newStore').innerHTML = '<div class="hint">New pharmacies are set up by an IronLedger supervisor.</div>'; return; } $('newStore').innerHTML = `<div class="pcard" data-is-new="1">${pharmCardHtml({}, {host:true, isNew:true})}</div>`; }
 const sayStore = t => { $('storeMsg').textContent = t; };
 pharmCardEvents($('stores'), {base:'/host', stores:() => DATA.stores, say:sayStore, after: async () => { await load(); }});
 pharmCardEvents($('newStore'), {base:'/host', stores:() => DATA.stores, say:sayStore, after: async isNew => { if(isNew) renderNew(); await load(); }});

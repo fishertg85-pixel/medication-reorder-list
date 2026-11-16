@@ -1197,26 +1197,43 @@ $('archLatest').onclick = () => {
 };
 
 
-/* ---------------- pharmacy account page: panels and their layout ----------------
-   The pharmacy card is built from panels placed on a 12-column grid. Each panel's place is [column, row, width, height]
-   (1-based column and row; width in columns; height in rows). Rows are as tall as their content, so nothing is ever cut off.
-   Rows are 12 px steps; a panel is never shorter than its content (the page grows if content grows, e.g. a registry result).
-   PHARM_LAYOUT is set once by the owner of the program with the layout editor and is the same for everyone.
-   Narrow screens (under 1280 px wide) ignore it and stack the panels in reading order. */
-const PHARM_COLS = 12, PHARM_ROW = 12;   // a row unit is 12 px; a panel's height is a number of rows
-const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['act', 'Calendar And Save']];
-const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,35],"contact":[4,1,4,35],"hrs":[8,1,5,35],"reg":[1,36,7,37],"svc":[1,73,12,19],"act":[8,36,5,14]}};
-function pharmLayoutOk(L){
-  if(!L || L.v !== 2 || L.cols !== PHARM_COLS || !L.panels) return false;
+/* ---------------- layout engine: the standard for every page of the suite ----------------
+   A page is a set of panels placed on a 12-column grid. Each panel's place is [column, row, width in columns, height in rows]
+   (1-based; a row is 12 px; a panel is never shorter than its content, so nothing is cut off). Narrow screens (under 1280 px wide)
+   ignore the layout and stack the panels in reading order (top row first, then left to right).
+   A page is described once, as a PAGE object:  { id, title, panels:[[panelId, 'Title'], ...], layout:{v:2, cols:12, panels:{id:[x,y,w,h]}}, render(sample, panels) }
+   Its look is arranged ONLY in the layout editor (dev/build_layout_editor.py <page>), by Neo, then the code it gives is pasted into the page's
+   layout constant and is permanent: nobody can change it from the app.
+   To add a page: write src/parts/<page>_panels.js with a PAGE, its panel bodies and a sample, add it to build_layout_editor.py's PAGES, add it to assemble.py. */
+const LAYOUT_COLS = 12, LAYOUT_ROW = 12;   // a row unit is 12 px; a panel's height is a number of rows
+function layoutOk(page, L){
+  if(!L || L.v !== 2 || L.cols !== LAYOUT_COLS || !L.panels) return false;
   const seen = [];
-  for(const [id] of PHARM_PANELS){
+  for(const [id] of page.panels){
     const p = L.panels[id]; if(!Array.isArray(p) || p.length !== 4 || p.some(n => !Number.isInteger(n) || n < 1)) return false;
-    const [x, y, w, h] = p; if(x + w - 1 > PHARM_COLS || w < 2 || h < 6 || h > 200) return false;
+    const [x, y, w, h] = p; if(x + w - 1 > LAYOUT_COLS || w < 2 || h < 6 || h > 200) return false;
     if(seen.some(q => x < q[0] + q[2] && q[0] < x + w && y < q[1] + q[3] && q[1] < y + h)) return false;     // overlapping panels
     seen.push(p);
   }
   return true;
 }
+// the grid: panels in reading order (row, then column) so narrow screens stack them sensibly; body(id) gives a panel's inner HTML
+function layoutGridHtml(page, L, body){
+  L = L || (layoutOk(page, page.layout) ? page.layout : null) || { panels: Object.fromEntries(page.panels.map(([id], i) => [id, [1, i + 1, LAYOUT_COLS, 6]])) };
+  const order = page.panels.slice().sort((a, b) => (L.panels[a[0]][1] - L.panels[b[0]][1]) || (L.panels[a[0]][0] - L.panels[b[0]][0]));
+  const rows = Math.max(...Object.values(L.panels).map(p => p[1] + p[3] - 1));
+  return `<div class="pgrid" style="--rows:${rows}">${order.map(([id, title]) => { const [x, y, w, h] = L.panels[id];
+    return `<section class="pnl" data-pnl="${id}" style="--x:${x};--y:${y};--w:${w};--h:${h}"><h4 class="pt">${title}</h4><div class="pb">${body(id)}</div></section>`; }).join('')}</div>`;
+}
+
+/* ---------------- pharmacy setup page (host) and pharmacy account page (Account Manager): panels and their layout ----------------
+   Built on the layout engine (layout_engine.js). PHARM_LAYOUT is set once by Neo with the layout editor and is the same for everyone. */
+const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
+const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['act', 'Calendar And Save']];
+const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,35],"contact":[4,1,4,35],"hrs":[8,1,5,35],"reg":[1,36,7,37],"svc":[1,73,12,19],"act":[8,36,5,14]}};
+const PHARM_PAGE = { id: 'pharm', title: 'Pharmacy Setup Page (host)', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
+  render: (sample, panels) => pharmCardHtml(sample, { logo: '', holder: 'Pat Owner (owner)', host: true }, { panels }) };
+const pharmLayoutOk = L => layoutOk(PHARM_PAGE, L);
 const pharmLayout = () => pharmLayoutOk(PHARM_LAYOUT) ? PHARM_LAYOUT : null;
 const sw = (attrs, on, title) => `<label class="switch" title="${esc(title || '')}"><input type="checkbox" ${attrs}${on ? ' checked' : ''}><span></span></label>`;
 const SF = [['name','Pharmacy name'],['address','Street address'],['suite','Suite / unit (if any)'],['city','City'],['state','State'],['zip','ZIP code'],['phone','Phone'],['fax','Fax'],['email','Email'],['timezone','Time zone']];
@@ -1229,50 +1246,54 @@ const SVC_LABELS = {retail:'Retail dispensing', controlled:'Controlled substance
   immunizations:'Immunizations', delivery:'Delivery', ltc:'Long-term care', specialty:'Specialty', infusion:'Home infusion'};
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const hoursOf = s => Array.isArray(s.hours) && s.hours.length === 7 ? s.hours : [null,{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},null];
-const field = (s, k, l, t) => `<label><span>${l}</span>${k === 'timezone' ? tzSelect(`data-sf="timezone"`, s.timezone) : k === 'state' ? stateSelect(`data-sf="state"`, s.state) : `<input type="${t || 'text'}" data-sf="${k}" value="${esc(s[k] || '')}"${k === 'address' ? ' class="wide"' : ''}>`}</label>`;
+const field = (s, k, l, t, lock) => `<label><span>${l}</span>${k === 'timezone' ? tzSelect(`data-sf="timezone"`, s.timezone) : k === 'state' ? stateSelect(`data-sf="state"${lock ? ' disabled data-ident="1"' : ''}`, s.state) : `<input type="${t || 'text'}" data-sf="${k}" value="${esc(s[k] || '')}"${k === 'address' ? ' class="wide"' : ''}${lock ? ' readonly data-ident="1"' : ''}>`}</label>`;
 const roVal = v => `<div class="ro${v ? '' : ' empty'}">${v ? esc(v) : 'Not set'}</div>`;
 const roField = (s, k, l, t) => `<label><span>${l}</span>${roVal(s[k])}</label>`;
 // c.host: the card is being used by IronLedger (the host login). Everyone else sees license, identifiers, services and the Calendar switch but cannot change them.
-const hostField = (s, k, l, t, c) => c.host ? field(s, k, l, t) : roField(s, k, l, t);
+// Identity (name, address, license, NPI, DEA, NCPDP) is set by IronLedger and locked once on file; the Account Manager keeps phone, fax, time zone, hours and the two expiration dates.
+const IDENT = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp'], AM_EDIT = ['phone', 'fax', 'timezone', 'licenseExpires', 'deaExpires'];
+const cardField = (s, k, l, t, c) => IDENT.includes(k) ? (c.host ? field(s, k, l, t, !c.isNew && !!s[k] && !c.rep && !c.repView) : roField(s, k, l, t)) : (c.host || AM_EDIT.includes(k) ? field(s, k, l, t) : roField(s, k, l, t));
 const LOCKED = 'Set by IronLedger. Contact your IronLedger representative to change this.';
+const LOCKED_ID = 'Name, address, license and identifiers must match your license and billing, so IronLedger sets them. Phone, fax, time zone, hours and expiration dates are yours to keep current.';
 const deaStat = s => s.deaVerified ? 'Checked on the DEA site ' + esc((s.deaVerified.at || '').slice(0, 10)) + (s.deaVerified.by ? ' by ' + esc(s.deaVerified.by) : '') : 'Not checked yet.';
 const PHARM_BODY = {
   id: (s, c) => c.isNew
       ? `<div class="pidbox"><label class="pfields"><span>Pharmacy ID</span><input type="text" class="newid" data-newid="1" maxlength="20" autocapitalize="characters" spellcheck="false"></label>
-        <div class="hint">What people type when they sign in (2–20 letters, numbers or dashes, like NTX1). It can’t be changed later. Add the logo after the pharmacy is created.</div></div>`
+        <div class="hint">What people type when they sign in (2–20 letters, numbers or dashes, like NTX1). It can’t be changed later. Add the logo after the pharmacy is created. The IronLedger account number is generated when you create it.</div></div>`
       : `<div class="plogo">${c.logo ? `<img src="${esc(c.logo)}" alt="">` : '<span class="hint">No logo</span>'}
         <label class="btn2 small">Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" data-logo="${esc(s.id)}" hidden></label>
         ${c.logo ? `<button class="btn2 small" data-nologo="${esc(s.id)}">Remove</button>` : ''}</div>
       <div class="pidbox"><div class="pid">Pharmacy ID: <b>${esc(s.id)}</b></div><div class="hint">(what people type when they sign in)</div>
-        <div class="pid">Primary account holder: <b>${esc(c.holder || 'Account Manager')}</b></div><div class="hint">(the Account Manager)</div></div>`,
-  contact: s => `<div class="pfields">${SF.map(([k, l]) => field(s, k, l)).join('')}</div>`,
-  reg: (s, c) => c.host
-    ? `<div class="pfields">${SF2.map(([k, l, t]) => field(s, k, l, t)).join('')}
+        <div class="pid">Primary account holder: <b>${esc(c.holder || 'Account Manager')}</b></div><div class="hint">(the Account Manager)</div>
+        <div class="pid">Account number: <b>${s.acctNo ? esc(s.acctNo) : 'Not assigned yet'}</b>${c.host && !s.acctNo ? ` <button class="btn2 small" data-assignacct="${esc(s.id)}">Assign</button>` : ''}</div><div class="hint">(generated once by IronLedger; never changes)</div></div>`,
+  contact: (s, c) => `<div class="pfields">${SF.map(([k, l]) => cardField(s, k, l, undefined, c)).join('')}${c.host ? '' : `<div class="lockhint">${LOCKED_ID}</div>`}</div>`,
+  reg: (s, c) => c.rep ? ((h) => h.slice(0, h.indexOf('<div class="pid npirow">')) + '<div class="lockhint">A rep drafts changes and a supervisor reviews them. The NPI registry lookup and the DEA check are done by a supervisor.</div></div>')(PHARM_BODY.reg(s, { ...c, rep: false, repView: true }))
+    : c.host
+    ? `<div class="pfields">${SF2.map(([k, l, t]) => cardField(s, k, l, t, c)).join('')}
         <div class="pid npirow"><button class="btn2 small" data-npilook="1">Look up NPI in the federal registry</button> <span class="hint">checks the number above against the public NPI Registry; nothing changes until you save</span><div data-npires></div></div>
         <div class="pid npirow"><a class="btn2 small" href="https://apps.deadiversion.usdoj.gov/webforms2/spring/validationLogin" target="_blank" rel="noopener noreferrer">Open the DEA registration check</a>${c.isNew ? '' : ' <button class="btn2 small" data-deaok="1">I checked this DEA number there</button>'}
           <span class="hint" data-deastat>${c.isNew ? 'Record the DEA check after the pharmacy is created.' : deaStat(s)} The DEA does not offer a public lookup: its tool asks for details from the registration certificate, so this is checked by a person and recorded here.</span></div></div>`
-    : `<div class="pfields">${SF2.map(([k, l, t]) => roField(s, k, l, t)).join('')}
-        <div class="lockhint">${LOCKED}</div><div class="pid npirow hint">DEA check: ${deaStat(s)}</div></div>`,
-  svc: (s, c) => c.host
+    : `<div class="pfields">${SF2.map(([k, l, t]) => cardField(s, k, l, t, c)).join('')}
+        <div class="lockhint">License number, NPI, DEA and NCPDP are set by IronLedger. Expiration dates are yours to keep current.</div><div class="pid npirow hint">DEA check: ${deaStat(s)}</div></div>`,
+  svc: (s, c) => c.host && !c.rep
     ? `<div class="pfields"><div class="svcs">${Object.entries(SVC_LABELS).map(([k, l]) => `<label class="chk">${sw(`data-svc="${k}"`, (s.services || []).includes(k))} ${l}</label>`).join('')}</div>
           ${field(s, 'servicesOther', 'Other services').replace('<label>', '<label class="oth">')}</div>`
     : `<div class="pfields"><div class="chips">${(s.services || []).map(k => `<span class="chip">${esc(SVC_LABELS[k] || k)}</span>`).join('') || '<span class="hint">None set yet.</span>'}</div>
           ${s.servicesOther ? `<div class="pid">Other: ${esc(s.servicesOther)}</div>` : ''}<div class="lockhint">${LOCKED}</div></div>`,
   hrs: s => `<div class="pfields"><div class="hrs">${s.hours ? '' : '<div class="hint">Not set yet; these are suggestions until you save.</div>'}
           ${hoursOf(s).map((h, i) => `<div class="hrow"><span>${DAYS[i]}</span><input type="time" data-ho="${i}" value="${h ? h.o : '09:00'}"><input type="time" data-hc="${i}" value="${h ? h.c : '18:00'}"><label class="chk">${sw(`data-hx="${i}"`, !h)} Closed</label></div>`).join('')}</div></div>`,
-  act: (s, c) => `<div class="pfields"><div class="calsw">${c.host
+  act: (s, c) => `<div class="pfields"><div class="calsw">${c.host && !c.rep
         ? `<label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar switched on for this pharmacy</label> <span class="hint">(people also need the Calendar privilege)</span>`
         : `Calendar: <b>${s.calendar ? 'On' : 'Off'}</b> <span class="hint">${LOCKED}</span>`}</div>
-        <div style="margin-top:10px;">${c.isNew ? '<button class="btn small" data-createstore="1">Create pharmacy</button>' : `<button class="btn small" data-savestore="${esc(s.id)}">Save details</button>`}</div></div>`
+        <div style="margin-top:10px;">${c.rep ? `<label class="reason"><span>Why (required, the supervisor reads this)</span><input type="text" data-draftnote maxlength="300"></label> <button class="btn small" data-draftstore="${esc(s.id)}">Submit for review</button>`
+          : c.isNew ? '<button class="btn small" data-createstore="1">Create pharmacy</button>' : `<button class="btn small" data-savestore="${esc(s.id)}">Save details</button>`}</div>
+        ${c.host && !c.isNew && !c.rep ? `<div class="identbar"><button class="btn2 small" data-unlockident="1">Change name, address, license or identifiers…</button>
+          <div class="hint">Locked on purpose: they must match the license and billing. A reason is required and every change is kept in the history.</div>
+          <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label>
+          <div style="margin-top:8px"><button class="btn2 small" data-hist="${esc(s.id)}">Change history</button><div data-histout></div></div></div>` : ''}</div>`
 };
-// the whole card: panels in reading order (row, then column) so narrow screens stack them sensibly
-function pharmCardHtml(s, c, L){
-  L = L || pharmLayout() || { panels: Object.fromEntries(PHARM_PANELS.map(([id], i) => [id, [1, i + 1, PHARM_COLS, 6]])) };
-  const order = PHARM_PANELS.slice().sort((a, b) => (L.panels[a[0]][1] - L.panels[b[0]][1]) || (L.panels[a[0]][0] - L.panels[b[0]][0]));
-  const rows = Math.max(...Object.values(L.panels).map(p => p[1] + p[3] - 1));
-  return `<div class="pgrid" style="--rows:${rows}">${order.map(([id, title]) => { const [x, y, w, h] = L.panels[id];
-    return `<section class="pnl" data-pnl="${id}" style="--x:${x};--y:${y};--w:${w};--h:${h}"><h4 class="pt">${title}</h4><div class="pb">${PHARM_BODY[id](s, c)}</div></section>`; }).join('')}</div>`;
-}
+// the whole card, built by the layout engine
+function pharmCardHtml(s, c, L){ return layoutGridHtml(PHARM_PAGE, L, id => PHARM_BODY[id](s, c)); }
 
 // ---------------- behaviour shared by the Account Manager page and the host page ----------------
 // o = { base: '/owner' | '/host', stores: () => [store, …], say: text => …, after: async () => … }
@@ -1281,9 +1302,34 @@ function pharmCardEvents(root, o){
   root.addEventListener('change', e => { if(e.target.closest('[data-ho],[data-hc],[data-hx]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.hrTouched = '1'; } });
   root.addEventListener('click', async e => {
     const lk = e.target.closest('[data-npilook]'), us = e.target.closest('[data-npiuse]'), dk = e.target.closest('[data-deaok]');
-    const sv = e.target.closest('[data-savestore],[data-createstore]');
+    const dsub = e.target.closest('[data-draftstore]');
+    if(dsub){
+      const card = dsub.closest('.pcard'), cur = o.stores().find(x => x.id === dsub.dataset.draftstore) || {}, fields = {};
+      card.querySelectorAll('[data-sf]').forEach(i => { if(i.value.trim() !== String(cur[i.dataset.sf] || '')) fields[i.dataset.sf] = i.value.trim(); });
+      if(card.dataset.hrTouched) fields.hours = DAYS.map((_, i) => card.querySelector(`[data-hx="${i}"]`).checked ? null : {o: card.querySelector(`[data-ho="${i}"]`).value, c: card.querySelector(`[data-hc="${i}"]`).value});
+      if(!Object.keys(fields).length){ alert('Change something first.'); return; }
+      busy(dsub, true);
+      try{ await api('POST', o.base + '/stores/' + encodeURIComponent(dsub.dataset.draftstore) + '/drafts', {fields, note: card.querySelector('[data-draftnote]').value.trim()}); o.say('Submitted for review.'); await o.after(); }
+      catch(err){ if(!err.auth) alert(err.message); } finally{ busy(dsub, false); }
+      return;
+    }
+    const sv = e.target.closest('[data-savestore],[data-createstore]'), ul = e.target.closest('[data-unlockident]'), hs = e.target.closest('[data-hist]'), aa = e.target.closest('[data-assignacct]');
     const card = e.target.closest('.pcard'); if(!card) return;
     const val = k => { const i = card.querySelector(`[data-sf=${k}]`); return i ? i.value.trim() : ''; };
+    if(ul){
+      if(!confirm('The name, address, license and identifiers must match the license and billing. Unlock them to make a change? You will be asked for a reason.')) return;
+      card.querySelectorAll('[data-ident]').forEach(i => { i.removeAttribute('readonly'); i.removeAttribute('disabled'); });
+      card.dataset.unlocked = '1'; const r = card.querySelector('.reason'); r.hidden = false; r.querySelector('input').focus(); return;
+    }
+    if(aa){ try{ await api('POST', o.base + '/stores/' + encodeURIComponent(aa.dataset.assignacct) + '/acctno', {}); o.say('Account number assigned.'); await o.after(); }catch(err){ if(!err.auth) alert(err.message); } return; }
+    if(hs){
+      const out = card.querySelector('[data-histout]'); out.innerHTML = '<div class="hint">Loading…</div>';
+      try{
+        const r = await api('GET', o.base + '/stores/' + encodeURIComponent(hs.dataset.hist) + '/history');
+        out.innerHTML = r.history.length ? r.history.map(h => `<div class="npibox"><b>${esc((h.at || '').slice(0, 16).replace('T', ' '))} UTC</b> · ${esc(h.by)}${h.reason ? ' · “' + esc(h.reason) + '”' : ''}<div class="hint">${Object.entries(h.changes).map(([k, v]) => esc(k) + ': ' + esc(Array.isArray(v[0]) ? v[0].join(', ') : v[0] == null ? '(blank)' : String(v[0])) + ' → ' + esc(Array.isArray(v[1]) ? v[1].join(', ') : String(v[1]))).join('<br>')}</div></div>`).join('') : '<div class="hint">No changes recorded yet.</div>';
+      }catch(err){ if(!err.auth) out.innerHTML = `<div class="npibox bad">${esc(err.message)}</div>`; }
+      return;
+    }
     if(dk){
       const dea = val('dea'); if(!dea){ alert('Type the DEA number first.'); return; }
       if(!confirm('Confirm you looked up ' + dea.toUpperCase() + ' on the DEA registration check and the name, address and expiration match this pharmacy?')) return;
@@ -1314,6 +1360,7 @@ function pharmCardEvents(root, o){
     }
     if(us){
       const r = card._npi; if(!r || !r.found) return;
+      if(card.querySelector('[data-ident]') && !card.dataset.unlocked){ alert('The name and address are locked. Press “Change name, address, license or identifiers…” first.'); return; }
       const set = (k, v) => { const i = card.querySelector(`[data-sf=${k}]`); if(i && v) i.value = v; };
       set('name', r.name); set('address', r.address.address); set('suite', r.address.suite); set('city', r.address.city); set('state', r.address.state); set('zip', r.address.zip); set('phone', r.address.phone); set('fax', r.address.fax);
       o.say('Filled in from the registry. Press ' + (card.dataset.isNew ? 'Create pharmacy' : 'Save details') + ' to keep it.'); return;
@@ -1325,6 +1372,7 @@ function pharmCardEvents(root, o){
       if(card.querySelector('[data-svc]')) body.services = [...card.querySelectorAll('[data-svc]')].filter(i => i.checked).map(i => i.dataset.svc);
       const cur = o.stores().find(x => x.id === id);
       if(card.dataset.hrTouched || (cur && cur.hours)) body.hours = DAYS.map((_, i) => card.querySelector(`[data-hx="${i}"]`).checked ? null : {o: card.querySelector(`[data-ho="${i}"]`).value, c: card.querySelector(`[data-hc="${i}"]`).value});
+      const rs = card.querySelector('[data-reason]'); if(rs && rs.value.trim()) body.changeReason = rs.value.trim();
       if(isNew){ if(!id || !body.name){ alert('Pharmacy ID and name are needed.'); return; } body.id = id; }
       busy(sv, true);
       try{ await api('POST', o.base + '/stores' + (isNew ? '' : '/' + encodeURIComponent(id)), body); o.say(isNew ? 'Pharmacy created: ' + id : 'Pharmacy details saved.'); await o.after(isNew); }

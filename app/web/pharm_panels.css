@@ -29,3 +29,4 @@
 .pnl .chips{display:flex;flex-wrap:wrap;gap:6px;} .pnl .chip{border:1px solid var(--line);border-radius:14px;padding:3px 10px;font-size:13px;}
 .pnl .newid{max-width:220px;text-transform:uppercase;}
 @media (max-width:520px){ .hrow{flex-wrap:wrap;white-space:normal;} .hrow input[type=time]{width:104px;} .hrow>span{width:70px;} .pfields{min-width:0;} .pnl .pt{white-space:normal;} }
+.pnl [hidden]{display:none!important;} .pnl .identbar{grid-column:1/-1;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);} .pnl input[readonly],.pnl select:disabled{background:transparent;border-style:dashed;opacity:.85;}

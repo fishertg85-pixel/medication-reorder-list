@@ -120,6 +120,7 @@ const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME M
 async function allStores(){
   return (await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'STORES' } }))
     .map(s => ({ id: s.sk, ...pick(s, STORE_FIELDS), timezone: TIMEZONES.includes(s.timezone) ? s.timezone : DEFAULT_TZ, hasLogo: !!s.hasLogo, calendar: s.calendar === true,
+      acctNo: s.acctNo || '',
       deaVerified: s.dea && s.deaVerifiedDea === s.dea ? { at: s.deaVerifiedAt || '', by: s.deaVerifiedBy || '' } : null,
       services: Array.isArray(s.services) ? s.services.filter(x => SERVICES.includes(x)) : [], hours: Array.isArray(s.hours) && s.hours.length === 7 ? s.hours : null }))
     .sort((a, b) => a.id.localeCompare(b.id));
@@ -294,22 +295,98 @@ function storeFields(b){
   if(b.hours !== undefined) f.hours = cleanHours(b.hours);
   return f;
 }
-// set by IronLedger (the host login) only: what the pharmacy is licensed for and which tabs it has switched on.
-// The pharmacy's own Account Manager sees these but cannot change them; enforced here, not just on the screen.
-const HOST_ONLY = ['license', 'licenseExpires', 'npi', 'dea', 'deaExpires', 'ncpdp', 'services', 'servicesOther', 'calendar', 'deaVerified'];
+// What each side may change on a pharmacy.
+// The Account Manager (the pharmacy's primary account holder) may change only these. Everything else (name, address, email, license, NPI, DEA, NCPDP,
+// services, the Calendar switch) is set by IronLedger (the host login); billing follows the client's identity, so those must stay consistent.
+const AM_EDITABLE = ['phone', 'fax', 'timezone', 'hours', 'licenseExpires', 'deaExpires'];
+// Identity: once a value is on file it is hard to change. Even the host must give a reason, and every change is written to the pharmacy's change history.
+const IDENTITY = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp'];
+async function nextAcctNo(){                              // the client's IronLedger account number: generated once, never changed
+  const r = await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'COUNTER', sk: 'ACCT' }, UpdateExpression: 'ADD n :one', ExpressionAttributeValues: { ':one': 1 }, ReturnValues: 'UPDATED_NEW' }));
+  return 'IL-' + String(r.Attributes.n).padStart(6, '0');
+}
+// ---- rep drafts: a rep assigned to a pharmacy proposes changes; a supervisor approves or rejects. Nothing is applied until approved.
+// Services, the Calendar switch and DEA checks are never in a draft (a new service line needs pricing and contracting settled first).
+const DRAFT_KEYS = [...IDENTITY, 'email', ...AM_EDITABLE];
+const isRep = me => !!(me.host && me.hostRole === 'rep'), isSupervisor = me => !!(me.host && me.hostRole !== 'rep');
+async function createDraft(me, id, b){
+  if(!isRep(me)) throw forbidden('Drafts are entered by an IronLedger rep. A supervisor edits directly.');
+  if(!okId(id)) throw bad('Bad pharmacy');
+  if(!(me.repStores || {})[id]) throw forbidden('That pharmacy is not assigned to you.');
+  const fields = b.fields && typeof b.fields === 'object' ? b.fields : {};
+  const keys = Object.keys(fields); if(!keys.length) throw bad('Nothing to submit.');
+  if(keys.some(k => !DRAFT_KEYS.includes(k))) throw bad('Services, the Calendar switch and DEA checks can’t be drafted. Escalate them to a supervisor.');
+  const note = String(b.note || '').trim(); if(note.length < 10) throw bad('Say why (at least 10 characters) so the supervisor can review it.');
+  const cur = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }))).Item; if(!cur) throw bad('No such pharmacy.');
+  const f = storeFields(fields);                       // same validation as a direct edit
+  const sk = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 6);
+  await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'STOREDRAFT#' + id, sk, store: id, status: 'pending', fields: f, note, by: who(me), bySub: me.sk, at: now() } }));
+  return { ok: true, draft: sk };
+}
+async function listDrafts(me){
+  const stores = isSupervisor(me) ? (await allStores()).map(s => s.id) : Object.keys(me.repStores || {});
+  const out = [];
+  for(const id of stores){
+    const r = await ddb.send(new QueryCommand({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'STOREDRAFT#' + id }, ScanIndexForward: false, Limit: 30 }));
+    const cur = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }))).Item || {};
+    for(const d of r.Items || []){
+      if(!isSupervisor(me) && d.bySub !== me.sk) continue;
+      out.push({ store: id, id: d.sk, status: d.status, note: d.note, by: d.by, at: d.at, decidedBy: d.decidedBy || '', decidedAt: d.decidedAt || '', decisionNote: d.decisionNote || '',
+        changes: Object.fromEntries(Object.entries(d.fields).map(([k, v]) => [k, [cur[k] === undefined ? '' : cur[k], v]])) });
+    }
+  }
+  return { drafts: out.sort((a, b) => (b.at || '').localeCompare(a.at || '')) };
+}
+async function decideDraft(me, id, sk, action, b){
+  if(!isSupervisor(me)) throw forbidden('A supervisor reviews drafts.');
+  if(!okId(id) || !/^[0-9]+-[a-z0-9]+$/.test(sk)) throw bad('Bad draft');
+  const d = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STOREDRAFT#' + id, sk } }))).Item;
+  if(!d) throw new HttpError(404, 'No such draft.');
+  if(d.status !== 'pending') throw bad('That draft was already ' + d.status + '.');
+  const dn = String(b.note || '').trim();
+  if(action === 'reject' && dn.length < 5) throw bad('Say why it was rejected.');
+  if(action === 'approve') await updateStore(id, { ...d.fields, changeReason: d.note + ' (entered by ' + d.by + ', approved by ' + who(me) + ')' }, who(me) + ' (approved draft by ' + d.by + ')', true);
+  try{ await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'STOREDRAFT#' + id, sk }, ConditionExpression: '#s = :p', UpdateExpression: 'SET #s = :n, decidedBy = :b, decidedAt = :a, decisionNote = :d',
+    ExpressionAttributeNames: { '#s': 'status' }, ExpressionAttributeValues: { ':p': 'pending', ':n': action === 'approve' ? 'approved' : 'rejected', ':b': who(me), ':a': now(), ':d': dn } })); }
+  catch(e){ if(isCond(e)) throw bad('That draft was just decided by someone else.'); throw e; }
+  return { ok: true };
+}
+async function assignAcctNo(id){
+  if(!okId(id)) throw bad('Bad pharmacy');
+  const cur = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }));
+  if(!cur.Item) throw bad('No such pharmacy.');
+  if(cur.Item.acctNo) return { acctNo: cur.Item.acctNo };
+  const a = await nextAcctNo();
+  try{ await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id }, UpdateExpression: 'SET acctNo = :a', ConditionExpression: 'attribute_exists(pk) AND attribute_not_exists(acctNo)', ExpressionAttributeValues: { ':a': a } })); }
+  catch(e){ if(isCond(e)) return { acctNo: (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }))).Item.acctNo }; throw e; }
+  return { acctNo: a };
+}
+async function storeHistory(id){
+  if(!okId(id)) throw bad('Bad pharmacy');
+  const r = await ddb.send(new QueryCommand({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'STOREAUDIT#' + id }, ScanIndexForward: false, Limit: 50 }));
+  return { history: (r.Items || []).map(i => ({ at: i.at, by: i.by, reason: i.reason || '', changes: i.changes })) };
+}
 async function addStore(b, by){
   const id = String(b.id || '').trim().toUpperCase();
   if(!PHARM_ID.test(id)) throw bad('Pharmacy ID: 2–20 letters, numbers or dashes (e.g. NTX1).');
   const f = storeFields(b); if(!f.name) throw bad('Pharmacy name is required.');
   if(!f.timezone) f.timezone = DEFAULT_TZ;
-  try{ await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'STORES', sk: id, ...f, createdAt: now(), createdBy: by || '' }, ConditionExpression: 'attribute_not_exists(pk)' })); }
+  try{ await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'STORES', sk: id, ...f, acctNo: await nextAcctNo(), createdAt: now(), createdBy: by || '' }, ConditionExpression: 'attribute_not_exists(pk)' })); }
   catch(e){ if(isCond(e)) throw bad('That Pharmacy ID is already used.'); throw e; }
   return { id, ...f };
 }
 async function updateStore(id, b, by, isHost){
   if(!okId(id)) throw bad('Bad pharmacy');
-  if(!isHost && HOST_ONLY.some(k => b[k] !== undefined)) throw forbidden('Licenses, identifiers, services and the Calendar switch are set by IronLedger. Contact your IronLedger representative to change them.');
+  if(!isHost && Object.keys(b).some(k => !AM_EDITABLE.includes(k))) throw forbidden('Only phone, fax, time zone, hours and license/DEA expiration dates can be changed here. The name, address, license and identifiers, services and Calendar are set by IronLedger. Contact your IronLedger representative.');
   const f = storeFields(b);
+  const curItem = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }))).Item;
+  if(!curItem) throw bad('No such pharmacy.');
+  // changing an identity value that is already on file needs a written reason (filling a blank does not)
+  const changedIdent = IDENTITY.filter(k => f[k] !== undefined && (curItem[k] || '') !== '' && f[k] !== curItem[k]);
+  const reason = String(b.changeReason || '').trim();
+  if(changedIdent.length && reason.length < 10) throw bad('Changing ' + changedIdent.join(', ') + ' needs a reason (at least 10 characters). The name, address, license and identifiers must stay consistent with the license and with billing.');
+  const diff = {};
+  for(const [k, v] of Object.entries(f)){ const o = curItem[k]; if(JSON.stringify(o === undefined ? (Array.isArray(v) ? [] : '') : o) !== JSON.stringify(v)) diff[k] = [o === undefined ? null : o, v]; }
   if(b.deaVerified !== undefined){          // a person checked the number on the DEA's own validation site and says so; recorded against that exact number
     if(b.deaVerified !== true) throw bad('Verification can only be recorded, not edited.');
     const cur = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }));
@@ -323,6 +400,7 @@ async function updateStore(id, b, by, isHost){
     if(cur.Item && (cur.Item.dea || '') !== f.dea) f.deaVerifiedDea = '';
   }
   if(!Object.keys(f).length) return;
+  if(Object.keys(diff).length) await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'STOREAUDIT#' + id, sk: now() + '#' + Math.random().toString(36).slice(2, 7), at: now(), by: by || '', reason, changes: diff } }));
   const names = {}, vals = {}, parts = [];
   Object.entries({ ...f, updatedAt: now() }).forEach(([k, v], i) => { names['#f' + i] = k; vals[':v' + i] = v; parts.push(`#f${i} = :v${i}`); });
   try{ await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id }, UpdateExpression: 'SET ' + parts.join(', '),
@@ -367,7 +445,7 @@ async function listPeople(){
   do { const r = await idp.send(new ListUsersCommand({ UserPoolId: POOL, PaginationToken, Limit: 60 }));
     for(const u of r.Users || []){ const sub = (u.Attributes || []).find(a => a.Name === 'sub'); if(sub) status[sub.Value] = { status: u.UserStatus, enabled: u.Enabled, created: u.UserCreateDate }; }
     PaginationToken = r.PaginationToken; } while(PaginationToken);
-  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host, acctType: p.acctType || '',
+  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host, hostRole: p.host ? (p.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: p.host ? (p.repStores || {}) : {}, acctType: p.acctType || '',
     stores: p.stores || {}, perms: permsOf(p), disabled: status[p.sk] ? !status[p.sk].enabled : !!p.disabled,
     status: (status[p.sk] || {}).status || 'UNKNOWN', ...pendingOf(p, status[p.sk]) }))
     // Account Manager, host, then people still waiting to sign in for the first time, then everyone else
@@ -400,7 +478,7 @@ async function createLogin(b){
   const sub = ((r.User && r.User.Attributes) || []).find(a => a.Name === 'sub').Value;
   return { sub, login, name, phone, tempPassword: pw };
 }
-// An IronLedger rep may send password resets and change a privilege, only on an existing, active person who has an account type.
+// An IronLedger rep may send password resets and change a privilege, only on an existing, active person (ID live, as in the people list) who has an account type.
 // Nothing else about a person (type, pharmacies, name, phone, switching off, deleting) and never the Calendar privilege, which belongs to a service line.
 async function repGuard(p, seg3, body){
   if(p.host) throw forbidden('Host logins are managed by an IronLedger supervisor.');
@@ -412,7 +490,7 @@ async function repGuard(p, seg3, body){
   if(!p.acctType) throw forbidden('A rep can change privileges only on a person who has an account type. Ask an IronLedger supervisor.');
   if(body.perms && Object.prototype.hasOwnProperty.call(body.perms, 'calendar')) throw forbidden('The Calendar privilege is part of a service line and is set by an IronLedger supervisor.');
   const g = await idp.send(new AdminGetUserCommand({ UserPoolId: POOL, Username: p.login })).catch(() => null);
-  if(p.disabled || !g || g.Enabled === false || g.UserStatus === 'FORCE_CHANGE_PASSWORD') throw forbidden('A rep can change privileges only on an active person (not switched off, and past their first sign-in).');
+  if(g ? g.Enabled === false : !!p.disabled) throw forbidden('A rep can change privileges only on an active person (login not switched off). First sign-in does not matter.');
 }
 async function updatePerson(me, sub, seg3, body){
   if(!okId(sub)) throw bad('Bad user');
@@ -451,6 +529,7 @@ async function updatePerson(me, sub, seg3, body){
   if(p.host && me.host && (body.stores !== undefined || body.perms !== undefined)) throw bad('Only the Account Manager can give the host access to a pharmacy or privileges in it.');
   const upd = {};
   if(body.acctType !== undefined){ if(p.owner || p.host) throw bad('The Account Manager and host logins have their own account type.'); upd.acctType = cleanType(body.acctType); }
+  if(body.repStores !== undefined){ if(!isSupervisor(me)) throw forbidden('A supervisor assigns reps to pharmacies.'); if(!(p.host && p.hostRole === 'rep')) throw bad('Only rep logins have assigned pharmacies.'); upd.repStores = Object.assign({}, p.repStores || {}, await cleanStoreToggles(body.repStores)); }
   if(body.stores !== undefined) upd.stores = Object.assign({}, p.stores || {}, await cleanStoreToggles(body.stores));
   if(body.perms !== undefined) upd.perms = Object.assign({}, p.perms || {}, cleanPerms(body.perms));
   if(body.name !== undefined){ upd.name = clean(body.name, 120) || '';
@@ -567,7 +646,7 @@ async function route(method, path, q, body, me, claims){
   if(seg[0] === 'api') seg.shift();                    // works with or without an /api prefix
 
   if(method === 'GET' && seg[0] === 'me' && seg.length === 1)
-    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, acctType: me.acctType || '', perms: permsOf(me), stores: await storesFor(me) };
+    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', perms: permsOf(me), stores: await storesFor(me) };
 
   if(seg[0] === 'stores' && seg[1]){
     const store = seg[1];
@@ -608,16 +687,16 @@ async function route(method, path, q, body, me, claims){
     await requireUnlocked(me);
     if(method === 'POST' && seg[1] === 'keepalive') return { ok: true };
     // an IronLedger rep can help with passwords and privileges, but pharmacy details and services wait for a supervisor (a review step for reps is planned, not built)
-    if(me.host && me.hostRole === 'rep' && (seg[1] === 'npi' || (seg[1] === 'stores' && method !== 'GET'))) throw forbidden('Pharmacy details and services are set by an IronLedger supervisor.');
-    // an IronLedger rep's reach with people: change the privileges or account type of an existing, active user, or reset that user's password. Nothing else.
+    if(me.host && me.hostRole === 'rep' && (seg[1] === 'npi' || (seg[1] === 'stores' && method !== 'GET' && seg[3] !== 'drafts'))) throw forbidden('Pharmacy details and services are set by an IronLedger supervisor. A rep submits a draft for review.');
+    // an IronLedger rep's reach with people: change the privileges of an existing, active user, or reset that user's password. Nothing else.
     if(me.host && me.hostRole === 'rep' && (seg[1] === 'import' || (seg[1] === 'users' && method === 'POST'))){
-      const no = () => forbidden('An IronLedger rep can change the privileges or account type of an existing, active user (and reset their password). Anything else goes to a supervisor.');
+      const no = () => forbidden('An IronLedger rep can change the privileges of an existing, active user (and reset their password). Anything else goes to a supervisor.');
       if(seg[1] === 'import' || !seg[2]) throw no();
       const tp = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: String(seg[2]) } })), t = tp.Item;
       if(!t || t.deleted || t.disabled || t.owner || t.host) throw no();
       if(seg[3] === 'reset-password') { /* allowed */ }
       else if(seg[3]) throw no();
-      else { const ks = Object.keys(body); if(!ks.length || ks.some(k => k !== 'perms' && k !== 'acctType')) throw no(); }
+      else { const ks = Object.keys(body); if(!ks.length || ks.some(k => k !== 'perms')) throw no(); }
     }
     // bring in a pharmacy's old shared-drive file: adds only, never changes or removes anything already there
     if(method === 'POST' && seg[1] === 'import' && seg[2]){
@@ -627,8 +706,13 @@ async function route(method, path, q, body, me, claims){
       return await importData(seg[2], body);
     }
     if(method === 'GET' && seg[1] === 'npi' && seg[2]){ if(!me.host) throw forbidden('Registry checks are done by IronLedger.'); return await npiLookup(String(seg[2])); }
-    if(method === 'GET' && seg[1] === 'stores') return { stores: await allStores() };
+    if(method === 'GET' && seg[1] === 'stores' && !seg[2]) return { stores: await allStores() };
     if(method === 'POST' && seg[1] === 'stores' && !seg[2]){ if(!me.host) throw forbidden('New pharmacies are set up by IronLedger.'); return await addStore(body, who(me)); }
+    if(method === 'POST' && seg[1] === 'stores' && seg[2] && seg[3] === 'drafts') return await createDraft(me, seg[2], body);
+    if(method === 'GET' && seg[1] === 'drafts' && !seg[2]){ if(!me.host) throw forbidden('Drafts are handled by IronLedger.'); return await listDrafts(me); }
+    if(method === 'POST' && seg[1] === 'drafts' && seg[2] && seg[3] && (seg[4] === 'approve' || seg[4] === 'reject')) return await decideDraft(me, seg[2], seg[3], seg[4], body);
+    if(method === 'POST' && seg[1] === 'stores' && seg[2] && seg[3] === 'acctno'){ if(!me.host) throw forbidden('Account numbers are assigned by IronLedger.'); return await assignAcctNo(seg[2]); }
+    if(method === 'GET' && seg[1] === 'stores' && seg[2] && seg[3] === 'history'){ if(!me.host) throw forbidden('The change history is kept by IronLedger.'); return await storeHistory(seg[2]); }
     if(method === 'POST' && seg[1] === 'stores' && seg[2] && seg[3] === 'logo'){ await setLogo(seg[2], body.dataUrl); return { ok: true }; }
     if(method === 'POST' && seg[1] === 'stores' && seg[2]){ await updateStore(seg[2], body, who(me), !!me.host); return { ok: true }; }
     if(method === 'GET' && seg[1] === 'users') return { users: await listPeople() };

@@ -321,7 +321,7 @@ rep('''/* ======================================================================
    Drug search: NLM RxTerms / RxNav live, FDA NDC Directory backup. DailyMed links open labels.
    ======================================================================= */''')
 cut('/* ---------------- shared state ---------------- */', '/* ---------------- drug search:', open(P + 'state.js').read() + '\n' + open(P + 'login.js').read() + '\n')
-cut('/* ---------------- safety net:', '</script>', open(P + 'pharm_panels.js').read() + '\n' + open(P + 'owner.js').read() + '\n' + open(P + 'calendar.js').read() + '\n' + open(P + 'start.js').read())
+cut('/* ---------------- safety net:', '</script>', open(P + 'layout_engine.js').read() + '\n' + open(P + 'pharm_panels.js').read() + '\n' + open(P + 'owner.js').read() + '\n' + open(P + 'calendar.js').read() + '\n' + open(P + 'start.js').read())
 # remove the old tabs/start (now in start.js) — it was after the safety-net block, so already cut
 
 # ---------- list rows: who added it, labels for phone layout, remove only with permission
@@ -435,6 +435,7 @@ rep('<img id="ilLogo" src="ironledger-logo.png" alt="" hidden>', '<img id="ilLog
 PCSS = open(os.path.join(HERE, 'parts', 'pharm_panels.css')).read()
 s = s.replace('/*PHARM_CSS*/', PCSS, 1)
 open(OUT.replace('index.html', 'pharm_panels.css'), 'w').write(PCSS)
+open(OUT.replace('index.html', 'layout_engine.js'), 'w').write(open(P + 'layout_engine.js').read())
 open(OUT.replace('index.html', 'pharm_panels.js'), 'w').write(open(P + 'pharm_panels.js').read())          # and its script          # the host page uses the same card and layout
 # ---------- move the app script out of the page so a strict Content-Security-Policy can block injected scripts
 import hashlib, base64 as b64

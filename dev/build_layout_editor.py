@@ -1,11 +1,15 @@
 # Builds dev/layout_editor.html: a single-file page that shows the host's pharmacy setup page panels on a snap-to-grid canvas.
 # It uses the app's own CSS and panel code (app/src/parts/pharm_panels.js), so what you arrange is what the app shows.
-# Output: a layout code to paste back; it is baked into the app as PHARM_LAYOUT. Not shipped in the deployment package.
+# Output: a layout code to paste back; it is baked into the app as PAGE.layout. Not shipped in the deployment package.
 import re, os
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP = os.path.join(HERE, '..', 'app')
 css = '\n'.join(re.findall(r'<style>([\s\S]*?)</style>', open(os.path.join(APP, 'web', 'index.html')).read()))
-panels = open(os.path.join(APP, 'src', 'parts', 'pharm_panels.js')).read()
+import sys
+# Pages the editor can lay out (the standard for every page of the suite). To add one: its src/parts/<page>_panels.js defines a PAGE (see layout_engine.js) and a sample.
+PAGES = {'pharm': {'file': 'pharm_panels.js', 'var': 'PHARM_PAGE', 'out': 'layout_editor.html', 'title': 'Pharmacy Setup Page (host)'}}
+PG = PAGES[sys.argv[1] if len(sys.argv) > 1 else 'pharm']
+panels = open(os.path.join(APP, 'src', 'parts', 'layout_engine.js')).read() + '\n' + open(os.path.join(APP, 'src', 'parts', PG['file'])).read() + '\nconst PAGE = ' + PG['var'] + ';'
 tz = re.search(r"const TZ_NAMES = \{[\s\S]*?\};", open(os.path.join(APP, 'src', 'parts', 'state.js')).read()).group(0)
 EDITOR_CSS = r'''
 body{margin:0;background:var(--bg,#eef3f8);}
@@ -36,12 +40,12 @@ const SAMPLE = {id:'NTX1', name:'NorTex Pharmacy - Haslet', address:'100 Main St
 const SAMPLE_NPI = '<div class="npibox"><b>NORTEX PHARMACY LLC</b> <span class="hint">Organization · Active · registry updated 2024-05-01</span><div>100 MAIN ST, STE 5, HASLET, TX 76252 · 817-555-0100 · fax 817-555-0101</div><div class="hint">Pharmacy - Community/Retail Pharmacy · license on file with registry: TX12345 (TX)</div><div class="npiflag">⚠ The registry name differs from the pharmacy name above.</div><button class="btn2 small">Use these details</button> <span class="hint">fills name, address, phone and fax above (the license number is not filled; type it from the state license)</span></div>';
 '''
 EDITOR_JS = r'''
-const COLS = PHARM_COLS, ROW = PHARM_ROW, MINH = 6, KEY = 'il_pharm_layout_v2';
+const COLS = LAYOUT_COLS, ROW = LAYOUT_ROW, MINH = 6, KEY = 'il_' + PAGE.id + '_layout_v2';
 const qs = s => document.querySelector(s);
 let L = null, hist = [], showSample = true, widthSel = 'full';
 const clone = o => JSON.parse(JSON.stringify(o));
-try{ const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if(saved && pharmLayoutOk(saved)) L = saved; }catch(e){}
-if(!L) L = clone(PHARM_LAYOUT);
+try{ const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if(saved && layoutOk(PAGE, saved)) L = saved; }catch(e){}
+if(!L) L = clone(PAGE.layout);
 const hit = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
 function resolve(P, id, pos){                    // place one panel, push the ones it lands on down, then slide everything up to close gaps
   const Q = clone(P); Q[id] = [pos.x, pos.y, pos.w, pos.h];
@@ -56,13 +60,13 @@ const stacked = () => qs('.pgrid').classList.contains('force-stack');
 function setStage(w){ const vp = qs('#vp'); vp.style.width = (w - 40 - 26) + 'px'; const g = qs('.pgrid'); if(g){ g.classList.toggle('force-stack', w < 1280); g.classList.toggle('force-grid', w >= 1280); } }
 function need(id){ const n = qs(`.pnl[data-pnl="${id}"]`); return Math.ceil((n.querySelector('.pt').offsetHeight + n.querySelector('.pb').offsetHeight + 24) / ROW); }   // rows the content needs (incl. the 12 px gap)
 function paint(){
-  const card = qs('#vp .pcard'); card.innerHTML = pharmCardHtml(SAMPLE, { logo: '', holder: 'Pat Owner (owner)', host: true }, { panels: L.panels });
+  const card = qs('#vp .pcard'); card.innerHTML = PAGE.render(SAMPLE, L.panels);
   const g = card.querySelector('.pgrid'); g.classList.add('guides');
   g.querySelectorAll('.pnl').forEach(n => { n.insertAdjacentHTML('beforeend', ['n','s','e','w','ne','nw','se','sw'].map(d => `<i class="rz" data-s="${d}"></i>`).join('')); });
   if(showSample){ const r = g.querySelector('[data-npires]'); if(r) r.innerHTML = SAMPLE_NPI; }
   setStage(stageWidth()); decorate(); if(!stacked()) fit(); code();
 }
-function fit(){ let ch = false; for(const [id] of PHARM_PANELS){ const nd = need(id), p = L.panels[id]; if(p[3] < nd){ L.panels = resolve(L.panels, id, { x: p[0], y: p[1], w: p[2], h: nd }); ch = true; decorate(); } } return ch; }
+function fit(){ let ch = false; for(const [id] of PAGE.panels){ const nd = need(id), p = L.panels[id]; if(p[3] < nd){ L.panels = resolve(L.panels, id, { x: p[0], y: p[1], w: p[2], h: nd }); ch = true; decorate(); } } return ch; }
 function decorate(){ const g = qs('.pgrid'); let bottom = 0;
   g.querySelectorAll('.pnl').forEach(n => { const p = L.panels[n.dataset.pnl]; n.style.setProperty('--x', p[0]); n.style.setProperty('--y', p[1]); n.style.setProperty('--w', p[2]); n.style.setProperty('--h', p[3]); bottom = Math.max(bottom, p[1] + p[3] - 1);
     const t = n.querySelector('.pt'); let s = t.querySelector('small'); if(!s){ s = document.createElement('small'); t.appendChild(s); } s.textContent = p[2] + ' cols × ' + p[3] * ROW + ' px'; });
@@ -103,7 +107,7 @@ document.addEventListener('pointermove', e => {
   if(side){
     const nd = need(id);                                   // never shorter than the content
     if(Q[id][3] < nd){ const bottom = Q[id][1] + Q[id][3] - 1, ny = side.includes('n') ? bottom - nd + 1 : Q[id][1]; L.panels = resolve(act.good, id, { x: Q[id][0], y: Math.max(1, ny), w: Q[id][2], h: nd }); decorate(); }
-    if(overflowing(id)){ L.panels = before; decorate(); say('Stopped: that would cut off text in ' + (PHARM_PANELS.find(q => q[0] === id) || [0, id])[1] + '.'); return; }
+    if(overflowing(id)){ L.panels = before; decorate(); say('Stopped: that would cut off text in ' + (PAGE.panels.find(q => q[0] === id) || [0, id])[1] + '.'); return; }
   }
   act.good = clone(L.panels);
 });
@@ -117,23 +121,23 @@ document.addEventListener('dblclick', e => {                // double-click a ti
   if(p[3] !== nd){ hist.push(clone(L.panels)); L.panels = resolve(L.panels, id, { x: p[0], y: p[1], w: p[2], h: nd }); paint(); say('Fitted to its content.'); }
 });
 qs('#undo').onclick = () => { if(hist.length){ L.panels = hist.pop(); paint(); } };
-qs('#reset').onclick = () => { hist.push(clone(L.panels)); L.panels = clone(PHARM_LAYOUT.panels); paint(); say('Back to the starting layout. Undo brings your layout back.'); };
+qs('#reset').onclick = () => { hist.push(clone(L.panels)); L.panels = clone(PAGE.layout.panels); paint(); say('Back to the starting layout. Undo brings your layout back.'); };
 qs('#copy').onclick = () => { const t = qs('#code'); t.select(); try{ navigator.clipboard.writeText(t.value).then(() => say('Layout code copied.'), () => { document.execCommand('copy'); say('Layout code copied.'); }); }catch(e){ document.execCommand('copy'); say('Layout code copied.'); } };
-qs('#apply').onclick = () => { try{ const c = JSON.parse(qs('#code').value); if(!pharmLayoutOk(c)) throw 0; hist.push(clone(L.panels)); L = c; paint(); say('Layout code applied.'); }catch(e){ say('That layout code is not valid (it must be a version 2 code).'); } };
+qs('#apply').onclick = () => { try{ const c = JSON.parse(qs('#code').value); if(!layoutOk(PAGE, c)) throw 0; hist.push(clone(L.panels)); L = c; paint(); say('Layout code applied.'); }catch(e){ say('That layout code is not valid (it must be a version 2 code).'); } };
 qs('#width').onchange = e => { widthSel = e.target.value; setStage(stageWidth()); if(!stacked() && fit()) code(); };
 qs('#sample').onchange = e => { showSample = e.target.checked; paint(); };
 addEventListener('resize', () => setStage(stageWidth()));
 qs('#check').onclick = () => {
   const keep = stageWidth(), out = [];
-  for(const w of [1920, 1680, 1536, 1366, 1280]){ setStage(w); const bad = PHARM_PANELS.filter(([id]) => overflowing(id)).map(q => q[1]); const tall = PHARM_PANELS.filter(([id]) => need(id) > L.panels[id][3]).map(q => q[1]);
+  for(const w of [1920, 1680, 1536, 1366, 1280]){ setStage(w); const bad = PAGE.panels.filter(([id]) => overflowing(id)).map(q => q[1]); const tall = PAGE.panels.filter(([id]) => need(id) > L.panels[id][3]).map(q => q[1]);
     out.push(w + ' px wide: ' + (bad.length ? 'text cut off sideways in ' + bad.join(', ') : 'fits') + (tall.length ? ' (the page grows taller to fit: ' + tall.join(', ') + ')' : '')); }
   setStage(keep); qs('#report').textContent = out.join('\n') + '\nBelow 1280 px wide the panels stack in one column in reading order (top row first, left to right).';
 };
 paint();
 '''
-HTML = f'''<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Pharmacy Account Page Layout Editor</title><meta name="viewport" content="width=device-width, initial-scale=1">
+HTML = f'''<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>{PG['title']} Layout Editor</title><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>{css}</style><style>{EDITOR_CSS}</style></head><body>
-<div id="bar"><b>Layout Editor: Pharmacy Account Page</b>
+<div id="bar"><b>Layout Editor: {PG['title']}</b>
 <label>Preview width <select id="width"><option value="full">Full window</option><option value="1920">1920</option><option value="1680">1680</option><option value="1536">1536</option><option value="1366">1366</option><option value="1280">1280</option><option value="1100">1100 (stacked)</option><option value="820">820 (tablet, stacked)</option></select></label>
 <label><input type="checkbox" id="sample" checked> Show sample registry result</label>
 <button id="undo" disabled>Undo</button><button id="reset">Reset To Start</button><button id="check">Check All Widths</button><span class="sp"></span><span id="msg"></span><button id="copy">Copy Layout Code</button></div>
@@ -148,4 +152,4 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({{'&':'&am
 {SAMPLE_JS}
 {EDITOR_JS}
 </script></body></html>'''
-out = os.path.join(HERE, 'layout_editor.html'); open(out, 'w', encoding='utf-8').write(HTML); print('written', out, len(HTML))
+out = os.path.join(HERE, PG['out']); open(out, 'w', encoding='utf-8').write(HTML); print('written', out, len(HTML))
