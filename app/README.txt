@@ -77,6 +77,10 @@ HOST PAGE (no CloudShell needed)
   Account Manager's), change mobile numbers, switch logins on/off, add or delete people, add
   pharmacies, assign people to pharmacies, and import a pharmacy's old nortex_reorder_data.json. The host sees no pharmacy's list unless the Account Manager allows it.
   If you ever lose the host password, run the make-host command again for a new temporary one.
+  SETTING UP A PHARMACY: the host page has a "Set up a new pharmacy" card. Only the host sets a pharmacy's
+  license, NPI, DEA, NCPDP, Services provided and Calendar switch; the pharmacy's Account Manager sees them
+  but cannot change them or add a pharmacy. The Account Manager edits name, address, phone, fax, email,
+  time zone and hours. The host page needs a desktop or tablet screen.
 
 HOST TOOLS (CloudShell, in the same folder)
   bash host.sh people                    bash host.sh reset-password maria.t
