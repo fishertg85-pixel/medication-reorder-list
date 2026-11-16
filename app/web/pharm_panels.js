@@ -43,8 +43,7 @@ const PHARM_BODY = {
     : c.host
     ? `<div class="pfields">${SF2.map(([k, l, t]) => cardField(s, k, l, t, c)).join('')}
         <div class="pid npirow"><button class="btn2 small" data-npilook="1" title="Checks the NPI against the public registry. Nothing changes until you save.">Look up NPI in the federal registry</button><div data-npires></div></div>
-        <div class="pid npirow"><a class="btn2 small" href="https://apps.deadiversion.usdoj.gov/webforms2/spring/validationLogin" target="_blank" rel="noopener noreferrer">Open the DEA registration check</a>${c.isNew ? '' : ' <button class="btn2 small" data-deaok="1">I checked this DEA number there</button>'}
-          <span class="hint" data-deastat>${c.isNew ? 'Record the DEA check after the pharmacy is created.' : deaStat(s)}</span></div></div>`
+        <div class="pid npirow"><a class="btn2 small" href="https://apps.deadiversion.usdoj.gov/webforms2/spring/validationLogin" target="_blank" rel="noopener noreferrer">Open the DEA registration check</a>${c.isNew ? '' : ' <button class="btn2 small" data-deaok="1" data-deastat title="' + deaStat(s) + '">I checked this DEA number there</button>'}</div></div>`
     : `<div class="pfields">${SF2.map(([k, l, t]) => cardField(s, k, l, t, c)).join('')}
         <div class="lockhint">License number, NPI, DEA and NCPDP are set by IronLedger. Expiration dates are yours to keep current.</div><div class="pid npirow hint">DEA check: ${deaStat(s)}</div></div>`,
   svc: (s, c) => c.host && !c.rep

@@ -131,7 +131,7 @@ with sync_playwright() as p:
     check("Use these details fills the form", card.locator("[data-sf=city]").input_value() == "HASLET" and card.locator("[data-sf=zip]").input_value() == "76252")
     card.locator("[data-sf=dea]").fill("AB1234563"); card.locator("[data-savestore]").click(); pg.wait_for_timeout(1500)
     card = pg.locator("#stores .pcard[data-store='NTX3']"); card.locator("[data-deaok]").click(); pg.wait_for_timeout(1500)
-    check("DEA check recorded from the host page", "Checked on the DEA site" in pg.locator("#stores .pcard[data-store='NTX3'] [data-deastat]").inner_text())
+    check("DEA check recorded from the host page", "Checked on the DEA site" in pg.locator("#stores .pcard[data-store='NTX3'] [data-deastat]").get_attribute("title"))
     st3 = [x for x in api(HT, "GET", "/host/stores")[1]["stores"] if x["id"] == "NTX3"][0]
     check("host page saved NPI, DEA and services together", (st3["npi"], st3["dea"], st3["services"], bool(st3["deaVerified"])) == ("1234567893", "AB1234563", ["retail"], True))
     pg.screenshot(path="screenshots/host_pharmacy_setup.png", full_page=True)
