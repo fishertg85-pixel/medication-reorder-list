@@ -1,4 +1,4 @@
-# Layout editor in the browser: moving, resizing, snapping, no overlap, no cut-off text, undo, code round-trip.
+# Layout editor in the browser: move, resize from every edge, snap, no overlap, never shorter than content, no cut-off text, undo, code round-trip.
 import json, os
 from playwright.sync_api import sync_playwright
 fails = []
@@ -8,41 +8,51 @@ def check(name, got, want):
 errs = []
 with sync_playwright() as pw:
     b = pw.chromium.launch(args=['--no-sandbox']); p = b.new_context(viewport={'width': 1700, 'height': 1700}).new_page(); p.on('pageerror', lambda e: errs.append(str(e))); p.on('dialog', lambda d: d.accept())
-    p.goto('file://' + os.path.abspath('layout_editor.html')); p.wait_for_selector('.pgrid'); p.wait_for_timeout(300)
+    p.goto('file://' + os.path.abspath('layout_editor.html')); p.wait_for_selector('.pgrid'); p.wait_for_timeout(400)
     code = lambda: json.loads(p.input_value('#code'))['panels']
-    start = code(); check('starts from the default layout', start['hrs'], [8, 1, 5, 2])
-    def box(sel): return p.locator(sel).bounding_box()
-    def drag(frm, to, steps=12):
-        p.mouse.move(*frm); p.mouse.down(); p.mouse.move(*to, steps=steps); p.mouse.up(); p.wait_for_timeout(200)
+    box = lambda sel: p.locator(sel).bounding_box()
+    start = code(); print('start', start)
     def overlap(P):
-        v = list(P.values()); return any(a is not b_ and a[0] < b_[0] + b_[2] and b_[0] < a[0] + a[2] and a[1] < b_[1] + b_[3] and b_[1] < a[1] + a[3] for a in v for b_ in v)
-    # move Services next to Hours' column: drop the Services title at the far right, row 3
-    t = box('.pnl[data-pnl=svc] .pt'); g = box('.pgrid'); colw = (g['width'] - 132) / 12
-    drag((t['x'] + 30, t['y'] + 10), (g['x'] + 7.5 * (colw + 12) + 30, t['y'] + 10))
-    c = code(); check('moved panel lands on a grid column', c['svc'][0] in range(1, 13), True); check('no overlap after a move', overlap(c), False)
-    check('layout code stays valid', all(1 <= v[0] and v[0] + v[2] - 1 <= 12 and v[2] >= 2 for v in c.values()), True)
-    # drop Hours panel on top of Contact: the others must make room, not overlap
-    t = box('.pnl[data-pnl=hrs] .pt'); t2 = box('.pnl[data-pnl=contact] .pt'); drag((t['x'] + 30, t['y'] + 10), (t2['x'] + 30, t2['y'] + 10))
-    check('no overlap after dropping onto another panel', overlap(code()), False)
-    # resize: shrink Hours by dragging its right edge far left -> must stop before text is cut off
-    c0 = code(); hh = box('.pnl[data-pnl=hrs]'); p.mouse.move(hh['x'] + hh['width'] - 1, hh['y'] + hh['height'] / 2); p.mouse.down(); p.mouse.move(hh['x'] + 40, hh['y'] + hh['height'] / 2, steps=15); p.mouse.up(); p.wait_for_timeout(200)
-    c1 = code(); n = p.evaluate("(() => { const n = document.querySelector('.pnl[data-pnl=hrs] .pb'); return n.scrollWidth > n.clientWidth + 1; })()")
-    check('shrinking stops before text is cut off', n, False); check('Hours kept a usable width', c1['hrs'][2] >= 3, True)
-    # widening works (the check must not block legitimate resizes)
-    p.click('#reset'); p.wait_for_timeout(200); sv = box('.pnl[data-pnl=svc]'); w0 = code()['svc'][2]
-    p.mouse.move(sv['x'] + sv['width'] - 1, sv['y'] + sv['height'] / 2); p.mouse.down(); p.mouse.move(sv['x'] + sv['width'] + 150, sv['y'] + sv['height'] / 2, steps=12); p.mouse.up(); p.wait_for_timeout(200)
-    check('widening a panel works', code()['svc'][2] > w0, True); check('no overlap after widening', overlap(code()), False)
-    sv = box('.pnl[data-pnl=svc]'); h0 = code()['svc'][3]
-    p.mouse.move(sv['x'] + sv['width'] / 2, sv['y'] + sv['height'] - 1); p.mouse.down(); p.mouse.move(sv['x'] + sv['width'] / 2, sv['y'] + sv['height'] + 60, steps=12); p.mouse.up(); p.wait_for_timeout(200)
-    check('making a panel taller works', code()['svc'][3] >= h0, True)
-    # undo restores
-    before = code(); p.click('#undo'); p.wait_for_timeout(200); check('undo changes the layout', code() != before, True)
-    p.click('#reset'); p.wait_for_timeout(200); check('reset returns to the starting layout', code(), start)
-    # round trip a code
-    new = dict(start); new['act'] = [1, 4, 6, 1]; p.fill('#code', json.dumps({'v': 1, 'cols': 12, 'panels': new})); p.click('#apply'); p.wait_for_timeout(200); check('pasted code applies', code()['act'][:2], [1, 4])
-    p.fill('#code', '{"v":1}'); p.click('#apply'); p.wait_for_timeout(200); check('bad code refused', 'not valid' in p.inner_text('#msg'), True)
-    p.click('#reset'); p.wait_for_timeout(200); p.click('#check'); p.wait_for_timeout(500); rep = p.inner_text('#report'); print(rep.replace('\n', ' | '))
-    check('default fits at every grid width', 'cut off' in rep, False)
+        v = list(P.values()); return any(a is not c and a[0] < c[0] + c[2] and c[0] < a[0] + a[2] and a[1] < c[1] + c[3] and c[1] < a[1] + a[3] for a in v for c in v)
+    def drag(frm, to, steps=14):
+        p.mouse.move(*frm); p.mouse.down(); p.mouse.move(*to, steps=steps); p.mouse.up(); p.wait_for_timeout(250)
+    def handle(pid, side):
+        h = p.locator(f'.pnl[data-pnl={pid}] .rz[data-s={side}]').bounding_box(); return (h['x'] + h['width'] / 2, h['y'] + h['height'] / 2)
+    def content_fits(pid):
+        return p.evaluate("(id) => { const n = document.querySelector('.pnl[data-pnl=' + id + ']'); return n.querySelector('.pt').offsetHeight + n.querySelector('.pb').offsetHeight + 12 <= n.getBoundingClientRect().height + 1; }", pid)
+    check('starts without overlap', overlap(start), False)
+    check('every box at least as tall as its content', all(content_fits(i) for i in start), True)
+    # --- taller (bottom edge) really changes the box's height on screen
+    h0 = box('.pnl[data-pnl=svc]')['height']; r0 = code()['svc'][3]; fx, fy = handle('svc', 's'); drag((fx, fy), (fx, fy + 96))
+    h1 = box('.pnl[data-pnl=svc]')['height']; check('dragging the bottom edge down makes the box taller on screen', h1 - h0 >= 80, True); check('height is in 12 px steps', (code()['svc'][3] - r0) in range(7, 10), True)
+    # --- shorter, but never below its content
+    fx, fy = handle('svc', 's'); drag((fx, fy), (fx, fy - 600)); check('shrinking stops at the content height', content_fits('svc'), True)
+    check('shrunk box is no taller than before the stretch plus a step', box('.pnl[data-pnl=svc]')['height'] <= h0 + 13, True)
+    # --- top edge (resize from the top), left edge
+    p.click('#reset'); p.wait_for_timeout(300); a = code()['act']; fx, fy = handle('act', 's'); drag((fx, fy), (fx, fy + 120)); a2 = code()['act']; check('act taller', a2[3] > a[3], True)
+    fx, fy = handle('act', 'n'); drag((fx, fy), (fx, fy - 40)); a3 = code()['act']; check('top edge changes height and keeps the bottom edge', (a3[1] + a3[3]) == (a2[1] + a2[3]) or a3[1] < a2[1], True)
+    check('no overlap after top-edge resize', overlap(code()), False)
+    p.click('#reset'); p.wait_for_timeout(300); r = code()['reg']; fx, fy = handle('reg', 'e'); g = box('.pgrid'); colw = (g['width'] - 132) / 12; drag((fx, fy), (fx + 1.2 * (colw + 12), fy))
+    r2 = code()['reg']; check('right edge makes it wider', r2[2] > r[2], True); fx, fy = handle('reg', 'w'); drag((fx, fy), (fx + 1.2 * (colw + 12), fy)); r3 = code()['reg']; check('left edge narrows it and moves its left side', (r3[0] > r2[0], r3[0] + r3[2] == r2[0] + r2[2]), (True, True))
+    check('no overlap after width changes', overlap(code()), False)
+    # --- corner
+    p.click('#reset'); p.wait_for_timeout(300); fx, fy = handle('svc', 'se'); before = code()['svc']; drag((fx, fy), (fx - 1.3 * (colw + 12), fy + 60)); s2 = code()['svc']; check('corner changes width and height together', (s2[2] < before[2], s2[3] > before[3]), (True, True))
+    # --- move + drop onto another panel
+    p.click('#reset'); p.wait_for_timeout(300); t = box('.pnl[data-pnl=svc] .pt'); t2 = box('.pnl[data-pnl=contact] .pt'); drag((t['x'] + 30, t['y'] + 10), (t2['x'] + 30, t2['y'] + 10))
+    check('no overlap after dropping onto another panel', overlap(code()), False); check('layout code stays valid', all(v[0] >= 1 and v[0] + v[2] - 1 <= 12 and v[2] >= 2 and v[3] >= 6 for v in code().values()), True)
+    # --- width shrink refused before text is cut off sideways
+    p.click('#reset'); p.wait_for_timeout(300); fx, fy = handle('hrs', 'w'); drag((fx, fy), (fx + 6 * (colw + 12), fy)); hh = code()['hrs']
+    check('narrowing Hours stops before text is cut off', p.evaluate("(() => { const n = document.querySelector('.pnl[data-pnl=hrs] .pb'); return n.scrollWidth > n.clientWidth + 1; })()"), False); check('Hours kept a usable width', hh[2] >= 3, True)
+    # --- double-click fits to content
+    p.click('#reset'); p.wait_for_timeout(300); fx, fy = handle('svc', 's'); drag((fx, fy), (fx, fy + 150)); tt = box('.pnl[data-pnl=svc] .pt'); p.mouse.dblclick(tt['x'] + 40, tt['y'] + 8); p.wait_for_timeout(250)
+    check('double-click fits the box to its content', abs(box('.pnl[data-pnl=svc]')['height'] - (p.evaluate("(() => { const n = document.querySelector('.pnl[data-pnl=svc]'); return n.querySelector('.pt').offsetHeight + n.querySelector('.pb').offsetHeight + 12; })()"))) < 14, True)
+    # --- undo, reset, code
+    before = code(); p.click('#undo'); p.wait_for_timeout(250); check('undo changes the layout', code() != before, True)
+    p.click('#reset'); p.wait_for_timeout(250); check('reset returns to the starting layout', code(), start)
+    new = json.loads(json.dumps(start)); new['act'] = [8, 36, 5, 20]; p.fill('#code', json.dumps({'v': 2, 'cols': 12, 'panels': new})); p.click('#apply'); p.wait_for_timeout(250); check('pasted code applies', code()['act'][3], 20)
+    p.fill('#code', '{"v":1}'); p.click('#apply'); p.wait_for_timeout(250); check('bad code refused', 'not valid' in p.inner_text('#msg'), True)
+    p.click('#reset'); p.wait_for_timeout(250); p.click('#check'); p.wait_for_timeout(600); rep = p.inner_text('#report'); print(rep.replace('\n', ' | '))
+    check('default fits sideways at every grid width', 'cut off sideways' in rep, False)
     p.select_option('#width', '820'); p.wait_for_timeout(300); check('narrow preview stacks the panels', p.evaluate("getComputedStyle(document.querySelector('.pgrid')).display"), 'block')
     p.select_option('#width', 'full'); p.wait_for_timeout(300); p.screenshot(path='screenshots/layout_editor.png', full_page=True)
     b.close()

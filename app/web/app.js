@@ -1200,17 +1200,18 @@ $('archLatest').onclick = () => {
 /* ---------------- pharmacy account page: panels and their layout ----------------
    The pharmacy card is built from panels placed on a 12-column grid. Each panel's place is [column, row, width, height]
    (1-based column and row; width in columns; height in rows). Rows are as tall as their content, so nothing is ever cut off.
+   Rows are 12 px steps; a panel is never shorter than its content (the page grows if content grows, e.g. a registry result).
    PHARM_LAYOUT is set once by the owner of the program with the layout editor and is the same for everyone.
    Narrow screens (under 1280 px wide) ignore it and stack the panels in reading order. */
-const PHARM_COLS = 12;
+const PHARM_COLS = 12, PHARM_ROW = 12;   // a row unit is 12 px; a panel's height is a number of rows
 const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['act', 'Calendar And Save']];
-const PHARM_LAYOUT = {"v":1,"cols":12,"panels":{"id":[1,1,3,1],"contact":[4,1,4,1],"hrs":[8,1,5,2],"reg":[1,2,7,1],"svc":[1,3,7,1],"act":[8,3,5,1]}};
+const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,35],"contact":[4,1,4,35],"hrs":[8,1,5,35],"reg":[1,36,7,37],"svc":[1,73,12,19],"act":[8,36,5,14]}};
 function pharmLayoutOk(L){
-  if(!L || L.v !== 1 || L.cols !== PHARM_COLS || !L.panels) return false;
+  if(!L || L.v !== 2 || L.cols !== PHARM_COLS || !L.panels) return false;
   const seen = [];
   for(const [id] of PHARM_PANELS){
     const p = L.panels[id]; if(!Array.isArray(p) || p.length !== 4 || p.some(n => !Number.isInteger(n) || n < 1)) return false;
-    const [x, y, w, h] = p; if(x + w - 1 > PHARM_COLS || w < 2 || h > 8) return false;
+    const [x, y, w, h] = p; if(x + w - 1 > PHARM_COLS || w < 2 || h < 6 || h > 200) return false;
     if(seen.some(q => x < q[0] + q[2] && q[0] < x + w && y < q[1] + q[3] && q[1] < y + h)) return false;     // overlapping panels
     seen.push(p);
   }
@@ -1249,9 +1250,10 @@ const PHARM_BODY = {
 };
 // the whole card: panels in reading order (row, then column) so narrow screens stack them sensibly
 function pharmCardHtml(s, c, L){
-  L = L || pharmLayout() || { panels: Object.fromEntries(PHARM_PANELS.map(([id], i) => [id, [1, i + 1, PHARM_COLS, 1]])) };
+  L = L || pharmLayout() || { panels: Object.fromEntries(PHARM_PANELS.map(([id], i) => [id, [1, i + 1, PHARM_COLS, 6]])) };
   const order = PHARM_PANELS.slice().sort((a, b) => (L.panels[a[0]][1] - L.panels[b[0]][1]) || (L.panels[a[0]][0] - L.panels[b[0]][0]));
-  return `<div class="pgrid">${order.map(([id, title]) => { const [x, y, w, h] = L.panels[id];
+  const rows = Math.max(...Object.values(L.panels).map(p => p[1] + p[3] - 1));
+  return `<div class="pgrid" style="--rows:${rows}">${order.map(([id, title]) => { const [x, y, w, h] = L.panels[id];
     return `<section class="pnl" data-pnl="${id}" style="--x:${x};--y:${y};--w:${w};--h:${h}"><h4 class="pt">${title}</h4><div class="pb">${PHARM_BODY[id](s, c)}</div></section>`; }).join('')}</div>`;
 }
 
