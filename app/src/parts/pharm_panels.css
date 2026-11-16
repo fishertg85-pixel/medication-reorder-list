@@ -30,3 +30,13 @@
 .pnl .newid{max-width:220px;text-transform:uppercase;}
 @media (max-width:520px){ .hrow{flex-wrap:wrap;white-space:normal;} .hrow input[type=time]{width:104px;} .hrow>span{width:70px;} .pfields{min-width:0;} .pnl .pt{white-space:normal;} }
 .pnl [hidden]{display:none!important;} .pnl .identbar{grid-column:1/-1;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);} .pnl input[readonly],.pnl select:disabled{background:transparent;border-style:dashed;opacity:.85;}
+
+/* closed days (Hours panel) */
+.closed{margin-top:12px;padding-top:10px;border-top:1px solid var(--line,#d9dee6);}
+.closed .clh{display:block;margin-bottom:6px;}
+.clobs{display:flex;flex-wrap:wrap;gap:4px 16px;margin-bottom:6px;}
+.clrow{display:flex;align-items:center;gap:10px;padding:2px 0;}
+.clrow .cld{min-width:8.5em;color:var(--muted,#5b6675);}
+.clrow .cln{flex:1;}
+.cladd{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:6px;}
+.cladd input[type=text]{flex:1;min-width:10em;}

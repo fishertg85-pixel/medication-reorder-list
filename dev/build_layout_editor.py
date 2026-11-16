@@ -30,6 +30,13 @@ body{margin:0;background:var(--bg,#eef3f8);}
 .rz[data-s=se]{right:-7px;bottom:-7px;width:16px;height:16px;cursor:nwse-resize;} .rz[data-s=nw]{left:-7px;top:-7px;width:16px;height:16px;cursor:nwse-resize;}
 .rz[data-s=ne]{right:-7px;top:-7px;width:16px;height:16px;cursor:nesw-resize;} .rz[data-s=sw]{left:-7px;bottom:-7px;width:16px;height:16px;cursor:nesw-resize;}
 .force-stack .rz{display:none;}
+.pvonly{display:none;}
+body.pv .ed,body.pv #help,body.pv #codebox,body.pv .rz,body.pv .pnl .pt small{display:none !important;}
+body.pv .pvonly{display:inline-flex;align-items:center;gap:8px;}
+body.pv #bar{background:#44546a;}
+body.pv .pgrid.guides{background-image:none;}
+body.pv .pnl .pb{pointer-events:auto;user-select:auto;} body.pv .pnl .pt{cursor:default;}
+body.pv #vp{margin-top:14px;} body.pv #vp .pcard{box-shadow:0 2px 14px rgba(0,0,0,.18);}
 #codebox{max-width:1100px;margin:14px 20px 40px;} #codebox textarea{width:100%;box-sizing:border-box;height:84px;font:12px Consolas,monospace;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--input-bg);color:var(--text);}
 #codebox .row{display:flex;gap:8px;margin:6px 0;flex-wrap:wrap;align-items:center;} #report{font-size:13px;margin-top:8px;white-space:pre-line;}
 '''
@@ -42,7 +49,7 @@ const SAMPLE_NPI = '<div class="npibox"><b>NORTEX PHARMACY LLC</b> <span class="
 EDITOR_JS = r'''
 const COLS = LAYOUT_COLS, ROW = LAYOUT_ROW, MINH = 6, KEY = 'il_' + PAGE.id + '_layout_v2';
 const qs = s => document.querySelector(s);
-let L = null, hist = [], showSample = true, widthSel = 'full';
+let L = null, hist = [], showSample = true, widthSel = 'full', pv = false;
 const clone = o => JSON.parse(JSON.stringify(o));
 try{ const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if(saved && layoutOk(PAGE, saved)) L = saved; }catch(e){}
 if(!L) L = clone(PAGE.layout);
@@ -61,9 +68,9 @@ function setStage(w){ const vp = qs('#vp'); vp.style.width = (w - 40 - 26) + 'px
 function need(id){ const n = qs(`.pnl[data-pnl="${id}"]`); return Math.ceil((n.querySelector('.pt').offsetHeight + n.querySelector('.pb').offsetHeight + 24) / ROW); }   // rows the content needs (incl. the 12 px gap)
 function paint(){
   const card = qs('#vp .pcard'); card.innerHTML = PAGE.render(SAMPLE, L.panels);
-  const g = card.querySelector('.pgrid'); g.classList.add('guides');
-  g.querySelectorAll('.pnl').forEach(n => { n.insertAdjacentHTML('beforeend', ['n','s','e','w','ne','nw','se','sw'].map(d => `<i class="rz" data-s="${d}"></i>`).join('')); });
-  if(showSample){ const r = g.querySelector('[data-npires]'); if(r) r.innerHTML = SAMPLE_NPI; }
+  const g = card.querySelector('.pgrid'); if(!pv) g.classList.add('guides');
+  if(!pv) g.querySelectorAll('.pnl').forEach(n => { n.insertAdjacentHTML('beforeend', ['n','s','e','w','ne','nw','se','sw'].map(d => `<i class="rz" data-s="${d}"></i>`).join('')); });
+  if(showSample && !pv){ const r = g.querySelector('[data-npires]'); if(r) r.innerHTML = SAMPLE_NPI; }
   setStage(stageWidth()); decorate(); if(!stacked()) fit(); code();
 }
 function fit(){ let ch = false; for(const [id] of PAGE.panels){ const nd = need(id), p = L.panels[id]; if(p[3] < nd){ L.panels = resolve(L.panels, id, { x: p[0], y: p[1], w: p[2], h: nd }); ch = true; decorate(); } } return ch; }
@@ -84,7 +91,7 @@ const rowAt = (m, py) => { const y = py - m.rect.top; let r = 0; for(let i = 0; 
 function overflowing(id){ const n = qs(`.pnl[data-pnl="${id}"]`), b = n && n.querySelector('.pb'); return !!b && b.scrollWidth > b.clientWidth + 1; }
 let act = null;
 document.addEventListener('pointerdown', e => {
-  if(stacked()) return;
+  if(stacked() || pv) return;
   const rz = e.target.closest('.rz'), t = e.target.closest('.pt'), n = e.target.closest('.pnl'); if(!n || !(rz || t)) return;
   e.preventDefault(); const id = n.dataset.pnl, p = L.panels[id], m = metrics();
   act = { id, side: rz ? rz.dataset.s : '', start: clone(L.panels), good: clone(L.panels), gc: colAt(m, e.clientX) - (p[0] - 1), gr: rowAt(m, e.clientY) - (p[1] - 1) };
@@ -116,10 +123,13 @@ document.addEventListener('pointerup', () => {
   if(JSON.stringify(act.start) !== JSON.stringify(L.panels)){ hist.push(act.start); paint(); } act = null;
 });
 document.addEventListener('dblclick', e => {                // double-click a title bar: shrink or grow the box to exactly fit its content
-  const n = e.target.closest('.pnl'); if(!n || stacked()) return; const r = n.querySelector('.pt').getBoundingClientRect(); if(e.clientY < r.top || e.clientY > r.bottom) return;   // the panel holds the pointer capture, so test the position
+  const n = e.target.closest('.pnl'); if(!n || stacked() || pv) return; const r = n.querySelector('.pt').getBoundingClientRect(); if(e.clientY < r.top || e.clientY > r.bottom) return;   // the panel holds the pointer capture, so test the position
   const id = n.dataset.pnl, p = L.panels[id], nd = need(id);
   if(p[3] !== nd){ hist.push(clone(L.panels)); L.panels = resolve(L.panels, id, { x: p[0], y: p[1], w: p[2], h: nd }); paint(); say('Fitted to its content.'); }
 });
+const setPreview = on => { pv = on; document.body.classList.toggle('pv', on); paint(); scrollTo(0, 0); };
+qs('#preview').onclick = () => setPreview(true); qs('#back').onclick = () => setPreview(false);
+addEventListener('keydown', e => { if(e.key === 'Escape' && pv) setPreview(false); });
 qs('#undo').onclick = () => { if(hist.length){ L.panels = hist.pop(); paint(); } };
 qs('#reset').onclick = () => { hist.push(clone(L.panels)); L.panels = clone(PAGE.layout.panels); paint(); say('Back to the starting layout. Undo brings your layout back.'); };
 qs('#copy').onclick = () => { const t = qs('#code'); t.select(); try{ navigator.clipboard.writeText(t.value).then(() => say('Layout code copied.'), () => { document.execCommand('copy'); say('Layout code copied.'); }); }catch(e){ document.execCommand('copy'); say('Layout code copied.'); } };
@@ -139,8 +149,9 @@ HTML = f'''<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>{PG
 <style>{css}</style><style>{EDITOR_CSS}</style></head><body>
 <div id="bar"><b>Layout Editor: {PG['title']}</b>
 <label>Preview width <select id="width"><option value="full">Full window</option><option value="1920">1920</option><option value="1680">1680</option><option value="1536">1536</option><option value="1366">1366</option><option value="1280">1280</option><option value="1100">1100 (stacked)</option><option value="820">820 (tablet, stacked)</option></select></label>
-<label><input type="checkbox" id="sample" checked> Show sample registry result</label>
-<button id="undo" disabled>Undo</button><button id="reset">Reset To Start</button><button id="check">Check All Widths</button><span class="sp"></span><span id="msg"></span><button id="copy">Copy Layout Code</button></div>
+<label class="ed"><input type="checkbox" id="sample" checked> Show sample registry result</label>
+<button id="preview" class="ed" title="See the page as it will look in a browser, without the editing tools">Preview</button><span class="pvonly"><b>Preview: how the page will look</b> <button id="back">Back To Editing</button> <span>(Esc also goes back)</span></span>
+<button class="ed" id="undo" disabled>Undo</button><button class="ed" id="reset">Reset To Start</button><button class="ed" id="check">Check All Widths</button><span class="sp"></span><span id="msg"></span><button class="ed" id="copy">Copy Layout Code</button></div>
 <div id="help">Drag a panel by its title bar to move it. Drag any blue edge or corner to make it wider, narrower, taller or shorter (width snaps to 12 columns, height to 12 px steps). Double-click a title bar to fit the box to its content. Panels never overlap and never go shorter than their content, so nothing is ever cut off. The page uses the full window width. Sample data is shown; nothing here is saved to the pharmacy.</div>
 <div id="vp"><div class="pcard"></div></div>
 <div id="codebox"><b>Layout Code</b> <span class="hint">(copy it and send it back to be built into the app; to reload an earlier layout, paste a code here and press Apply)</span>

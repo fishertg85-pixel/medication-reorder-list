@@ -21,6 +21,17 @@ with sync_playwright() as pw:
     def content_fits(pid):
         return p.evaluate("(id) => { const n = document.querySelector('.pnl[data-pnl=' + id + ']'); return n.querySelector('.pt').offsetHeight + n.querySelector('.pb').offsetHeight + 12 <= n.getBoundingClientRect().height + 1; }", pid)
     check('starts without overlap', overlap(start), False)
+    # --- Preview: the page as it will look, no editing tools; Back (or Esc) returns, layout untouched
+    before_code = code(); p.click('#preview'); p.wait_for_timeout(400)
+    vis = lambda sel: p.evaluate("(s) => [...document.querySelectorAll(s)].some(e => e.offsetParent !== null)", sel)
+    check('preview hides the resize handles, code box, help and editing buttons', (vis('.rz'), vis('#codebox'), vis('#help'), vis('#undo'), vis('#copy'), vis('#check')), (False, False, False, False, False, False))
+    check('preview hides the size labels and the grid guides', (vis('.pnl .pt small'), p.evaluate("document.querySelector('.pgrid').classList.contains('guides')")), (False, False))
+    check('preview shows the panels and a way back', (len(p.locator('.pnl').all()) >= 6, vis('#back')), (True, True))
+    check('preview has no sample registry result', p.locator('.npibox').count(), 0)
+    p.screenshot(path='screenshots/layout_preview.png')
+    p.keyboard.press('Escape'); p.wait_for_timeout(300)
+    check('Esc returns to editing with handles back', (vis('.rz'), vis('#codebox'), code()), (True, True, before_code))
+    p.click('#preview'); p.wait_for_timeout(300); p.click('#back'); p.wait_for_timeout(300); check('Back To Editing works too', vis('.rz'), True)
     check('every box at least as tall as its content', all(content_fits(i) for i in start), True)
     # --- taller (bottom edge) really changes the box's height on screen
     h0 = box('.pnl[data-pnl=svc]')['height']; r0 = code()['svc'][3]; fx, fy = handle('svc', 's'); drag((fx, fy), (fx, fy + 96))

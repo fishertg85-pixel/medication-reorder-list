@@ -112,6 +112,25 @@ function cleanHours(h){
     return { o: String(x.o), c: String(x.c) };
   });
 }
+// Closed days beyond the weekly hours: yearly observances picked from a list, plus dated days the pharmacy adds (Christmas Eve, a regional
+// day like Good Friday in south Louisiana). A dated day may repeat every year. All of them show on the calendar for everyone who can open it.
+const CLOSE_OBS = ['goodfriday', 'easter', 'blackfriday', 'xmaseve', 'nyeve'];
+function cleanClosures(c){
+  if(c == null || typeof c !== 'object' || Array.isArray(c)) throw bad('Closed days: unrecognized format.');
+  const obs = Array.isArray(c.obs) ? c.obs : [], days = Array.isArray(c.days) ? c.days : [];
+  if(obs.some(x => !CLOSE_OBS.includes(x))) throw bad('Closed days: pick the holidays from the list.');
+  if(days.length > 60) throw bad('Closed days: up to 60 dates.');
+  const seen = new Set(), out = days.map(x => {
+    const d = String(x && x.d || ''), n = String(x && x.n || '').trim().slice(0, 60);
+    if(!DATE.test(d) || new Date(d + 'T00:00:00Z').toISOString().slice(0, 10) !== d) throw bad('Closed days: each needs a real date.');
+    if(!n) throw bad('Closed days: give each date a name (for example "Day after Thanksgiving").');
+    const y = x.y === true, key = (y ? d.slice(5) : d) + (y ? 'y' : '');
+    if(seen.has(key)) throw bad('Closed days: ' + d + ' is listed twice.');
+    seen.add(key);
+    return { d, n, y };
+  }).sort((a, b) => a.d.localeCompare(b.d));
+  return { obs: CLOSE_OBS.filter(x => obs.includes(x)), days: out };
+}
 // each pharmacy's local time zone: dates/times on its orders are shown in it
 const TIMEZONES = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix', 'America/Los_Angeles',
   'America/Anchorage', 'Pacific/Honolulu', 'America/Puerto_Rico'];
@@ -122,7 +141,8 @@ async function allStores(){
     .map(s => ({ id: s.sk, ...pick(s, STORE_FIELDS), timezone: TIMEZONES.includes(s.timezone) ? s.timezone : DEFAULT_TZ, hasLogo: !!s.hasLogo, calendar: s.calendar === true,
       acctNo: s.acctNo || '',
       deaVerified: s.dea && s.deaVerifiedDea === s.dea ? { at: s.deaVerifiedAt || '', by: s.deaVerifiedBy || '' } : null,
-      services: Array.isArray(s.services) ? s.services.filter(x => SERVICES.includes(x)) : [], hours: Array.isArray(s.hours) && s.hours.length === 7 ? s.hours : null }))
+      services: Array.isArray(s.services) ? s.services.filter(x => SERVICES.includes(x)) : [], hours: Array.isArray(s.hours) && s.hours.length === 7 ? s.hours : null,
+      closures: s.closures && Array.isArray(s.closures.days) ? { obs: Array.isArray(s.closures.obs) ? s.closures.obs : [], days: s.closures.days } : { obs: [], days: [] } }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 async function storesFor(me){ const all = await allStores(); return me.owner ? all : all.filter(s => (me.stores || {})[s.id] === true); }
@@ -293,12 +313,13 @@ function storeFields(b){
     f.services = [...new Set(b.services)];
   }
   if(b.hours !== undefined) f.hours = cleanHours(b.hours);
+  if(b.closures !== undefined) f.closures = cleanClosures(b.closures);
   return f;
 }
 // What each side may change on a pharmacy.
 // The Account Manager (the pharmacy's primary account holder) may change only these. Everything else (name, address, email, license, NPI, DEA, NCPDP,
 // services, the Calendar switch) is set by IronLedger (the host login); billing follows the client's identity, so those must stay consistent.
-const AM_EDITABLE = ['phone', 'fax', 'email', 'timezone', 'hours', 'licenseExpires', 'deaExpires'];
+const AM_EDITABLE = ['phone', 'fax', 'email', 'timezone', 'hours', 'closures', 'licenseExpires', 'deaExpires'];
 // Identity: once a value is on file it is hard to change. Even the host must give a reason, and every change is written to the pharmacy's change history.
 const IDENTITY = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp'];
 async function nextAcctNo(){                              // the client's IronLedger account number: generated once, never changed
@@ -377,7 +398,7 @@ async function addStore(b, by){
 }
 async function updateStore(id, b, by, isHost){
   if(!okId(id)) throw bad('Bad pharmacy');
-  if(!isHost && Object.keys(b).some(k => !AM_EDITABLE.includes(k))) throw forbidden('Only phone, fax, email, time zone, hours and license/DEA expiration dates can be changed here. The name, address, license and identifiers, services and Calendar are set by IronLedger. Contact your IronLedger representative.');
+  if(!isHost && Object.keys(b).some(k => !AM_EDITABLE.includes(k))) throw forbidden('Only phone, fax, email, time zone, hours, closed days and license/DEA expiration dates can be changed here. The name, address, license and identifiers, services and Calendar are set by IronLedger. Contact your IronLedger representative.');
   const f = storeFields(b);
   const curItem = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }))).Item;
   if(!curItem) throw bad('No such pharmacy.');
