@@ -30,8 +30,6 @@ rep('<meta name="viewport" content="width=device-width, initial-scale=1">', '<me
 # ---------- CSS
 rep('</style>\n</head>', r'''
   /* ---- cloud version additions ---- */
-  .svcs{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:8px 0;} .svcs .plabel{flex-basis:100%;}
-  .hrs{margin:8px 0;} .hrow{display:flex;gap:8px;align-items:center;margin:3px 0;white-space:nowrap;} .hrow>span{width:78px;} .hrow input[type=time]{width:120px;padding:6px 6px;}
   select[data-utype]{max-width:240px;}
   input[type=tel],input[type=email],input[type=password]{background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:7px 9px;font-size:14px;font-family:inherit;}
   #storeLogo{height:38px;width:38px;object-fit:contain;border-radius:6px;background:#fff;padding:2px;}
@@ -55,22 +53,8 @@ rep('</style>\n</head>', r'''
   .li-links{margin-top:12px;font-size:13px;text-align:center;}
   #liCodeIn,#liFCode{letter-spacing:.3em;font-family:Consolas,Menlo,monospace;text-align:center;}
   /* Account Manager tab */
-  .pcard{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px;}
-  .pgrid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-template-rows:repeat(var(--rows,1),minmax(12px,auto));column-gap:12px;row-gap:0;}
-  .pnl{grid-column:var(--x) / span var(--w);grid-row:var(--y) / span var(--h);border:1px solid var(--line);border-radius:8px;padding:0 0 10px;margin-bottom:12px;min-width:0;align-self:stretch;box-sizing:border-box;}
-  .pnl .pt{margin:0;padding:7px 12px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);white-space:nowrap;}
-  .pnl .pb{padding:10px 12px 0;}
-  .pnl[data-pnl=id] .pb{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;} .pidbox .hint{margin:0 0 6px;}
-  .pnl .oth{grid-column:1/-1;}
-  @media (max-width:1279px){ .pgrid{display:block;} .pnl{margin-bottom:10px;} }
+  /*PHARM_CSS*/
   body.wideTab main{max-width:none;}
-  .plogo{width:150px;display:flex;flex-direction:column;align-items:center;gap:6px;}
-  .plogo img{max-width:140px;max-height:100px;object-fit:contain;}
-  .pfields{flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 12px;min-width:240px;}
-  .pfields .npirow{grid-column:1/-1;}.npibox{margin-top:6px;padding:8px 10px;border:1px solid var(--line,#ccc);border-radius:6px;font-size:13px;}.npibox.bad{color:#a11;}.npiflag{color:#8a5a00;margin-top:4px;}
-.pfields .pid,.pfields .svcs,.pfields .hrs,.pfields .calsw{grid-column:1/-1;font-size:13px;}
-  .pfields label span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;}
-  .pfields input,.pfields select,.formgrid select{width:100%;background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:7px 9px;font-size:14px;font-family:inherit;} .pfields label:has(.wide){grid-column:span 2;}
   .btn.small,.btn2.small{padding:5px 10px;font-size:12.5px;}
   .btn2.danger{color:var(--bad, #a33);border-color:currentColor;}
   .copyb{padding:4px 8px;vertical-align:middle;line-height:0;} .copyb svg{display:block;}
@@ -117,13 +101,6 @@ rep('</style>\n</head>', r'''
   table.people.cards td.copycell:empty{display:none;}
   table.people.cards td{background:transparent;} table.people.cards td[data-l="Status"]{grid-column:span 2;}
   table.people tr.off td{opacity:.55;}
-  .switch{position:relative;display:inline-block;width:38px;height:22px;vertical-align:middle;}
-  .switch input{opacity:0;width:0;height:0;}
-  .switch span{position:absolute;inset:0;background:var(--input-line);border-radius:22px;transition:.15s;cursor:pointer;}
-  .switch span:before{content:"";position:absolute;height:16px;width:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.15s;}
-  .switch input:checked + span{background:var(--accent);}
-  .switch input:checked + span:before{transform:translateX(16px);}
-  .switch input:disabled + span{opacity:.5;}
   .formgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px 12px;}
   .formgrid label span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;}
   .formgrid input{width:100%;}
@@ -315,21 +292,7 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
     <div class="card">
       <h2>Pharmacies</h2>
       <div id="ownStores"></div>
-      <h2 style="margin-top:14px;">Add A Pharmacy</h2>
-      <div class="formgrid">
-        <label><span>Pharmacy ID (typed at sign-in)</span><input type="text" id="psId" autocapitalize="characters" placeholder="e.g. NTX2" style="text-transform:uppercase"></label>
-        <label><span>Pharmacy name</span><input type="text" id="ps_name"></label>
-        <label><span>Street address</span><input type="text" id="ps_address" maxlength="200"></label>
-        <label><span>Suite / unit (if any)</span><input type="text" id="ps_suite" maxlength="40"></label>
-        <label><span>City</span><input type="text" id="ps_city" maxlength="80"></label>
-        <label><span>State</span><select id="ps_state"><option value=""></option><option>AL</option><option>AK</option><option>AZ</option><option>AR</option><option>CA</option><option>CO</option><option>CT</option><option>DE</option><option>DC</option><option>FL</option><option>GA</option><option>HI</option><option>ID</option><option>IL</option><option>IN</option><option>IA</option><option>KS</option><option>KY</option><option>LA</option><option>ME</option><option>MD</option><option>MA</option><option>MI</option><option>MN</option><option>MS</option><option>MO</option><option>MT</option><option>NE</option><option>NV</option><option>NH</option><option>NJ</option><option>NM</option><option>NY</option><option>NC</option><option>ND</option><option>OH</option><option>OK</option><option>OR</option><option>PA</option><option>PR</option><option>RI</option><option>SC</option><option>SD</option><option>TN</option><option selected>TX</option><option>UT</option><option>VT</option><option>VA</option><option>WA</option><option>WV</option><option>WI</option><option>WY</option></select></label>
-        <label><span>ZIP code</span><input type="text" id="ps_zip" maxlength="10" inputmode="numeric"></label>
-        <label><span>Phone</span><input type="tel" id="ps_phone"></label>
-        <label><span>Fax</span><input type="tel" id="ps_fax"></label>
-        <label><span>Email</span><input type="email" id="ps_email"></label>
-        <label><span>License #</span><input type="text" id="ps_license"></label>
-      </div>
-      <div class="toolbar" style="margin-top:10px;"><button class="btn" id="psAdd">Add pharmacy</button><span class="hint">The Pharmacy ID can’t be changed later.</span></div>
+      <div class="hint" style="margin-top:6px;">Licenses, identifiers, services and the Calendar switch are set by IronLedger. New pharmacies are added by IronLedger too.</div>
     </div>
     <div class="card">
       <h2>Import From The Shared-Drive Version</h2>
@@ -424,9 +387,7 @@ rep("function fmtTime(iso){ if(!iso || iso.length < 11) return ''; const d = new
     "function fmtTime(iso){ if(!iso || iso.length < 11) return ''; const d = new Date(iso); if(isNaN(d)) return ''; try{ return d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit', timeZone:storeTZ(), timeZoneName:'short'}); }catch(e){ return d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}); } }")
 rep("new Date(r.orderedAt).toLocaleString([], {month:'numeric', day:'numeric', hour:'numeric', minute:'2-digit'})",
     "new Date(r.orderedAt).toLocaleString([], {month:'numeric', day:'numeric', hour:'numeric', minute:'2-digit', timeZone:storeTZ(), timeZoneName:'short'})")
-rep("""        <label><span>License #</span><input type="text" id="ps_license"></label>""",
-    """        <label><span>License #</span><input type="text" id="ps_license"></label>
-        <label><span>Time zone</span><select id="ps_timezone"><option value="America/New_York">Eastern</option><option value="America/Chicago" selected>Central</option><option value="America/Denver">Mountain</option><option value="America/Phoenix">Arizona (no daylight saving)</option><option value="America/Los_Angeles">Pacific</option><option value="America/Anchorage">Alaska</option><option value="Pacific/Honolulu">Hawaii</option><option value="America/Puerto_Rico">Atlantic (Puerto Rico)</option></select></label>""")
+
 
 
 # ---------- IronLedger look: same palette and type as the IronLedger compliance app (cloud version only)
@@ -471,6 +432,10 @@ rep("""  <div class="li-card">
     <div id="liBrand"></div>""")
 rep('<img id="ilLogo" src="ironledger-logo.png" alt="" hidden>', '<img id="ilLogo" src="mark.svg" alt="" hidden>')
 
+PCSS = open(os.path.join(HERE, 'parts', 'pharm_panels.css')).read()
+s = s.replace('/*PHARM_CSS*/', PCSS, 1)
+open(OUT.replace('index.html', 'pharm_panels.css'), 'w').write(PCSS)
+open(OUT.replace('index.html', 'pharm_panels.js'), 'w').write(open(P + 'pharm_panels.js').read())          # and its script          # the host page uses the same card and layout
 # ---------- move the app script out of the page so a strict Content-Security-Policy can block injected scripts
 import hashlib, base64 as b64
 m = re.search(r'<script>\n(/\* =+\n   NorTex Reorder List \(cloud\)[\s\S]*?)</script>', s)

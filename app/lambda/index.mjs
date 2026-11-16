@@ -294,17 +294,21 @@ function storeFields(b){
   if(b.hours !== undefined) f.hours = cleanHours(b.hours);
   return f;
 }
-async function addStore(b){
+// set by IronLedger (the host login) only: what the pharmacy is licensed for and which tabs it has switched on.
+// The pharmacy's own Account Manager sees these but cannot change them; enforced here, not just on the screen.
+const HOST_ONLY = ['license', 'licenseExpires', 'npi', 'dea', 'deaExpires', 'ncpdp', 'services', 'servicesOther', 'calendar', 'deaVerified'];
+async function addStore(b, by){
   const id = String(b.id || '').trim().toUpperCase();
   if(!PHARM_ID.test(id)) throw bad('Pharmacy ID: 2–20 letters, numbers or dashes (e.g. NTX1).');
   const f = storeFields(b); if(!f.name) throw bad('Pharmacy name is required.');
   if(!f.timezone) f.timezone = DEFAULT_TZ;
-  try{ await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'STORES', sk: id, ...f, createdAt: now() }, ConditionExpression: 'attribute_not_exists(pk)' })); }
+  try{ await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'STORES', sk: id, ...f, createdAt: now(), createdBy: by || '' }, ConditionExpression: 'attribute_not_exists(pk)' })); }
   catch(e){ if(isCond(e)) throw bad('That Pharmacy ID is already used.'); throw e; }
   return { id, ...f };
 }
-async function updateStore(id, b, by){
+async function updateStore(id, b, by, isHost){
   if(!okId(id)) throw bad('Bad pharmacy');
+  if(!isHost && HOST_ONLY.some(k => b[k] !== undefined)) throw forbidden('Licenses, identifiers, services and the Calendar switch are set by IronLedger. Contact your IronLedger representative to change them.');
   const f = storeFields(b);
   if(b.deaVerified !== undefined){          // a person checked the number on the DEA's own validation site and says so; recorded against that exact number
     if(b.deaVerified !== true) throw bad('Verification can only be recorded, not edited.');
@@ -396,6 +400,20 @@ async function createLogin(b){
   const sub = ((r.User && r.User.Attributes) || []).find(a => a.Name === 'sub').Value;
   return { sub, login, name, phone, tempPassword: pw };
 }
+// An IronLedger rep may send password resets and change a privilege, only on an existing, active person who has an account type.
+// Nothing else about a person (type, pharmacies, name, phone, switching off, deleting) and never the Calendar privilege, which belongs to a service line.
+async function repGuard(p, seg3, body){
+  if(p.host) throw forbidden('Host logins are managed by an IronLedger supervisor.');
+  if(seg3 === 'reset-password') return;
+  if(seg3) throw forbidden('A rep can’t do that. Ask an IronLedger supervisor.');
+  const keys = Object.keys(body);
+  if(!keys.length || keys.some(k => k !== 'perms')) throw forbidden('A rep can change privileges only. Ask an IronLedger supervisor for anything else.');
+  if(p.owner) throw forbidden('The Account Manager always has full access.');
+  if(!p.acctType) throw forbidden('A rep can change privileges only on a person who has an account type. Ask an IronLedger supervisor.');
+  if(body.perms && Object.prototype.hasOwnProperty.call(body.perms, 'calendar')) throw forbidden('The Calendar privilege is part of a service line and is set by an IronLedger supervisor.');
+  const g = await idp.send(new AdminGetUserCommand({ UserPoolId: POOL, Username: p.login })).catch(() => null);
+  if(p.disabled || !g || g.Enabled === false || g.UserStatus === 'FORCE_CHANGE_PASSWORD') throw forbidden('A rep can change privileges only on an active person (not switched off, and past their first sign-in).');
+}
 async function updatePerson(me, sub, seg3, body){
   if(!okId(sub)) throw bad('Bad user');
   const p = await profileOf(sub); if(!p) throw new HttpError(404, 'No such person.');
@@ -404,6 +422,7 @@ async function updatePerson(me, sub, seg3, body){
   // the Account Manager decides which pharmacies the host may open and what it may do there; nothing else about the host login
   if(p.host && !me.host && (seg3 || Object.keys(body).some(k => k !== 'stores' && k !== 'perms'))) throw forbidden('The host login is managed by IronLedger.');
   if(sub === me.sk && body.disabled === true) throw bad('You can’t switch off your own login.');
+  if(me.host && me.hostRole === 'rep') await repGuard(p, seg3, body);
   if(seg3 === 'delete'){
     // the login is removed for good (the Login ID can be used again); what they did stays on the orders and archive by name.
     // A short record is kept of who existed and who removed them, with their SMS consent dates.
@@ -588,6 +607,18 @@ async function route(method, path, q, body, me, claims){
   if(seg[0] === 'owner'){
     await requireUnlocked(me);
     if(method === 'POST' && seg[1] === 'keepalive') return { ok: true };
+    // an IronLedger rep can help with passwords and privileges, but pharmacy details and services wait for a supervisor (a review step for reps is planned, not built)
+    if(me.host && me.hostRole === 'rep' && (seg[1] === 'npi' || (seg[1] === 'stores' && method !== 'GET'))) throw forbidden('Pharmacy details and services are set by an IronLedger supervisor.');
+    // an IronLedger rep's reach with people: change the privileges or account type of an existing, active user, or reset that user's password. Nothing else.
+    if(me.host && me.hostRole === 'rep' && (seg[1] === 'import' || (seg[1] === 'users' && method === 'POST'))){
+      const no = () => forbidden('An IronLedger rep can change the privileges or account type of an existing, active user (and reset their password). Anything else goes to a supervisor.');
+      if(seg[1] === 'import' || !seg[2]) throw no();
+      const tp = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: String(seg[2]) } })), t = tp.Item;
+      if(!t || t.deleted || t.disabled || t.owner || t.host) throw no();
+      if(seg[3] === 'reset-password') { /* allowed */ }
+      else if(seg[3]) throw no();
+      else { const ks = Object.keys(body); if(!ks.length || ks.some(k => k !== 'perms' && k !== 'acctType')) throw no(); }
+    }
     // bring in a pharmacy's old shared-drive file: adds only, never changes or removes anything already there
     if(method === 'POST' && seg[1] === 'import' && seg[2]){
       if(!okId(seg[2])) throw bad('Bad pharmacy');
@@ -595,11 +626,11 @@ async function route(method, path, q, body, me, claims){
       if(!ex.Item) throw new HttpError(404, 'No such pharmacy.');
       return await importData(seg[2], body);
     }
-    if(method === 'GET' && seg[1] === 'npi' && seg[2]) return await npiLookup(String(seg[2]));
+    if(method === 'GET' && seg[1] === 'npi' && seg[2]){ if(!me.host) throw forbidden('Registry checks are done by IronLedger.'); return await npiLookup(String(seg[2])); }
     if(method === 'GET' && seg[1] === 'stores') return { stores: await allStores() };
-    if(method === 'POST' && seg[1] === 'stores' && !seg[2]) return await addStore(body);
+    if(method === 'POST' && seg[1] === 'stores' && !seg[2]){ if(!me.host) throw forbidden('New pharmacies are set up by IronLedger.'); return await addStore(body, who(me)); }
     if(method === 'POST' && seg[1] === 'stores' && seg[2] && seg[3] === 'logo'){ await setLogo(seg[2], body.dataUrl); return { ok: true }; }
-    if(method === 'POST' && seg[1] === 'stores' && seg[2]){ await updateStore(seg[2], body, who(me)); return { ok: true }; }
+    if(method === 'POST' && seg[1] === 'stores' && seg[2]){ await updateStore(seg[2], body, who(me), !!me.host); return { ok: true }; }
     if(method === 'GET' && seg[1] === 'users') return { users: await listPeople() };
     if(method === 'POST' && seg[1] === 'users' && !seg[2]){
       const stores = await cleanStoreToggles(body.stores), perms = Object.assign({}, DEFAULT_PERMS, cleanPerms(body.perms));
@@ -660,7 +691,7 @@ async function makeHost(b){
     u = { sub: attr('sub'), login, name: attr('name') || b.name || '', phone: attr('phone_number'), tempPassword: pw };
   }
   await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'USERS', sk: u.sub, login: u.login, name: u.name, phone: u.phone,
-    owner: false, host: true, stores: {}, perms: {}, createdAt: now(), createdBy: 'setup' } }));
+    owner: false, host: true, hostRole: b.role === 'rep' ? 'rep' : 'supervisor', stores: {}, perms: {}, createdAt: now(), createdBy: 'setup' } }));
   return { ok: true, message: `Host login "${u.login}" created. Temporary password: ${u.tempPassword}`, tempPassword: u.tempPassword };
 }
 

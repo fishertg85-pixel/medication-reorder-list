@@ -7,12 +7,9 @@ const COG = CFG.cognitoEndpoint || `https://cognito-idp.${CFG.region}.amazonaws.
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const LOCK_MS = 5 * 60 * 1000;
-const TZ = {'America/New_York':'Eastern', 'America/Chicago':'Central', 'America/Denver':'Mountain', 'America/Phoenix':'Arizona (no daylight saving)',
+const TZ_NAMES = {'America/New_York':'Eastern', 'America/Chicago':'Central', 'America/Denver':'Mountain', 'America/Phoenix':'Arizona (no daylight saving)',
   'America/Los_Angeles':'Pacific', 'America/Anchorage':'Alaska', 'Pacific/Honolulu':'Hawaii', 'America/Puerto_Rico':'Atlantic (Puerto Rico)'};
 const PERMS = {submit:'Submit orders', archive:'View archive', remove:'Remove lines', export:'Download backup'};
-const SF = [['name','Pharmacy name'],['address','Street address'],['suite','Suite / unit (if any)'],['city','City'],['state','State'],['zip','ZIP code'],['phone','Phone'],['fax','Fax'],['email','Email'],['license','License #'],['timezone','Time zone']];
-const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
-const MAXLEN = {address: 200, suite: 40, city: 80, zip: 10};
 
 /* ---- Cognito, called directly ---- */
 const COG_ERR = {
@@ -247,20 +244,17 @@ function render(){
   const keep = $('impStore').value;
   $('impStore').innerHTML = st.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join('');
   if(keep && st.some(s => s.id === keep)) $('impStore').value = keep;
-  if(!$('addStore').innerHTML) $('addStore').innerHTML = `<label class="f">Pharmacy ID<input type="text" id="psId" maxlength="20" placeholder="e.g. NTX2" autocapitalize="characters" style="text-transform:uppercase"></label>`
-    + SF.map(([k, l]) => `<label class="f">${l}${k === 'timezone' ? tzSel('id="ps_timezone"') : k === 'state' ? stSel('id="ps_state"', 'TX') : `<input type="text" id="ps_${k}" maxlength="${MAXLEN[k] || 120}"${k === 'zip' ? ' inputmode="numeric"' : ''}>`}</label>`).join('');
+  if(!$('newStore').innerHTML) renderNew();
   for(const s of st) if(s.hasLogo && LOGOS[s.id] === undefined) loadLogo(s.id);
 }
-const stSel = (attrs, cur) => `<select ${attrs}><option value=""></option>${US_STATES.map(v => `<option${v === (cur || '') ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
-const tzSel = (attrs, cur) => `<select ${attrs}>${Object.entries(TZ).map(([v, l]) => `<option value="${v}"${v === (cur || 'America/Chicago') ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+const holderOf = () => { const h = (DATA.users || []).find(u => u.owner); return h ? (h.name || h.login) + ' (' + h.login + ')' : ''; };
 function renderStores(){
-  $('stores').innerHTML = DATA.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">
-      <div>${LOGOS[s.id] ? `<img src="${esc(LOGOS[s.id])}" alt="">` : ''}<b>Pharmacy ID: <span class="mono">${esc(s.id)}</span></b>
-        <label class="btn2 small" style="display:inline-flex;align-items:center;margin-left:10px">Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" data-logo="${esc(s.id)}" hidden></label></div>
-      <div class="grid2">${SF.map(([k, l]) => `<label class="f">${l}${k === 'timezone' ? tzSel('data-sf="timezone"', s.timezone) : k === 'state' ? stSel('data-sf="state"', s.state) : `<input type="text" data-sf="${k}" value="${esc(s[k] || '')}" maxlength="${MAXLEN[k] || 120}"${k === 'zip' ? ' inputmode="numeric"' : ''}>`}</label>`).join('')}</div>
-      <div class="row"><button class="btn small" data-save="${esc(s.id)}">Save details</button></div>
-    </div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
+  $('stores').innerHTML = DATA.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, {logo:LOGOS[s.id], host:true, holder:holderOf()})}</div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
 }
+function renderNew(){ $('newStore').innerHTML = `<div class="pcard" data-is-new="1">${pharmCardHtml({}, {host:true, isNew:true})}</div>`; }
+const sayStore = t => { $('storeMsg').textContent = t; };
+pharmCardEvents($('stores'), {base:'/host', stores:() => DATA.stores, say:sayStore, after: async () => { await load(); }});
+pharmCardEvents($('newStore'), {base:'/host', stores:() => DATA.stores, say:sayStore, after: async isNew => { if(isNew) renderNew(); await load(); }});
 async function loadLogo(id){
   LOGOS[id] = '';
   try{ const r = await fetch(CFG.apiUrl.replace(/\/$/, '') + '/public/pharmacy/' + encodeURIComponent(id), {cache:'no-store'}); const j = await r.json(); LOGOS[id] = j.logo || ''; renderStores(); }catch(e){}
@@ -336,13 +330,6 @@ $('nAdd').onclick = async () => {
   }catch(err){ if(!err.auth) alert(err.message); }
   finally{ busy($('nAdd'), false); }
 };
-$('stores').addEventListener('click', async e => {
-  const sv = e.target.closest('[data-save]'); if(!sv) return;
-  const body = {}; sv.closest('.pcard').querySelectorAll('[data-sf]').forEach(i => body[i.dataset.sf] = i.value.trim());
-  busy(sv, true);
-  try{ await api('POST', '/host/stores/' + encodeURIComponent(sv.dataset.save), body); await load(); }
-  catch(err){ if(!err.auth) alert(err.message); } finally{ busy(sv, false); }
-});
 function shrink(file){
   return new Promise((res, rej) => {
     const img = new Image(), url = URL.createObjectURL(file);
@@ -358,14 +345,6 @@ $('stores').addEventListener('change', async e => {
   try{ const d = await shrink(f.files[0]); await api('POST', '/host/stores/' + encodeURIComponent(f.dataset.logo) + '/logo', {dataUrl:d}); LOGOS[f.dataset.logo] = d; renderStores(); }
   catch(err){ if(!err.auth) alert(err.message); }
 });
-$('psAdd').onclick = async () => {
-  const body = {id:($('psId') || {}).value ? $('psId').value.trim().toUpperCase() : ''}; SF.forEach(([k]) => body[k] = $('ps_' + k).value.trim());
-  if(!body.id || !body.name) return alert('Pharmacy ID and name are needed.');
-  busy($('psAdd'), true);
-  try{ await api('POST', '/host/stores', body); $('psId').value = ''; SF.forEach(([k]) => { if(k !== 'timezone' && k !== 'state') $('ps_' + k).value = ''; }); await load(); }
-  catch(err){ if(!err.auth) alert(err.message); } finally{ busy($('psAdd'), false); }
-};
-
 $('impGo').onclick = async () => {
   const f = $('impFile').files[0], sid = $('impStore').value;
   if(!f || !sid) return alert('Choose the pharmacy and the nortex_reorder_data.json file.');

@@ -20,8 +20,13 @@ def api(tok, method, path, body=None):
 c.admin_set_user_mfa_preference(Username="owner", UserPoolId=ids["pool"], SMSMfaSettings={"Enabled": False, "PreferredMfa": False})   # the local stand-in has no real text codes
 a = tokens("owner", "temp12345a", "ownerpass99"); O = a["IdToken"]
 api(O, "POST", "/owner-unlock", {"password": "ownerpass99", "accessToken": a["AccessToken"]})
-api(O, "POST", "/owner/stores", {"id": "NTX2", "name": "Other Pharmacy"}); api(O, "POST", "/owner/stores/NTX1", {"calendar": True})
-api(O, "POST", "/owner/stores/NTX1", {"services": ["controlled", "sterile", "immunizations"], "hours": [None] + [{"o": "08:00", "c": "20:00"}] * 5 + [None]})
+import subprocess
+def node(arg): return json.loads(subprocess.check_output(["node", "boot.mjs", json.dumps(arg)]).decode().strip().splitlines()[-1])
+node({"makeHost": {"login": "Neo", "name": "Thomas Fisher", "phone": "8175559999", "tempPassword": "hosttemp12a"}})
+c.admin_set_user_mfa_preference(Username="neo", UserPoolId=ids["pool"], SMSMfaSettings={"Enabled": False, "PreferredMfa": False})
+h = tokens("neo", "hosttemp12a", "hostpass999"); H = h["IdToken"]; api(H, "POST", "/host-unlock", {"password": "hostpass999", "accessToken": h["AccessToken"]})
+api(H, "POST", "/host/stores", {"id": "NTX2", "name": "Other Pharmacy"}); api(H, "POST", "/host/stores/NTX1", {"calendar": True})      # the host (IronLedger) switches the Calendar on and sets services
+api(H, "POST", "/host/stores/NTX1", {"services": ["controlled", "sterile", "immunizations"], "npi": "1234567893", "dea": "AB1234563", "hours": [None] + [{"o": "08:00", "c": "20:00"}] * 5 + [None]})
 def mk(l, stores, cal, ph):
     s, r = api(O, "POST", "/owner/users", {"login": l, "name": l.upper(), "phone": ph, "smsConsent": True, "stores": stores, "perms": {"calendar": cal}}); assert s == 200, r; return r["tempPassword"]
 tA = mk("cala", {"NTX1": True, "NTX2": True}, True, "(817) 555-0101"); tB = mk("calb", {"NTX1": True}, False, "(817) 555-0102")
@@ -64,24 +69,16 @@ with sync_playwright() as pw:
     cu = {u["login"]: u for u in api(O, "GET", "/owner/users")[1]["users"]}["cala"]
     check("type saved from the screen, Calendar privilege untouched", (cu["acctType"], cu["perms"]["calendar"], cu["perms"]["submit"]), ("pharmacist", True, True))
     p.screenshot(path='screenshots/account_manager_people.png')
-    card = p.locator('.pcard[data-store=NTX1]'); card.locator('[data-sf=npi]').fill('1234567893'); card.locator('[data-sf=dea]').fill('AB1234563')
-    card.locator('label.switch:has([data-svc=retail])').click(); card.locator('[data-savestore]').click(); p.wait_for_timeout(1500)
-    ns = [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0]
-    check("identifiers and services saved from the screen", (ns["npi"], ns["dea"], "retail" in ns["services"], ns["hours"][1]), ("1234567893", "AB1234563", True, {"o": "08:00", "c": "20:00"}))
-    # NPI registry lookup and recorded DEA check
-    card = p.locator('.pcard[data-store=NTX1]'); card.locator('[data-npilook]').click(); card.locator('[data-npires] .npibox b').wait_for(timeout=8000)
-    check("registry result shown", card.locator('[data-npires] .npibox b').inner_text(), "NORTEX PHARMACY LLC")
-    check("name mismatch flagged", "differs" in card.locator('[data-npires]').inner_text(), True)
-    card.locator('[data-npiuse]').click(); p.wait_for_timeout(300)
-    check("Use these details fills the fields", (card.locator('[data-sf=name]').input_value(), card.locator('[data-sf=address]').input_value(), card.locator('[data-sf=city]').input_value(), card.locator('[data-sf=zip]').input_value(), card.locator('[data-sf=phone]').input_value()), ("NORTEX PHARMACY LLC", "100 MAIN ST", "HASLET", "76252", "817-555-0100"))
-    p.screenshot(path='screenshots/account_manager_pharmacy.png', full_page=True)
-    card.locator('[data-sf=npi]').fill('1111111112'); card.locator('[data-npilook]').click(); card.locator('[data-npires] .npibox').wait_for(timeout=8000); p.wait_for_timeout(500)
-    check("unknown NPI says so", "No provider" in card.locator('[data-npires]').inner_text(), True)
-    card.locator('[data-deaok]').click(); p.wait_for_timeout(1500)
-    ns = [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0]
-    check("DEA check recorded from the screen", bool(ns["deaVerified"]), True)
-    check("screen shows it", "Checked on the DEA site" in p.locator('.pcard[data-store=NTX1] [data-deastat]').inner_text(), True)
-    p.screenshot(path='screenshots/account_manager_pharmacy_dea.png', full_page=True); p.close()
+    # the Account Manager's pharmacy card: name/address/phone/hours editable; licenses, identifiers, services and Calendar are shown but locked
+    card = p.locator('.pcard[data-store=NTX1]')
+    check("identifiers show as read-only text", (card.locator('[data-sf=npi]').count(), card.locator('[data-sf=dea]').count(), "1234567893" in card.inner_text(), "AB1234563" in card.inner_text()), (0, 0, True, True))
+    check("no services switches, no Calendar switch, no registry buttons", (card.locator('[data-svc]').count(), card.locator('[data-sfcal]').count(), card.locator('[data-npilook]').count(), card.locator('[data-deaok]').count()), (0, 0, 0, 0))
+    check("locked message and services shown", ("Set by IronLedger" in card.inner_text(), "Sterile compounding" in card.inner_text(), "Calendar: On" in card.inner_text()), (True, True, True))
+    check("no Add-a-pharmacy form for the Account Manager", p.locator('#psAdd').count(), 0)
+    card.locator('[data-sf=phone]').fill('(817) 555-0123'); card.locator('[data-savestore]').click(); p.wait_for_timeout(1500)
+    ns = [x for x in api(H, "GET", "/host/stores")[1]["stores"] if x["id"] == "NTX1"][0]
+    check("phone saved from the screen; services, identifiers and hours untouched", (ns["phone"], ns["npi"], ns["services"], ns["hours"][1]), ("(817) 555-0123", "1234567893", ["controlled", "sterile", "immunizations"], {"o": "08:00", "c": "20:00"}))
+    p.screenshot(path='screenshots/account_manager_pharmacy.png', full_page=True); p.close()
     # privileged person now sees the started calendar
     c.admin_set_user_mfa_preference(Username="cala", UserPoolId=ids["pool"], SMSMfaSettings={"Enabled": False, "PreferredMfa": False})
     p = newpage(); signin(p, "NTX1", "cala", "calapass12345"); p.click('#tabs [data-tab=calendar]'); fr = p.frame_locator('#calFrame'); fr.locator('nav.tabs').wait_for(timeout=8000)

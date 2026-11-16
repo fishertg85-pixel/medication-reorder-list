@@ -62,6 +62,12 @@ Each pharmacy's calendar is separate data (`STORE#<id>` / `CAL#...` items in the
 
 `<web address>/host.html` is a separate page for the IronLedger host login only (created once with `bash host.sh make-host LOGIN "NAME" MOBILE`). It signs in with Login ID, password and a texted code, with no Pharmacy ID, and talks only to `/host/*` on the server, which answers nobody but a host login. From it the host can reset passwords (including the Account Manager's), change mobile numbers, switch logins on or off, add or delete people, add pharmacies (street, suite, city, state, ZIP), assign people to pharmacies, and import a pharmacy's old shared-drive file. It re-asks for the password on reload and locks after 5 minutes idle. The host sees no pharmacy's list unless the Account Manager switches that pharmacy on for the host, and only the host can change the host login.
 
+### Setting up a pharmacy (host page)
+
+The host page has a **Set up a new pharmacy** card (same panels as the pharmacy's own page) and a **Pharmacies** list. Only the host sets a pharmacy's license, NPI, DEA (with the recorded DEA check), NCPDP, Services provided and Calendar switch; the server answers 403 if the pharmacy's Account Manager tries to change them or to add a pharmacy. The Account Manager's card shows those fields read-only and lets them edit name, address, phone, fax, email, time zone and hours. The card and its layout live in `app/src/parts/pharm_panels.js` and `pharm_panels.css` (built into the app and also written to `web/` for the host page).
+
+A host login made with role `rep` (Lambda `makeHost`, `role: "rep"`) is limited: password resets and privilege changes on active people who have an account type, nothing else; no pharmacy writes. A review step for reps entering pharmacy details is planned, not built.
+
 ## Data safety
 
 - Archived orders can only be added to. The API's IAM role has no delete or update permission on the archive table.

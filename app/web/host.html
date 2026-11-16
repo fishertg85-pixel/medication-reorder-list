@@ -8,8 +8,9 @@
 <title>IronLedger · Host</title>
 <link rel="icon" href="mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="brand.css">
+<link rel="stylesheet" href="pharm_panels.css">
 <style>
-  .wrap { max-width: 1100px; }
+  .wrap { max-width: min(1700px, 100%); }
   .gate { max-width: 400px; margin: 60px auto; }
   .gate h1 { font-size: 21px; margin: 0 0 4px; }
   label.f { display: block; margin: 12px 0 0; font-size: 13.5px; color: var(--muted); }
@@ -163,10 +164,15 @@
 
     <section class="card">
       <h2>Pharmacies</h2>
+      <div class="hint" style="margin-bottom:8px">You set each pharmacy’s license, identifiers, services and Calendar switch here. The pharmacy’s Account Manager can see them but not change them.</div>
+      <div class="msg ok" id="storeMsg" role="status" style="margin:0 0 8px"></div>
       <div id="stores"><div class="hint">Loading…</div></div>
-      <h2 style="margin-top:18px">Add a pharmacy</h2>
-      <div class="grid2" id="addStore"></div>
-      <div class="row"><button class="btn" id="psAdd">Add pharmacy</button></div>
+    </section>
+
+    <section class="card">
+      <h2>Set up a new pharmacy</h2>
+      <div class="hint" style="margin-bottom:8px">Fill in what you know, then press <b>Create pharmacy</b>. Add the pharmacy’s Account Manager and staff under <b>Add a user</b> above afterwards.</div>
+      <div id="newStore"></div>
     </section>
 
     <section class="card">
@@ -180,6 +186,7 @@
 </main>
 <footer class="foot"><img src="mark.svg" alt=""><span>2026 IronLedger LLC</span></footer>
 <script src="config.js"></script>
+<script src="pharm_panels.js"></script>
 <script src="host.js"></script>
 </body>
 </html>

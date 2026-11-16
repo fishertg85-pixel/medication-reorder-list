@@ -1,5 +1,5 @@
 # Calendar access rules (run ./reset.sh first). Needs only boto3 + the local stand-in server.
-import json, urllib.request, boto3, sys
+import json, subprocess, urllib.request, boto3, sys
 ids = json.load(open('moto_ids.json'))
 c = boto3.client("cognito-idp", endpoint_url="http://localhost:5005", region_name="us-east-1", aws_access_key_id="x", aws_secret_access_key="x")
 fails = []
@@ -20,7 +20,11 @@ def api(tok, method, path, body=None):
     except urllib.error.HTTPError as e: return e.code, json.loads(e.read() or b'{}')
 O, OA = login("owner", "temp12345a", "ownerpass99")
 api(O, "POST", "/owner-unlock", {"password": "ownerpass99", "accessToken": OA})
-check("add NTX2", api(O, "POST", "/owner/stores", {"id": "NTX2", "name": "Other Pharmacy"})[0], 200)
+def node(arg): return json.loads(subprocess.check_output(["node", "boot.mjs", json.dumps(arg)]).decode().strip().splitlines()[-1])
+node({"makeHost": {"login": "Neo", "name": "Thomas Fisher", "phone": "8175559999", "tempPassword": "hosttemp12a"}})
+H, HA = login("neo", "hosttemp12a", "hostpass999"); api(H, "POST", "/host-unlock", {"password": "hostpass999", "accessToken": HA})
+check("add NTX2 (host)", api(H, "POST", "/host/stores", {"id": "NTX2", "name": "Other Pharmacy"})[0], 200)
+check("Account Manager cannot switch the calendar on", api(O, "POST", "/owner/stores/NTX1", {"calendar": True})[0], 403)
 def mk(login_id, stores, cal):
     s, r = api(O, "POST", "/owner/users", {"login": login_id, "name": login_id.upper(), "phone": "(817) 555-%04d" % (abs(hash(login_id)) % 10000), "smsConsent": True,
         "stores": stores, "perms": {"calendar": cal}})
@@ -32,8 +36,8 @@ Cc = mk("calc", {"NTX2": True}, True)                  # privilege, but no NTX1 
 cal = lambda s: "/stores/%s/calendar" % s
 check("calendar flag off: owner refused", api(O, "GET", cal("NTX1"))[0], 403)
 check("people list shows calendar perm default off", [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "calb"][0]["perms"]["calendar"], False)
-check("switch NTX1 calendar on", api(O, "POST", "/owner/stores/NTX1", {"calendar": True})[0], 200)
-check("flag must be boolean", api(O, "POST", "/owner/stores/NTX1", {"calendar": "yes"})[0], 400)
+check("switch NTX1 calendar on", api(H, "POST", "/host/stores/NTX1", {"calendar": True})[0], 200)
+check("flag must be boolean", api(H, "POST", "/host/stores/NTX1", {"calendar": "yes"})[0], 400)
 stores = {s["id"]: s for s in api(O, "GET", "/owner/stores")[1]["stores"]}
 check("NTX1 flag true / NTX2 false", (stores["NTX1"]["calendar"], stores["NTX2"]["calendar"]), (True, False))
 me = api(A, "GET", "/me")[1]
@@ -60,7 +64,7 @@ check("item without id refused", api(A, "POST", cal("NTX1") + "/commit", {"put":
 check("too many changes refused", api(A, "POST", cal("NTX1") + "/commit", {"put": {"records": [{"id": "q%d" % i} for i in range(101)]}})[0], 400)
 check("oversize item refused", api(A, "POST", cal("NTX1") + "/commit", {"put": {"records": [{"id": "big", "t": "x" * 400000}]}})[0], 400)
 check("reorder list still works for the no-privilege user", api(B, "GET", "/stores/NTX1/lines")[0], 200)
-check("pharmacies stay separate", api(O, "POST", "/owner/stores/NTX2", {"calendar": True})[0], 200)
+check("pharmacies stay separate", api(H, "POST", "/host/stores/NTX2", {"calendar": True})[0], 200)
 check("NTX2 starts empty", api(O, "GET", cal("NTX2"))[1].get("started"), False)
 check("calc (NTX2 only, privileged) sees NTX2 not-started, not NTX1 data", (api(Cc, "GET", cal("NTX2"))[1].get("started"), api(Cc, "GET", cal("NTX1"))[0]), (False, 403))
 print("\nFAILED:", fails if fails else "none"); sys.exit(1 if fails else 0)

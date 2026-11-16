@@ -1,4 +1,4 @@
-# Builds dev/layout_editor.html: a single-file page that shows the pharmacy account page's panels on a snap-to-grid canvas.
+# Builds dev/layout_editor.html: a single-file page that shows the host's pharmacy setup page panels on a snap-to-grid canvas.
 # It uses the app's own CSS and panel code (app/src/parts/pharm_panels.js), so what you arrange is what the app shows.
 # Output: a layout code to paste back; it is baked into the app as PHARM_LAYOUT. Not shipped in the deployment package.
 import re, os
@@ -56,7 +56,7 @@ const stacked = () => qs('.pgrid').classList.contains('force-stack');
 function setStage(w){ const vp = qs('#vp'); vp.style.width = (w - 40 - 26) + 'px'; const g = qs('.pgrid'); if(g){ g.classList.toggle('force-stack', w < 1280); g.classList.toggle('force-grid', w >= 1280); } }
 function need(id){ const n = qs(`.pnl[data-pnl="${id}"]`); return Math.ceil((n.querySelector('.pt').offsetHeight + n.querySelector('.pb').offsetHeight + 24) / ROW); }   // rows the content needs (incl. the 12 px gap)
 function paint(){
-  const card = qs('#vp .pcard'); card.innerHTML = pharmCardHtml(SAMPLE, { logo: '', holder: 'Pat Owner (owner)' }, { panels: L.panels });
+  const card = qs('#vp .pcard'); card.innerHTML = pharmCardHtml(SAMPLE, { logo: '', holder: 'Pat Owner (owner)', host: true }, { panels: L.panels });
   const g = card.querySelector('.pgrid'); g.classList.add('guides');
   g.querySelectorAll('.pnl').forEach(n => { n.insertAdjacentHTML('beforeend', ['n','s','e','w','ne','nw','se','sw'].map(d => `<i class="rz" data-s="${d}"></i>`).join('')); });
   if(showSample){ const r = g.querySelector('[data-npires]'); if(r) r.innerHTML = SAMPLE_NPI; }
