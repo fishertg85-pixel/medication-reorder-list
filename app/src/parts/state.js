@@ -216,9 +216,18 @@ function paintStore(){
   renderStoreInfo();
   calPaint();
 }
+const SVC_NAMES = {retail:'Retail dispensing', controlled:'Controlled substances', nonsterile:'Nonsterile compounding', sterile:'Sterile compounding', hazardous:'Hazardous drug compounding', immunizations:'Immunizations', delivery:'Delivery', ltc:'Long-term care', specialty:'Specialty', infusion:'Home infusion'};
+function hoursText(h){
+  if(!Array.isArray(h) || h.length !== 7) return '';
+  const t = x => { const [hh, mm] = x.split(':').map(Number); return ((hh + 11) % 12 + 1) + (mm ? ':' + String(mm).padStart(2, '0') : '') + (hh < 12 ? ' AM' : ' PM'); };
+  const D = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], out = [];
+  for(let i = 0; i < 7; i++){ const x = h[i] ? t(h[i].o) + ' to ' + t(h[i].c) : 'Closed', last = out[out.length - 1];
+    if(last && last.x === x) last.to = D[i]; else out.push({from: D[i], to: D[i], x}); }
+  return out.map(o => (o.from === o.to ? o.from : o.from + '–' + o.to) + ' ' + o.x).join('; ');
+}
 function renderStoreInfo(){
   const s = STORE; if(!s){ $('storeInfo').innerHTML = ''; return; }
   const row = (k, v) => v ? `<tr><th style="width:140px;">${k}</th><td>${esc(v)}</td></tr>` : '';
-  $('storeInfo').innerHTML = `<table>${row('Pharmacy ID', s.id)}${row('Name', s.name)}${row('Address', [[s.address, s.suite].filter(Boolean).join(', '), [s.city, [s.state, s.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', '))}${row('Phone', s.phone)}${row('Fax', s.fax)}${row('Email', s.email)}${row('License #', s.license)}${row('Time zone', TZ_NAMES[storeTZ()] || storeTZ())}</table>`;
+  $('storeInfo').innerHTML = `<table>${row('Pharmacy ID', s.id)}${row('Name', s.name)}${row('Address', [[s.address, s.suite].filter(Boolean).join(', '), [s.city, [s.state, s.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', '))}${row('Phone', s.phone)}${row('Fax', s.fax)}${row('Email', s.email)}${row('State license #', s.license ? s.license + (s.licenseExpires ? ' (expires ' + s.licenseExpires + ')' : '') : '')}${row('NPI', s.npi)}${row('DEA #', s.dea ? s.dea + (s.deaExpires ? ' (expires ' + s.deaExpires + ')' : '') : '')}${row('NCPDP ID', s.ncpdp)}${row('Services', [...(s.services || []).map(k => SVC_NAMES[k] || k), s.servicesOther].filter(Boolean).join(', '))}${row('Hours', hoursText(s.hours))}${row('Time zone', TZ_NAMES[storeTZ()] || storeTZ())}</table>`;
 }
 $('storeSel').onchange = e => openStore(e.target.value);

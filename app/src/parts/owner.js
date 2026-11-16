@@ -49,7 +49,7 @@ const TEMPS = {};
 const STAGED = {};
 function effUser(u){
   const s = STAGED[u.sub]; if(!s) return u;
-  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}),
+  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}), acctType:s.acctType !== undefined ? s.acctType : u.acctType,
     disabled:s.disabled !== undefined ? s.disabled : u.disabled});
 }
 const stageBtns = sub => `<button class="btn small" data-upd="${esc(sub)}">Update</button> <button class="btn2 small" data-undo="${esc(sub)}">Undo</button>`;
@@ -82,17 +82,34 @@ function renderOwner(){ renderOwnStores(); renderOwnPeople();
   const sig = OWN.stores.map(s => s.id + ':' + s.name).join('|');
   if(sig !== npStoresSig || !$('npPerms').innerHTML){ npStoresSig = sig; paintNewPerson(); }   // don't undo switches someone is setting for the next person
   $('impStore').innerHTML = OWN.stores.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join(''); }
-const SF = [['name','Pharmacy name'],['address','Street address'],['suite','Suite / unit (if any)'],['city','City'],['state','State'],['zip','ZIP code'],['phone','Phone'],['fax','Fax'],['email','Email'],['license','License #'],['timezone','Time zone']];
+const SF = [['name','Pharmacy name'],['address','Street address'],['suite','Suite / unit (if any)'],['city','City'],['state','State'],['zip','ZIP code'],['phone','Phone'],['fax','Fax'],['email','Email'],['license','State pharmacy license #'],['timezone','Time zone']];
 const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
 const stateSelect = (attrs, cur) => `<select ${attrs}><option value=""></option>${US_STATES.map(v => `<option${v === (cur || '') ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
 const tzSelect = (attrs, cur) => `<select ${attrs}>${Object.entries(TZ_NAMES).map(([v, l]) => `<option value="${v}"${v === (cur || 'America/Chicago') ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+// identifiers, services and hours kept on each pharmacy (edit-only: the add-pharmacy form stays short)
+const SF2 = [['npi','NPI (10 digits)'],['dea','DEA number'],['deaExpires','DEA expires','date'],['licenseExpires','License expires','date'],['ncpdp','NCPDP ID (7 digits)']];
+const SVC_LABELS = {retail:'Retail dispensing', controlled:'Controlled substances (DEA)', nonsterile:'Nonsterile compounding', sterile:'Sterile compounding', hazardous:'Hazardous drug compounding',
+  immunizations:'Immunizations', delivery:'Delivery', ltc:'Long-term care', specialty:'Specialty', infusion:'Home infusion'};
+const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const hoursOf = s => Array.isArray(s.hours) && s.hours.length === 7 ? s.hours : [null,{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},null];
+const ACCT_LABELS = {pic:'Pharmacist-in-Charge', pharmacist:'Staff Pharmacist', tech:'Pharmacy Technician', staff:'Other Staff'};
+// choosing a type switches these on or off (the Calendar privilege is never changed by a type; it is set on its own)
+const ACCT_PRESETS = {pic:{submit:true, archive:true, remove:true, export:true}, pharmacist:{submit:true, archive:true, remove:true, export:false},
+  tech:{submit:true, archive:true, remove:true, export:false}, staff:{submit:true, archive:false, remove:false, export:false}};
 function renderOwnStores(){
+  const holder = (OWN.users || []).find(u => u.owner);
   $('ownStores').innerHTML = OWN.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">
       <div class="plogo">${LOGOS[s.id] ? `<img src="${esc(LOGOS[s.id])}" alt="">` : '<span class="hint">No logo</span>'}
         <label class="btn2 small">Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" data-logo="${esc(s.id)}" hidden></label>
         ${LOGOS[s.id] ? `<button class="btn2 small" data-nologo="${esc(s.id)}">Remove</button>` : ''}</div>
       <div class="pfields"><div class="pid">Pharmacy ID: <b>${esc(s.id)}</b> <span class="hint">(what people type when they sign in)</span></div>
+        <div class="pid">Primary account holder: <b>${holder ? esc(holder.name || holder.login) + ' (' + esc(holder.login) + ')' : 'Account Manager'}</b> <span class="hint">(the Account Manager)</span></div>
         ${SF.map(([k, l]) => `<label><span>${l}</span>${k === 'timezone' ? tzSelect(`data-sf="timezone"`, s.timezone) : k === 'state' ? stateSelect(`data-sf="state"`, s.state) : `<input type="text" data-sf="${k}" value="${esc(s[k] || '')}"${k === 'address' ? ' class="wide"' : ''}>`}</label>`).join('')}
+        ${SF2.map(([k, l, t]) => `<label><span>${l}</span><input type="${t || 'text'}" data-sf="${k}" value="${esc(s[k] || '')}"></label>`).join('')}
+        <div class="svcs"><span class="plabel">Services provided</span>${Object.entries(SVC_LABELS).map(([k, l]) => `<label class="chk">${sw(`data-svc="${k}"`, (s.services || []).includes(k))} ${l}</label>`).join('')}
+          <label><span>Other services</span><input type="text" data-sf="servicesOther" value="${esc(s.servicesOther || '')}" class="wide"></label></div>
+        <div class="hrs"><span class="plabel">Hours of operation ${s.hours ? '' : '<span class="hint">(not set yet; these are suggestions until you save)</span>'}</span>
+          ${hoursOf(s).map((h, i) => `<div class="hrow"><span>${DAYS[i]}</span><input type="time" data-ho="${i}" value="${h ? h.o : '09:00'}"><input type="time" data-hc="${i}" value="${h ? h.c : '18:00'}"><label class="chk">${sw(`data-hx="${i}"`, !h)} Closed</label></div>`).join('')}</div>
         <div class="calsw"><label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar switched on for this pharmacy <span class="hint">(people also need the Calendar privilege)</span></label></div>
         <div><button class="btn small" data-savestore="${esc(s.id)}">Save details</button></div></div>
     </div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
@@ -120,6 +137,7 @@ function renderOwnPeople(){
     <div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div><div></div></div>
     ${OWN.users.map(effUser).map(u => u.owner
       ? `<div class="urow"><div class="ucols">${head(u)}<div class="ucell acts"></div><div class="ucell copycell"></div></div>
+         <div class="upriv"><span class="plabel">Account type</span><span class="hint">Account Manager · primary account holder</span></div>
          <div class="upriv"><span class="plabel">Pharmacies</span><span class="hint">All pharmacies</span></div>
          <div class="upriv"><span class="plabel">Privileges</span><span class="hint">Full access</span></div></div>`
       : u.host
@@ -130,6 +148,9 @@ function renderOwnPeople(){
            <span class="pgroup">${P.map(p => priv(sw(`data-uperm="${p}"`, u.perms[p], PERM_LABELS[p] + ' (host)'), PERM_LABELS[p], PERM_LABELS[p])).join('')}</span>
            <span class="hint">IronLedger support · only in pharmacies switched on above</span></div></div>`
       : `<div class="${rowCls(u)}" data-sub="${esc(u.sub)}"><div class="ucols">${head(u)}${acts(u)}</div>
+         <div class="upriv"><span class="plabel">Account type</span>
+           <select data-utype><option value="">Not set</option>${Object.entries(ACCT_LABELS).map(([k, l]) => `<option value="${k}"${u.acctType === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+           <span class="hint">Choosing a type sets Submit, Archive, Remove and Backup. Calendar is set separately.</span></div>
          <div class="upriv"><span class="plabel">Pharmacies</span>
            <span class="pgroup">${st.map(s => priv(sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('')}</span></div>
          <div class="upriv"><span class="plabel">Privileges</span>
@@ -139,6 +160,8 @@ function renderOwnPeople(){
 }
 function fitPeople(){}   // the two-line layout fits any width; nothing to switch
 function paintNewPerson(){
+  $('npType').innerHTML = '<option value="">Not set</option>' + Object.entries(ACCT_LABELS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
+  $('npType').onchange = () => { const pre = ACCT_PRESETS[$('npType').value]; if(pre) for(const k in pre){ const c = document.querySelector(`[data-npperm="${k}"]`); if(c) c.checked = pre[k]; } };
   $('npStores').innerHTML = OWN.stores.map(s => `<label class="chk">${sw(`data-npst="${esc(s.id)}"`, OWN.stores.length === 1)} ${esc(s.id)} · ${esc(s.name)}</label>`).join('');
   $('npPerms').innerHTML = Object.entries(PERM_LABELS).map(([p, l]) => `<label class="chk">${sw(`data-npperm="${p}"`, p !== 'export' && p !== 'calendar')} ${l}</label>`).join('');
 }
@@ -147,7 +170,8 @@ function showPassBox(html){ $('passBox').innerHTML = html; $('passBox').style.di
 $('npAdd').onclick = async () => {
   const stores = {}; document.querySelectorAll('[data-npst]').forEach(c => stores[c.dataset.npst] = c.checked);
   const perms = {}; document.querySelectorAll('[data-npperm]').forEach(c => perms[c.dataset.npperm] = c.checked);
-  const body = {name:$('npName').value.trim(), login:$('npLogin').value.trim().toLowerCase(), phone:$('npPhone').value.trim(), tempPassword:$('npPass').value.trim() || undefined, stores, perms, smsConsent:$('npConsent').checked};
+  const acctType = $('npType').value;
+  const body = {name:$('npName').value.trim(), login:$('npLogin').value.trim().toLowerCase(), phone:$('npPhone').value.trim(), tempPassword:$('npPass').value.trim() || undefined, stores, perms, acctType, smsConsent:$('npConsent').checked};
   const say = (m, ok) => { $('npMsg').textContent = m; $('npMsg').className = 'npmsg' + (ok ? ' ok' : ''); };
   say('');
   if(!body.name || !body.login || !body.phone) return say('Name, Login ID and mobile number are all needed.');
@@ -169,6 +193,16 @@ $('npAdd').onclick = async () => {
 };
 $('npGen').onclick = () => { $('npPass').value = genTemp(); };
 $('ownPeople').addEventListener('change', async e => {
+  const ty = e.target.closest('select[data-utype]');
+  if(ty){                                                         // an account type: stage it and the privileges that go with it
+    const sub = ty.closest('[data-sub]').dataset.sub, u = OWN.users.find(x => x.sub === sub); if(!u) return;
+    const stg = STAGED[sub] || (STAGED[sub] = {});
+    if(ty.value === (u.acctType || '')) delete stg.acctType; else stg.acctType = ty.value;
+    const pre = ACCT_PRESETS[ty.value];
+    if(pre){ stg.perms = stg.perms || {}; for(const k in pre){ if(pre[k] === !!(u.perms || {})[k]) delete stg.perms[k]; else stg.perms[k] = pre[k]; } if(!Object.keys(stg.perms).length) delete stg.perms; }
+    if(!Object.keys(stg).length) delete STAGED[sub];
+    peopleMsg(''); renderOwnPeople(); return;
+  }
   const c = e.target.closest('input[type=checkbox]'); if(!c) return;
   const sub = c.closest('[data-sub]').dataset.sub, u = OWN.users.find(x => x.sub === sub); if(!u) return;
   stageChange(STAGED, u, c); peopleMsg(''); renderOwnPeople();   // nothing is saved until Update is pressed on the row
@@ -232,6 +266,9 @@ $('ownStores').addEventListener('click', async e => {
   const sv = e.target.closest('[data-savestore]'), nl = e.target.closest('[data-nologo]');
   if(sv){
     const card = sv.closest('.pcard'), body = {}; card.querySelectorAll('[data-sf]').forEach(i => body[i.dataset.sf] = i.value.trim()); const calSw = card.querySelector('[data-sfcal]'); if(calSw) body.calendar = calSw.checked;
+    body.services = [...card.querySelectorAll('[data-svc]')].filter(i => i.checked).map(i => i.dataset.svc);
+    if(card.dataset.hrTouched || OWN.stores.find(x => x.id === sv.dataset.savestore).hours){
+      body.hours = DAYS.map((_, i) => card.querySelector(`[data-hx="${i}"]`).checked ? null : {o: card.querySelector(`[data-ho="${i}"]`).value, c: card.querySelector(`[data-hc="${i}"]`).value}); }
     busy(sv, true);
     try{ await api('POST', '/owner/stores/' + encodeURIComponent(sv.dataset.savestore), body); toast('Pharmacy details saved.'); await refreshMe(); loadOwner(); }
     catch(err){ if(!err.auth) alert(err.message); } finally{ busy(sv, false); }
@@ -254,6 +291,7 @@ function shrinkImage(file){
     img.onerror = () => rej(new Error('That file isn’t a picture this browser can read.')); img.src = url;
   });
 }
+$('ownStores').addEventListener('change', e => { if(e.target.closest('[data-ho],[data-hc],[data-hx]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.hrTouched = '1'; } });
 $('ownStores').addEventListener('change', async e => {
   const f = e.target.closest('[data-logo]'); if(!f || !f.files[0]) return;
   try{ const d = await shrinkImage(f.files[0]); await api('POST', '/owner/stores/' + encodeURIComponent(f.dataset.logo) + '/logo', {dataUrl:d});

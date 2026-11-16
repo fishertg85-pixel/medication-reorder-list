@@ -1435,11 +1435,12 @@ function profileForm(){
    save:v=>{ p.name=v.name; p.trackingStart=v.start; p.features={}; FEATURES.forEach(f=>p.features[f[0]]=v.feat.includes(f[0])); logAct('Edited Profile',p.name); changed('config'); }});
 }
 function wizard(){
+  const HP=(window.ILHOST&&ILHOST.pharmacy)||null;           // what the host account already knows about this pharmacy
   formModal({title:'Start My Pharmacy',intro:(BLANK?'Enter the basics. Everything else can be added later.':'Sample data is cleared. Enter the basics. Everything else can be added later.'),saveLabel:'Start',
-   vals:{feat:['controlled','nonsterile'],start:(D?D.today:localToday()),state:'TX',tz:'America/Chicago'},
+   vals:{feat:(HP&&HP.features&&HP.features.length)?HP.features:['controlled','nonsterile'],start:(D?D.today:localToday()),state:'TX',tz:(HP&&HP.tz&&TZONES.some(z=>z[0]===HP.tz))?HP.tz:'America/Chicago',name:(HP&&HP.name)||'',owner:(HP&&HP.ownerName)||''},
    fields:[{id:'name',label:'Pharmacy Name',type:'text',req:true},{id:'owner',label:'Owner Name',type:'text'},{id:'pic',label:'Pharmacist-In-Charge Name',type:'text'},{id:'feat',label:'Programs You Run',type:'checks',opts:FEATURES},{id:'tz',label:'Time Zone',type:'select',opts:TZONES},{id:'start',label:'Tracking Start Date',type:'date',req:true,hint:'Counting begins here. Earlier history is not scored.'}],
    save:v=>{
-     const st=emptyState(); st.mode='live'; st.profile={name:v.name,state:'TX',features:{},trackingStart:v.start,launchedAt:todayIn(v.tz),tz:v.tz,hours:defHours(),holClosed:defHolClosed()}; FEATURES.forEach(f=>st.profile.features[f[0]]=v.feat.includes(f[0]));
+     const st=emptyState(); st.mode='live'; st.profile={name:v.name,state:'TX',features:{},trackingStart:v.start,launchedAt:todayIn(v.tz),tz:v.tz,hours:(HP&&Array.isArray(HP.hours)&&HP.hours.length===7)?HP.hours:defHours(),holClosed:defHolClosed()}; FEATURES.forEach(f=>st.profile.features[f[0]]=v.feat.includes(f[0]));
      st.sites=[{id:'s1',name:v.name}]; if(v.owner)st.people.push({id:'p1',name:v.owner,role:'Owner',duties:['Owner'],tags:[],siteId:''}); if(v.pic)st.people.push({id:'p2',name:v.pic,role:'Pharmacist',duties:['PIC','Designated Person'],tags:[],siteId:'s1'});
      S=st; ME=''; UI.site=''; UI.calMonth=null; UI.selDay=null; if(Store.db){ Store.kind='db'; Store.subscribe(); } else { Store.kind=window.ILHOST?'host':'local'; }
      persistAll(); logAct('Started Pharmacy',v.name); UI.tab='setup'; location.hash='#setup'; changed('config'); toast('Started. Add people, equipment and documents next.'); }});

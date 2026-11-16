@@ -18,6 +18,12 @@ function calItems(st){                                           // the calendar
 window.ILCAL_HOST = {
   get user(){ return ME ? {name: ME.name || ME.login, login: ME.login} : null; },
   get canStart(){ return !!(ME && ME.owner); },
+  get pharmacy(){                                                // what the account already knows, to pre-fill starting the calendar
+    if(!STORE) return null;
+    const map = {controlled:'controlled', nonsterile:'nonsterile', sterile:'sterile', hazardous:'hazardous', immunizations:'bbp'};
+    return {name: STORE.name, tz: STORE.timezone, hours: Array.isArray(STORE.hours) ? STORE.hours : null, ownerName: ME && ME.owner ? (ME.name || '') : '',
+      features: (STORE.services || []).filter(k => map[k]).map(k => map[k])};
+  },
   async load(){
     if(!calOK()) throw new Error('The calendar is not available for this login at this pharmacy.');
     const id = STORE.id, r = await api('GET', calPath());

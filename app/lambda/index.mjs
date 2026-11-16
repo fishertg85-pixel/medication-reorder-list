@@ -66,7 +66,30 @@ async function profileOf(sub){
   const r = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: sub } }));
   return r.Item || null;
 }
-const STORE_FIELDS = ['name', 'address', 'suite', 'city', 'state', 'zip', 'phone', 'fax', 'email', 'license', 'timezone'];
+const STORE_FIELDS = ['name', 'address', 'suite', 'city', 'state', 'zip', 'phone', 'fax', 'email', 'license', 'licenseExpires', 'npi', 'dea', 'deaExpires', 'ncpdp', 'servicesOther', 'timezone'];
+// what the pharmacy does (feeds the calendar's programs when its calendar is started) and its weekly hours
+const SERVICES = ['retail', 'controlled', 'nonsterile', 'sterile', 'hazardous', 'immunizations', 'delivery', 'ltc', 'specialty', 'infusion'];
+const ACCT_TYPES = ['pic', 'pharmacist', 'tech', 'staff'];       // the Account Manager and the host are separate roles
+const cleanType = v => { v = String(v == null ? '' : v); if(v !== '' && !ACCT_TYPES.includes(v)) throw bad('Pick the account type from the list.'); return v; };
+function validNpi(s){                                         // 10 digits; Luhn check over the number with prefix 80840
+  if(!/^\d{10}$/.test(s)) return false;
+  const d = ('80840' + s).split('').map(Number); let sum = 0, alt = false;
+  for(let i = d.length - 1; i >= 0; i--, alt = !alt){ let x = d[i]; if(alt){ x *= 2; if(x > 9) x -= 9; } sum += x; }
+  return sum % 10 === 0;
+}
+function validDea(s){                                         // 2 letters + 7 digits; (d1+d3+d5) + 2*(d2+d4+d6) ends in d7
+  if(!/^[ABCDEFGHJKLMPRSTUX][A-Z]\d{7}$/.test(s)) return false;
+  const d = s.slice(2).split('').map(Number);
+  return ((d[0] + d[2] + d[4]) + 2 * (d[1] + d[3] + d[5])) % 10 === d[6];
+}
+function cleanHours(h){
+  if(!Array.isArray(h) || h.length !== 7) throw bad('Hours need all seven days.');
+  return h.map(x => {
+    if(x == null || x === false) return null;
+    if(!x || !/^\d\d:\d\d$/.test(String(x.o)) || !/^\d\d:\d\d$/.test(String(x.c)) || String(x.o) >= String(x.c)) throw bad('Hours: each open day needs an opening time before its closing time.');
+    return { o: String(x.o), c: String(x.c) };
+  });
+}
 // each pharmacy's local time zone: dates/times on its orders are shown in it
 const TIMEZONES = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix', 'America/Los_Angeles',
   'America/Anchorage', 'Pacific/Honolulu', 'America/Puerto_Rico'];
@@ -74,7 +97,8 @@ const DEFAULT_TZ = 'America/Chicago';
 const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
 async function allStores(){
   return (await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'STORES' } }))
-    .map(s => ({ id: s.sk, ...pick(s, STORE_FIELDS), timezone: TIMEZONES.includes(s.timezone) ? s.timezone : DEFAULT_TZ, hasLogo: !!s.hasLogo, calendar: s.calendar === true }))
+    .map(s => ({ id: s.sk, ...pick(s, STORE_FIELDS), timezone: TIMEZONES.includes(s.timezone) ? s.timezone : DEFAULT_TZ, hasLogo: !!s.hasLogo, calendar: s.calendar === true,
+      services: Array.isArray(s.services) ? s.services.filter(x => SERVICES.includes(x)) : [], hours: Array.isArray(s.hours) && s.hours.length === 7 ? s.hours : null }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 async function storesFor(me){ const all = await allStores(); return me.owner ? all : all.filter(s => (me.stores || {})[s.id] === true); }
@@ -227,7 +251,7 @@ function tempPassword(){                                    // meets the policy:
 }
 function storeFields(b){
   const f = {};
-  const max = { address: 200, suite: 40, city: 80, state: 2, zip: 10 };
+  const max = { address: 200, suite: 40, city: 80, state: 2, zip: 10, npi: 10, dea: 9, ncpdp: 7, licenseExpires: 10, deaExpires: 10, servicesOther: 300 };
   for(const k of STORE_FIELDS) if(b[k] !== undefined) f[k] = String(clean(b[k], max[k] || 120) || '').trim();
   if(f.state) f.state = f.state.toUpperCase();
   if(f.state && !US_STATES.includes(f.state)) throw bad('Pick the state from the list.');
@@ -236,6 +260,15 @@ function storeFields(b){
   if(f.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email)) throw bad('Pharmacy email doesn’t look right.');
   if(f.timezone !== undefined && !TIMEZONES.includes(f.timezone)) throw bad('Pick the pharmacy’s time zone from the list.');
   if(b.calendar !== undefined){ if(typeof b.calendar !== 'boolean') throw bad('Calendar switch must be on or off.'); f.calendar = b.calendar; }
+  if(f.npi && !validNpi(f.npi)) throw bad('NPI should be 10 digits and pass the NPI check digit. Re-check it.');
+  if(f.dea){ f.dea = f.dea.toUpperCase(); if(!validDea(f.dea)) throw bad('DEA number should be 2 letters and 7 digits and pass the DEA check digit. Re-check it.'); }
+  if(f.ncpdp && !/^\d{7}$/.test(f.ncpdp)) throw bad('NCPDP provider ID is 7 digits.');
+  for(const k of ['licenseExpires', 'deaExpires']) if(f[k] && !DATE.test(f[k])) throw bad('Expiration dates: use the date picker (YYYY-MM-DD).');
+  if(b.services !== undefined){
+    if(!Array.isArray(b.services) || b.services.some(x => !SERVICES.includes(x))) throw bad('Pick services from the list.');
+    f.services = [...new Set(b.services)];
+  }
+  if(b.hours !== undefined) f.hours = cleanHours(b.hours);
   return f;
 }
 async function addStore(b){
@@ -294,7 +327,7 @@ async function listPeople(){
   do { const r = await idp.send(new ListUsersCommand({ UserPoolId: POOL, PaginationToken, Limit: 60 }));
     for(const u of r.Users || []){ const sub = (u.Attributes || []).find(a => a.Name === 'sub'); if(sub) status[sub.Value] = { status: u.UserStatus, enabled: u.Enabled, created: u.UserCreateDate }; }
     PaginationToken = r.PaginationToken; } while(PaginationToken);
-  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host,
+  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host, acctType: p.acctType || '',
     stores: p.stores || {}, perms: permsOf(p), disabled: status[p.sk] ? !status[p.sk].enabled : !!p.disabled,
     status: (status[p.sk] || {}).status || 'UNKNOWN', ...pendingOf(p, status[p.sk]) }))
     // Account Manager, host, then people still waiting to sign in for the first time, then everyone else
@@ -362,6 +395,7 @@ async function updatePerson(me, sub, seg3, body){
     throw bad('The Account Manager always has full access.');
   if(p.host && me.host && (body.stores !== undefined || body.perms !== undefined)) throw bad('Only the Account Manager can give the host access to a pharmacy or privileges in it.');
   const upd = {};
+  if(body.acctType !== undefined){ if(p.owner || p.host) throw bad('The Account Manager and host logins have their own account type.'); upd.acctType = cleanType(body.acctType); }
   if(body.stores !== undefined) upd.stores = Object.assign({}, p.stores || {}, await cleanStoreToggles(body.stores));
   if(body.perms !== undefined) upd.perms = Object.assign({}, p.perms || {}, cleanPerms(body.perms));
   if(body.name !== undefined){ upd.name = clean(body.name, 120) || '';
@@ -478,7 +512,7 @@ async function route(method, path, q, body, me, claims){
   if(seg[0] === 'api') seg.shift();                    // works with or without an /api prefix
 
   if(method === 'GET' && seg[0] === 'me' && seg.length === 1)
-    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, perms: permsOf(me), stores: await storesFor(me) };
+    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, acctType: me.acctType || '', perms: permsOf(me), stores: await storesFor(me) };
 
   if(seg[0] === 'stores' && seg[1]){
     const store = seg[1];
@@ -536,7 +570,7 @@ async function route(method, path, q, body, me, claims){
       const u = await createLogin(body);
       try{
         await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'USERS', sk: u.sub, login: u.login, name: u.name, phone: u.phone,
-          stores, perms, owner: false, createdAt: now(), createdBy: who(me), tempIssuedAt: now(), smsConsentAt: now(), smsConsentRecordedBy: who(me) } }));
+          stores, perms, acctType: cleanType(body.acctType), owner: false, createdAt: now(), createdBy: who(me), tempIssuedAt: now(), smsConsentAt: now(), smsConsentRecordedBy: who(me) } }));
       }catch(e){ await idp.send(new AdminDeleteUserCommand({ UserPoolId: POOL, Username: u.login })).catch(() => {}); throw e; }
       return { ok: true, user: { sub: u.sub, login: u.login, name: u.name, phone: u.phone, stores, perms }, tempPassword: u.tempPassword };
     }

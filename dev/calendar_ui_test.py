@@ -21,6 +21,7 @@ c.admin_set_user_mfa_preference(Username="owner", UserPoolId=ids["pool"], SMSMfa
 a = tokens("owner", "temp12345a", "ownerpass99"); O = a["IdToken"]
 api(O, "POST", "/owner-unlock", {"password": "ownerpass99", "accessToken": a["AccessToken"]})
 api(O, "POST", "/owner/stores", {"id": "NTX2", "name": "Other Pharmacy"}); api(O, "POST", "/owner/stores/NTX1", {"calendar": True})
+api(O, "POST", "/owner/stores/NTX1", {"services": ["controlled", "sterile", "immunizations"], "hours": [None] + [{"o": "08:00", "c": "20:00"}] * 5 + [None]})
 def mk(l, stores, cal, ph):
     s, r = api(O, "POST", "/owner/users", {"login": l, "name": l.upper(), "phone": ph, "smsConsent": True, "stores": stores, "perms": {"calendar": cal}}); assert s == 200, r; return r["tempPassword"]
 tA = mk("cala", {"NTX1": True, "NTX2": True}, True, "(817) 555-0101"); tB = mk("calb", {"NTX1": True}, False, "(817) 555-0102")
@@ -48,10 +49,26 @@ with sync_playwright() as pw:
     # Account Manager starts the calendar; data reaches the server
     p = newpage(); signin(p, "NTX1", "owner", "ownerpass99"); check("Account Manager sees tab at NTX1", vis(p), True)
     p.click('#tabs [data-tab=calendar]'); fr = p.frame_locator('#calFrame'); fr.locator('[data-act=wizard]').wait_for(timeout=8000)
-    fr.locator('[data-act=wizard]').click(); fr.locator('#f_name').fill('NorTex Pharmacy - Haslet'); fr.locator('[data-act=msave]').click(); p.wait_for_timeout(2500)
+    fr.locator('[data-act=wizard]').click(); fr.locator('#f_name').wait_for()
+    check("wizard pre-filled from the account: name", fr.locator('#f_name').input_value(), "NorTex Pharmacy - Haslet")
+    check("wizard pre-filled: owner and programs", (fr.locator('#f_owner').input_value(), sorted(fr.locator('#f_feat input:checked').evaluate_all("els=>els.map(e=>e.value)"))), ("Pat Owner", ['bbp', 'controlled', 'sterile']))
+    fr.locator('[data-act=msave]').click(); p.wait_for_timeout(2500)
     g = api(O, "GET", "/stores/NTX1/calendar")[1]; check("start saved to the server", (g["started"], g["config"]["profile"]["name"]), (True, "NorTex Pharmacy - Haslet"))
+    check("calendar hours came from the account", (g["config"]["profile"]["hours"][1], g["config"]["profile"]["hours"][0]), ({"o": "08:00", "c": "20:00"}, None))
     check("audit log names the signed-in login", [l["by"] for l in g["log"]][:1], ["Pat Owner"])
-    p.screenshot(path='screenshots/calendar_tab.png'); p.close()
+    p.screenshot(path='screenshots/calendar_tab.png')
+    # Account Manager tab: account type for a person, identifiers on the pharmacy
+    p.click('#tabs [data-tab=owner]'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_selector('select[data-utype]', timeout=8000)
+    row = p.locator('.urow[data-sub]').filter(has_text='CALA'); row.locator('select[data-utype]').select_option('pharmacist'); p.wait_for_timeout(300)
+    row = p.locator('.urow[data-sub]').filter(has_text='CALA'); row.locator('[data-upd]').click(); p.wait_for_timeout(1500)
+    cu = {u["login"]: u for u in api(O, "GET", "/owner/users")[1]["users"]}["cala"]
+    check("type saved from the screen, Calendar privilege untouched", (cu["acctType"], cu["perms"]["calendar"], cu["perms"]["submit"]), ("pharmacist", True, True))
+    p.screenshot(path='screenshots/account_manager_people.png')
+    card = p.locator('.pcard[data-store=NTX1]'); card.locator('[data-sf=npi]').fill('1234567893'); card.locator('[data-sf=dea]').fill('AB1234563')
+    card.locator('label.switch:has([data-svc=retail])').click(); card.locator('[data-savestore]').click(); p.wait_for_timeout(1500)
+    ns = [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0]
+    check("identifiers and services saved from the screen", (ns["npi"], ns["dea"], "retail" in ns["services"], ns["hours"][1]), ("1234567893", "AB1234563", True, {"o": "08:00", "c": "20:00"}))
+    p.screenshot(path='screenshots/account_manager_pharmacy.png', full_page=True); p.close()
     # privileged person now sees the started calendar
     c.admin_set_user_mfa_preference(Username="cala", UserPoolId=ids["pool"], SMSMfaSettings={"Enabled": False, "PreferredMfa": False})
     p = newpage(); signin(p, "NTX1", "cala", "calapass12345"); p.click('#tabs [data-tab=calendar]'); fr = p.frame_locator('#calFrame'); fr.locator('nav.tabs').wait_for(timeout=8000)

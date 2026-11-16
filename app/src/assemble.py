@@ -30,6 +30,9 @@ rep('<meta name="viewport" content="width=device-width, initial-scale=1">', '<me
 # ---------- CSS
 rep('</style>\n</head>', r'''
   /* ---- cloud version additions ---- */
+  .svcs{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:8px 0;} .svcs .plabel{flex-basis:100%;}
+  .hrs{margin:8px 0;} .hrow{display:flex;gap:10px;align-items:center;margin:3px 0;} .hrow>span{width:84px;} .hrow input[type=time]{width:110px;}
+  select[data-utype]{max-width:240px;}
   input[type=tel],input[type=email],input[type=password]{background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:7px 9px;font-size:14px;font-family:inherit;}
   #storeLogo{height:38px;width:38px;object-fit:contain;border-radius:6px;background:#fff;padding:2px;}
   .hsel{background:rgba(255,255,255,.08);color:var(--head-text);border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:6px 8px;font-size:12.5px;max-width:260px;}
@@ -56,7 +59,7 @@ rep('</style>\n</head>', r'''
   .plogo{width:150px;display:flex;flex-direction:column;align-items:center;gap:6px;}
   .plogo img{max-width:140px;max-height:100px;object-fit:contain;}
   .pfields{flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 12px;min-width:240px;}
-  .pfields .pid{grid-column:1/-1;font-size:13px;}
+  .pfields .pid,.pfields .svcs,.pfields .hrs,.pfields .calsw{grid-column:1/-1;font-size:13px;}
   .pfields label span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;}
   .pfields input,.pfields select,.formgrid select{width:100%;background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:7px 9px;font-size:14px;font-family:inherit;} .pfields label:has(.wide){grid-column:span 2;}
   .btn.small,.btn2.small{padding:5px 10px;font-size:12.5px;}
@@ -295,6 +298,7 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
       </div>
       <label class="chk" style="margin-top:10px;"><input type="checkbox" id="npConsent" style="width:18px;height:18px;"> The employee has signed the <a href="https://ironledgerrx.com/sms-consent.html" target="_blank" rel="noopener">SMS consent form</a> for this mobile number (print it, have them sign, keep it on file).</label>
       <div style="margin-top:8px;"><b class="hint">Pharmacies:</b><div id="npStores"></div></div>
+      <div style="margin-top:8px;"><b class="hint">Account type:</b> <select id="npType"></select> <span class="hint">sets the switches below; change any of them after</span></div>
       <div style="margin-top:4px;"><b class="hint">May:</b><div id="npPerms"></div></div>
       <div class="toolbar" style="margin-top:10px;"><button class="btn" id="npAdd">Add user</button> <button class="btn2" id="npGen">New temporary password</button></div>
       <div id="npMsg" class="npmsg" role="status"></div>
