@@ -48,6 +48,27 @@ check("Account Manager has no type to set", api(O, "POST", "/owner/users/" + own
 api(O, "POST", "/owner/users/" + sub, {"acctType": "tech"})
 U = login("acct1", tmp, "acct1pass12345")["IdToken"]
 check("/me carries the type", api(U, "GET", "/me")[1]["acctType"], "tech")
+
+# ---- NPI Registry lookup (stand-in registry in dev/server.mjs; real one is public NPPES v2.1)
+r = api(O, "GET", "/owner/npi/1234567893"); check("NPI lookup finds the organization", (r[0], r[1].get("found"), r[1].get("name"), r[1].get("type"), r[1].get("active"), r[1].get("pharmacyTaxonomy")), (200, True, "NORTEX PHARMACY LLC", "organization", True, True))
+check("lookup uses the LOCATION address, ZIP cut to 5", r[1]["address"], {"address": "100 MAIN ST", "suite": "STE 5", "city": "HASLET", "state": "TX", "zip": "76252", "phone": "817-555-0100", "fax": "817-555-0101"})
+check("lookup passes license/taxonomy through", r[1]["taxonomies"][0]["license"], "TX12345")
+r = api(O, "GET", "/owner/npi/1245319599"); check("individual NPI flagged as individual", (r[1].get("found"), r[1].get("type")), (True, "individual"))
+check("NPI not in registry", api(O, "GET", "/owner/npi/1111111112")[1], {"found": False})
+check("bad check digit refused before any lookup", api(O, "GET", "/owner/npi/1234567890")[0], 400)
+check("registry failure is a clear 502", api(O, "GET", "/owner/npi/9999999995")[0], 502)
+check("lookup is owner only", api(U, "GET", "/owner/npi/1234567893")[0], 403)
+# ---- DEA: recorded check against the exact number
+st({"dea": "AB1234563"})
+check("DEA check needs a number on file", (api(O, "POST", "/owner/stores/NTX1", {"dea": "", "deaVerified": True})[0]), 400)
+check("DEA check recorded", api(O, "POST", "/owner/stores/NTX1", {"dea": "AB1234563", "deaVerified": True})[0], 200)
+s = [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0]
+check("check shows who and when", (bool(s["deaVerified"]), s["deaVerified"]["by"] != "", len(s["deaVerified"]["at"]) > 10), (True, True, True))
+check("saving the same number keeps the check", (st({"dea": "AB1234563", "deaExpires": "2029-01-31"})[0], [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0]["deaVerified"] is not None), (200, True))
+check("changing the number voids the check", (st({"dea": "AB1234575"})[0], [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0]["deaVerified"]), (200, None))
+st({"dea": "AB1234563"})
+check("changing back does not revive it", [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0]["deaVerified"], None)
+check("verified flag cannot be set false/edited", api(O, "POST", "/owner/stores/NTX1", {"deaVerified": False})[0], 400)
 check("a staff login cannot edit the pharmacy profile", api(U, "POST", "/owner/stores/NTX1", {"npi": "1234567893"})[0], 403)
 check("a staff login cannot change types", api(U, "POST", "/owner/users/" + sub, {"acctType": "pic"})[0], 403)
 print("\nFAILED:", fails if fails else "none"); sys.exit(1 if fails else 0)

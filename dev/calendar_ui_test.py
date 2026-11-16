@@ -68,7 +68,20 @@ with sync_playwright() as pw:
     card.locator('label.switch:has([data-svc=retail])').click(); card.locator('[data-savestore]').click(); p.wait_for_timeout(1500)
     ns = [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0]
     check("identifiers and services saved from the screen", (ns["npi"], ns["dea"], "retail" in ns["services"], ns["hours"][1]), ("1234567893", "AB1234563", True, {"o": "08:00", "c": "20:00"}))
-    p.screenshot(path='screenshots/account_manager_pharmacy.png', full_page=True); p.close()
+    # NPI registry lookup and recorded DEA check
+    card = p.locator('.pcard[data-store=NTX1]'); card.locator('[data-npilook]').click(); card.locator('[data-npires] .npibox b').wait_for(timeout=8000)
+    check("registry result shown", card.locator('[data-npires] .npibox b').inner_text(), "NORTEX PHARMACY LLC")
+    check("name mismatch flagged", "differs" in card.locator('[data-npires]').inner_text(), True)
+    card.locator('[data-npiuse]').click(); p.wait_for_timeout(300)
+    check("Use these details fills the fields", (card.locator('[data-sf=name]').input_value(), card.locator('[data-sf=address]').input_value(), card.locator('[data-sf=city]').input_value(), card.locator('[data-sf=zip]').input_value(), card.locator('[data-sf=phone]').input_value()), ("NORTEX PHARMACY LLC", "100 MAIN ST", "HASLET", "76252", "817-555-0100"))
+    p.screenshot(path='screenshots/account_manager_pharmacy.png', full_page=True)
+    card.locator('[data-sf=npi]').fill('1111111112'); card.locator('[data-npilook]').click(); card.locator('[data-npires] .npibox').wait_for(timeout=8000); p.wait_for_timeout(500)
+    check("unknown NPI says so", "No provider" in card.locator('[data-npires]').inner_text(), True)
+    card.locator('[data-deaok]').click(); p.wait_for_timeout(1500)
+    ns = [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0]
+    check("DEA check recorded from the screen", bool(ns["deaVerified"]), True)
+    check("screen shows it", "Checked on the DEA site" in p.locator('.pcard[data-store=NTX1] [data-deastat]').inner_text(), True)
+    p.screenshot(path='screenshots/account_manager_pharmacy_dea.png', full_page=True); p.close()
     # privileged person now sees the started calendar
     c.admin_set_user_mfa_preference(Username="cala", UserPoolId=ids["pool"], SMSMfaSettings={"Enabled": False, "PreferredMfa": False})
     p = newpage(); signin(p, "NTX1", "cala", "calapass12345"); p.click('#tabs [data-tab=calendar]'); fr = p.frame_locator('#calFrame'); fr.locator('nav.tabs').wait_for(timeout=8000)

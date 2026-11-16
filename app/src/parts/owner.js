@@ -106,6 +106,9 @@ function renderOwnStores(){
         <div class="pid">Primary account holder: <b>${holder ? esc(holder.name || holder.login) + ' (' + esc(holder.login) + ')' : 'Account Manager'}</b> <span class="hint">(the Account Manager)</span></div>
         ${SF.map(([k, l]) => `<label><span>${l}</span>${k === 'timezone' ? tzSelect(`data-sf="timezone"`, s.timezone) : k === 'state' ? stateSelect(`data-sf="state"`, s.state) : `<input type="text" data-sf="${k}" value="${esc(s[k] || '')}"${k === 'address' ? ' class="wide"' : ''}>`}</label>`).join('')}
         ${SF2.map(([k, l, t]) => `<label><span>${l}</span><input type="${t || 'text'}" data-sf="${k}" value="${esc(s[k] || '')}"></label>`).join('')}
+        <div class="pid npirow"><button class="btn2 small" data-npilook="1">Look up NPI in the federal registry</button> <span class="hint">checks the number above against the public NPI Registry; nothing changes until you press Save details</span><div data-npires></div></div>
+        <div class="pid npirow"><a class="btn2 small" href="https://apps.deadiversion.usdoj.gov/webforms2/spring/validationLogin" target="_blank" rel="noopener noreferrer">Open the DEA registration check</a> <button class="btn2 small" data-deaok="1">I checked this DEA number there</button>
+          <span class="hint" data-deastat>${s.deaVerified ? 'Checked on the DEA site ' + esc((s.deaVerified.at || '').slice(0, 10)) + (s.deaVerified.by ? ' by ' + esc(s.deaVerified.by) : '') : 'Not checked yet.'} The DEA does not offer a public lookup: its tool asks for details from the registration certificate, so this is checked by a person and recorded here.</span></div>
         <div class="svcs"><span class="plabel">Services provided</span>${Object.entries(SVC_LABELS).map(([k, l]) => `<label class="chk">${sw(`data-svc="${k}"`, (s.services || []).includes(k))} ${l}</label>`).join('')}
           <label><span>Other services</span><input type="text" data-sf="servicesOther" value="${esc(s.servicesOther || '')}" class="wide"></label></div>
         <div class="hrs"><span class="plabel">Hours of operation ${s.hours ? '' : '<span class="hint">(not set yet; these are suggestions until you save)</span>'}</span>
@@ -262,7 +265,45 @@ $('ownPeople').addEventListener('click', async e => {
   }
 });
 // pharmacies
+const normNm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 $('ownStores').addEventListener('click', async e => {
+  const lk = e.target.closest('[data-npilook]'), us = e.target.closest('[data-npiuse]');
+  const dk = e.target.closest('[data-deaok]');
+  if(dk){
+    const card = dk.closest('.pcard'), dea = card.querySelector('[data-sf=dea]').value.trim();
+    if(!dea){ alert('Type the DEA number first.'); return; }
+    if(!confirm('Confirm you looked up ' + dea.toUpperCase() + ' on the DEA registration check and the name, address and expiration match this pharmacy?')) return;
+    try{ await api('POST', '/owner/stores/' + encodeURIComponent(card.dataset.store), {dea, deaVerified:true}); toast('DEA check recorded.'); loadOwner(); }catch(err){ if(!err.auth) alert(err.message); }
+    return;
+  }
+  if(lk){
+    const card = lk.closest('.pcard'), out = card.querySelector('[data-npires]'), npi = card.querySelector('[data-sf=npi]').value.trim();
+    if(!/^\d{10}$/.test(npi)){ out.innerHTML = '<div class="npibox bad">Type the 10-digit NPI first.</div>'; return; }
+    out.innerHTML = '<div class="npibox hint">Looking up…</div>'; lk.disabled = true;
+    try{
+      const r = await api('GET', '/owner/npi/' + encodeURIComponent(npi)); card._npi = r;
+      if(!r.found){ out.innerHTML = '<div class="npibox bad">No provider with that NPI is in the NPI Registry. Re-check the number.</div>'; return; }
+      const a = r.address, flags = [];
+      if(r.type !== 'organization') flags.push('This is an individual NPI. A pharmacy normally has an organization NPI.');
+      if(!r.active) flags.push('The registry shows this NPI as not active.');
+      if(r.type === 'organization' && !r.pharmacyTaxonomy) flags.push('No pharmacy taxonomy is listed for it.');
+      const cur = card.querySelector('[data-sf=name]').value; if(cur && r.name && normNm(cur) !== normNm(r.name)) flags.push('The registry name differs from the pharmacy name above.');
+      const lic = r.taxonomies.filter(t => t.license).map(t => `${esc(t.license)}${t.state ? ' (' + esc(t.state) + ')' : ''}`).join(', ');
+      out.innerHTML = `<div class="npibox"><b>${esc(r.name || '(no name)')}</b> <span class="hint">${r.type === 'organization' ? 'Organization' : 'Individual'} · ${r.active ? 'Active' : 'Not active'}${r.lastUpdated ? ' · registry updated ' + esc(r.lastUpdated) : ''}</span>
+        <div>${esc([a.address, a.suite].filter(Boolean).join(', '))}${a.address ? ', ' : ''}${esc([a.city, a.state].filter(Boolean).join(', '))} ${esc(a.zip)}${a.phone ? ' · ' + esc(a.phone) : ''}${a.fax ? ' · fax ' + esc(a.fax) : ''}</div>
+        ${r.taxonomies.length ? `<div class="hint">${r.taxonomies.map(t => esc(t.desc || t.code)).join('; ')}${lic ? ' · license on file with registry: ' + lic : ''}</div>` : ''}
+        ${flags.map(f => `<div class="npiflag">⚠ ${esc(f)}</div>`).join('')}
+        <button class="btn2 small" data-npiuse="1">Use these details</button> <span class="hint">fills name, address, phone and fax above (the license number is not filled; type it from the state license)</span></div>`;
+    }catch(err){ if(!err.auth) out.innerHTML = `<div class="npibox bad">${esc(err.message)}</div>`; }
+    finally{ lk.disabled = false; }
+    return;
+  }
+  if(us){
+    const card = us.closest('.pcard'), r = card._npi; if(!r || !r.found) return;
+    const set = (k, v) => { const i = card.querySelector(`[data-sf=${k}]`); if(i && v) i.value = v; };
+    set('name', r.name); set('address', r.address.address); set('suite', r.address.suite); set('city', r.address.city); set('state', r.address.state); set('zip', r.address.zip); set('phone', r.address.phone); set('fax', r.address.fax);
+    toast('Filled in from the registry. Press Save details to keep it.'); return;
+  }
   const sv = e.target.closest('[data-savestore]'), nl = e.target.closest('[data-nologo]');
   if(sv){
     const card = sv.closest('.pcard'), body = {}; card.querySelectorAll('[data-sf]').forEach(i => body[i.dataset.sf] = i.value.trim()); const calSw = card.querySelector('[data-sfcal]'); if(calSw) body.calendar = calSw.checked;

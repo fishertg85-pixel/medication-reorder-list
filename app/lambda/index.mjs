@@ -77,6 +77,28 @@ function validNpi(s){                                         // 10 digits; Luhn
   for(let i = d.length - 1; i >= 0; i--, alt = !alt){ let x = d[i]; if(alt){ x *= 2; if(x > 9) x -= 9; } sum += x; }
   return sum % 10 === 0;
 }
+// Look a pharmacy's NPI up in the federal NPI Registry (NPPES, public, no key). Done here on the server so the browser never calls it.
+const NPI_API = process.env.NPI_API || 'https://npiregistry.cms.hhs.gov/api/';
+async function npiLookup(npi){
+  if(!validNpi(npi)) throw bad('NPI should be 10 digits and pass the NPI check digit. Re-check it.');
+  let r, j;
+  try{
+    r = await fetch(NPI_API + '?version=2.1&number=' + npi, { signal: AbortSignal.timeout(8000), headers: { accept: 'application/json' } });
+    j = await r.json();
+  }catch(e){ throw new HttpError(502, 'Could not reach the NPI Registry just now. Try again in a minute, or type the details in yourself.'); }
+  if(!r.ok || (j && Array.isArray(j.Errors) && j.Errors.length)) throw new HttpError(502, 'The NPI Registry did not accept that lookup. Try again, or type the details in yourself.');
+  const hit = j && Array.isArray(j.results) && j.results[0];
+  if(!hit) return { found: false };
+  const b = hit.basic || {}, org = hit.enumeration_type === 'NPI-2';
+  const name = org ? (b.organization_name || '') : [b.name_prefix, b.first_name, b.middle_name, b.last_name, b.credential].filter(Boolean).join(' ');
+  const loc = (hit.addresses || []).find(a => a.address_purpose === 'LOCATION') || (hit.addresses || [])[0] || {};
+  const str = v => String(v == null ? '' : v).trim();
+  const tax = (hit.taxonomies || []).map(t => ({ code: str(t.code), desc: str(t.desc), primary: !!t.primary, state: str(t.state), license: str(t.license) }));
+  return { found: true, npi: String(hit.number || npi), type: org ? 'organization' : 'individual', name: str(name), active: str(b.status) === 'A',
+    lastUpdated: str(b.last_updated), pharmacyTaxonomy: tax.some(t => /^3336/.test(t.code)),
+    address: { address: str(loc.address_1), suite: str(loc.address_2), city: str(loc.city), state: str(loc.state), zip: str(loc.postal_code).slice(0, 5),
+      phone: str(loc.telephone_number), fax: str(loc.fax_number) }, taxonomies: tax.slice(0, 6) };
+}
 function validDea(s){                                         // 2 letters + 7 digits; (d1+d3+d5) + 2*(d2+d4+d6) ends in d7
   if(!/^[ABCDEFGHJKLMPRSTUX][A-Z]\d{7}$/.test(s)) return false;
   const d = s.slice(2).split('').map(Number);
@@ -98,6 +120,7 @@ const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME M
 async function allStores(){
   return (await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'STORES' } }))
     .map(s => ({ id: s.sk, ...pick(s, STORE_FIELDS), timezone: TIMEZONES.includes(s.timezone) ? s.timezone : DEFAULT_TZ, hasLogo: !!s.hasLogo, calendar: s.calendar === true,
+      deaVerified: s.dea && s.deaVerifiedDea === s.dea ? { at: s.deaVerifiedAt || '', by: s.deaVerifiedBy || '' } : null,
       services: Array.isArray(s.services) ? s.services.filter(x => SERVICES.includes(x)) : [], hours: Array.isArray(s.hours) && s.hours.length === 7 ? s.hours : null }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
@@ -280,9 +303,22 @@ async function addStore(b){
   catch(e){ if(isCond(e)) throw bad('That Pharmacy ID is already used.'); throw e; }
   return { id, ...f };
 }
-async function updateStore(id, b){
+async function updateStore(id, b, by){
   if(!okId(id)) throw bad('Bad pharmacy');
-  const f = storeFields(b); if(!Object.keys(f).length) return;
+  const f = storeFields(b);
+  if(b.deaVerified !== undefined){          // a person checked the number on the DEA's own validation site and says so; recorded against that exact number
+    if(b.deaVerified !== true) throw bad('Verification can only be recorded, not edited.');
+    const cur = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }));
+    if(!cur.Item) throw bad('No such pharmacy.');
+    const dea = f.dea !== undefined ? f.dea : (cur.Item.dea || '');
+    if(!dea) throw bad('Enter the DEA number first.');
+    f.deaVerifiedDea = dea; f.deaVerifiedAt = now(); f.deaVerifiedBy = by || '';
+  }
+  else if(f.dea !== undefined){              // the number was changed: an earlier check no longer applies to it
+    const cur = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }));
+    if(cur.Item && (cur.Item.dea || '') !== f.dea) f.deaVerifiedDea = '';
+  }
+  if(!Object.keys(f).length) return;
   const names = {}, vals = {}, parts = [];
   Object.entries({ ...f, updatedAt: now() }).forEach(([k, v], i) => { names['#f' + i] = k; vals[':v' + i] = v; parts.push(`#f${i} = :v${i}`); });
   try{ await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id }, UpdateExpression: 'SET ' + parts.join(', '),
@@ -559,10 +595,11 @@ async function route(method, path, q, body, me, claims){
       if(!ex.Item) throw new HttpError(404, 'No such pharmacy.');
       return await importData(seg[2], body);
     }
+    if(method === 'GET' && seg[1] === 'npi' && seg[2]) return await npiLookup(String(seg[2]));
     if(method === 'GET' && seg[1] === 'stores') return { stores: await allStores() };
     if(method === 'POST' && seg[1] === 'stores' && !seg[2]) return await addStore(body);
     if(method === 'POST' && seg[1] === 'stores' && seg[2] && seg[3] === 'logo'){ await setLogo(seg[2], body.dataUrl); return { ok: true }; }
-    if(method === 'POST' && seg[1] === 'stores' && seg[2]){ await updateStore(seg[2], body); return { ok: true }; }
+    if(method === 'POST' && seg[1] === 'stores' && seg[2]){ await updateStore(seg[2], body, who(me)); return { ok: true }; }
     if(method === 'GET' && seg[1] === 'users') return { users: await listPeople() };
     if(method === 'POST' && seg[1] === 'users' && !seg[2]){
       const stores = await cleanStoreToggles(body.stores), perms = Object.assign({}, DEFAULT_PERMS, cleanPerms(body.perms));

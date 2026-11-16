@@ -6,6 +6,7 @@ import path from 'node:path';
 process.env.AWS_ENDPOINT_URL = 'http://localhost:5005';
 process.env.AWS_REGION = 'us-east-1'; process.env.AWS_ACCESS_KEY_ID = 'x'; process.env.AWS_SECRET_ACCESS_KEY = 'x';
 const ids = JSON.parse(fs.readFileSync(new URL('./moto_ids.json', import.meta.url)));
+process.env.NPI_API = 'http://localhost:8790/npi-mock/';
 process.env.MAIN_TABLE = 'nortex-reorder-main'; process.env.ARCHIVE_TABLE = 'nortex-reorder-archive'; process.env.USER_POOL_ID = ids.pool;
 const { handler } = await import('../app/lambda/index.mjs');
 const WEB = path.resolve(process.argv[3] || new URL('../app/web', import.meta.url).pathname);
@@ -18,6 +19,18 @@ http.createServer(async (req, res) => {
     const b = await body(req);
     const r = await fetch('http://localhost:5005/', { method: 'POST', headers: { 'content-type': req.headers['content-type'], 'x-amz-target': req.headers['x-amz-target'] }, body: b });
     res.writeHead(r.status, { 'content-type': 'application/x-amz-json-1.1' }); res.end(await r.text()); return;
+  }
+  if(u.pathname === '/npi-mock/'){            // stand-in for the federal NPI Registry (shape follows API v2.1)
+    const n = u.searchParams.get('number'); if(n !== '9999999995') res.writeHead(200, { 'content-type': 'application/json' });
+    if(n === '1234567893') res.end(JSON.stringify({ result_count: 1, results: [{ number: 1234567893, enumeration_type: 'NPI-2',
+      basic: { organization_name: 'NORTEX PHARMACY LLC', status: 'A', last_updated: '2024-05-01' },
+      addresses: [{ address_purpose: 'MAILING', address_1: 'PO BOX 1', city: 'HASLET', state: 'TX', postal_code: '762520001' },
+        { address_purpose: 'LOCATION', address_1: '100 MAIN ST', address_2: 'STE 5', city: 'HASLET', state: 'TX', postal_code: '762520001', telephone_number: '817-555-0100', fax_number: '817-555-0101' }],
+      taxonomies: [{ code: '3336C0003X', desc: 'Pharmacy - Community/Retail Pharmacy', primary: true, state: 'TX', license: 'TX12345' }] }] }));
+    else if(n === '1245319599') res.end(JSON.stringify({ result_count: 1, results: [{ number: 1245319599, enumeration_type: 'NPI-1', basic: { first_name: 'PAT', last_name: 'DOE', credential: 'PHARMD', status: 'A' }, addresses: [], taxonomies: [] }] }));
+    else if(n === '9999999995') { res.writeHead(500, { 'content-type': 'application/json' }); res.end('{}'); }
+    else res.end(JSON.stringify({ result_count: 0, results: [] }));
+    return;
   }
   if(u.pathname.startsWith('/api/')){
     const raw = u.pathname.slice(4), b = await body(req);
