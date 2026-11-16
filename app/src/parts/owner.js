@@ -103,7 +103,7 @@ function renderOwnPeople(){
   const head = u => `
       <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${u.owner ? '<span class="urole">Account Manager</span>' : u.host ? '<span class="urole">Host (IronLedger)</span>' : ''}</div>
       <div class="ucell mono" data-l="Username">${esc(u.login)}</div>
-      <div class="ucell" data-l="Mobile">${esc(u.phone)}${u.owner || u.host ? '' : ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>`}</div>
+      <div class="ucell" data-l="Mobile">${esc(u.phone)}${u.owner ? ' <span class="hint" title="Sign-in codes are texted here, so only IronLedger changes it. Contact IronLedger.">🔒</span>' : u.host ? '' : ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>`}</div>
       <div class="ucell" data-l="Status">${statusBadge(u)}</div>`;
   const acts = u => `<div class="ucell acts">${STAGED[u.sub] ? stageBtns(u.sub) : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button> <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`}</div>
       <div class="ucell copycell">${u.pending && TEMPS[u.sub] ? `<button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${COPY_SVG}</button>` : ''}</div>`;

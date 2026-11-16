@@ -10,7 +10,9 @@ WHO DOES WHAT
                      person's access on/off per pharmacy, and switch permissions on/off. This role can't
                      be given to anyone else from the app.
   Everyone else      Signs in with Pharmacy ID + Login ID + password, then a code texted to their phone.
-                     Only the Account Manager can change someone's mobile number or reset their password.
+                     Only the Account Manager can change someone's mobile number or reset their password,
+                     except her own mobile number: that is the security factor for her sign-in, so only
+                     IronLedger (the host) changes it.
 
 WHAT'S IN THIS FOLDER
   deploy.sh      installs or updates everything (run it in AWS CloudShell)

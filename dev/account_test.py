@@ -51,6 +51,11 @@ check("clear type", api(O, "POST", "/owner/users/" + sub, {"acctType": ""})[0], 
 ownersub = [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["owner"]][0]["sub"]
 check("Account Manager has no type to set", api(O, "POST", "/owner/users/" + ownersub, {"acctType": "tech"})[0], 400)
 api(O, "POST", "/owner/users/" + sub, {"acctType": "tech"})
+check("Account Manager cannot change her OWN mobile number", api(O, "POST", "/owner/users/" + ownersub, {"phone": "8175550777", "smsConsent": True})[0], 403)
+check("her number is unchanged", [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["owner"]][0]["phone"] != "+18175550777", True)
+check("Account Manager can still change a staff member's number", api(O, "POST", "/owner/users/" + sub, {"phone": "8175550778", "smsConsent": True})[0], 200)
+check("host can change the Account Manager's number", api(H, "POST", "/host/users/" + ownersub, {"phone": "8175550001", "smsConsent": True})[0], 200)
+check("no per-person email is accepted", (api(O, "POST", "/owner/users/" + sub, {"email": "x@example.com"})[0], api(H, "POST", "/host/users/" + ownersub, {"email": "x@example.com"})[0]), (400, 400))
 U = login("acct1", tmp, "acct1pass12345")["IdToken"]
 check("/me carries the type", api(U, "GET", "/me")[1]["acctType"], "tech")
 

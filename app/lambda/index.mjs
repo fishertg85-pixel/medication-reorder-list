@@ -524,6 +524,10 @@ async function updatePerson(me, sub, seg3, body){
     await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: sub }, UpdateExpression: 'SET tempIssuedAt = :n', ExpressionAttributeValues: { ':n': now() } }));
     return { ok: true, tempPassword: pw };
   }
+  // the Account Manager's own mobile is her second sign-in factor (Login ID + password + texted code), so only IronLedger changes it
+  if(p.owner && !me.host && body.phone !== undefined) throw forbidden('The Account Manager’s own mobile number is changed by IronLedger. Contact IronLedger to update it.');
+  // no per-person email exists today; if one is ever added, changing it for the Account Manager must also need the host
+  if(body.email !== undefined) throw bad('People don’t have an email address in this app.');
   if(p.owner && (body.stores !== undefined || body.perms !== undefined || (body.disabled !== undefined && !me.host)))
     throw bad('The Account Manager always has full access.');
   if(p.host && me.host && (body.stores !== undefined || body.perms !== undefined)) throw bad('Only the Account Manager can give the host access to a pharmacy or privileges in it.');
