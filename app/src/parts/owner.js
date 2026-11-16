@@ -39,8 +39,8 @@ setInterval(() => {
   if(now - ownLastAct > OWN_MS || now > OWN_UNTIL){ ownerLockNow('Locked after 5 minutes without activity. Re-enter your password.'); return; }
   if(ownLastAct > ownPingAt && now - ownPingAt > 60000){ ownPingAt = now; api('POST', '/owner/keepalive', {}).catch(() => {}); }
 }, 15000);
-const PERM_LABELS = {submit:'Submit orders', archive:'View archive', remove:'Remove lines', export:'Download backup'};
-const PERM_HEADS = {submit:'Submit', archive:'Archive', remove:'Remove', export:'Backup'};
+const PERM_LABELS = {submit:'Submit orders', archive:'View archive', remove:'Remove lines', export:'Download backup', calendar:'Calendar'};
+const PERM_HEADS = {submit:'Submit', archive:'Archive', remove:'Remove', export:'Backup', calendar:'Calendar'};
 let OWN = {stores:[], users:[]};
 // temporary passwords made on this screen, kept only in this page (never saved anywhere) so they can be copied again
 // while the person is still pending; gone on sign-out or reload, or once the person has signed in
@@ -93,6 +93,7 @@ function renderOwnStores(){
         ${LOGOS[s.id] ? `<button class="btn2 small" data-nologo="${esc(s.id)}">Remove</button>` : ''}</div>
       <div class="pfields"><div class="pid">Pharmacy ID: <b>${esc(s.id)}</b> <span class="hint">(what people type when they sign in)</span></div>
         ${SF.map(([k, l]) => `<label><span>${l}</span>${k === 'timezone' ? tzSelect(`data-sf="timezone"`, s.timezone) : k === 'state' ? stateSelect(`data-sf="state"`, s.state) : `<input type="text" data-sf="${k}" value="${esc(s[k] || '')}"${k === 'address' ? ' class="wide"' : ''}>`}</label>`).join('')}
+        <div class="calsw"><label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar switched on for this pharmacy <span class="hint">(people also need the Calendar privilege)</span></label></div>
         <div><button class="btn small" data-savestore="${esc(s.id)}">Save details</button></div></div>
     </div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
 }
@@ -139,7 +140,7 @@ function renderOwnPeople(){
 function fitPeople(){}   // the two-line layout fits any width; nothing to switch
 function paintNewPerson(){
   $('npStores').innerHTML = OWN.stores.map(s => `<label class="chk">${sw(`data-npst="${esc(s.id)}"`, OWN.stores.length === 1)} ${esc(s.id)} · ${esc(s.name)}</label>`).join('');
-  $('npPerms').innerHTML = Object.entries(PERM_LABELS).map(([p, l]) => `<label class="chk">${sw(`data-npperm="${p}"`, p !== 'export')} ${l}</label>`).join('');
+  $('npPerms').innerHTML = Object.entries(PERM_LABELS).map(([p, l]) => `<label class="chk">${sw(`data-npperm="${p}"`, p !== 'export' && p !== 'calendar')} ${l}</label>`).join('');
 }
 function genTemp(){ const L = 'abcdefghjkmnpqrstuvwxyz', D = '23456789', A = L + D; let p = L[Math.random()*23|0] + D[Math.random()*8|0]; while(p.length < 12) p += A[Math.random()*A.length|0]; return p; }
 function showPassBox(html){ $('passBox').innerHTML = html; $('passBox').style.display = 'block'; $('passBox').scrollIntoView({block:'center'}); }
@@ -230,7 +231,7 @@ $('ownPeople').addEventListener('click', async e => {
 $('ownStores').addEventListener('click', async e => {
   const sv = e.target.closest('[data-savestore]'), nl = e.target.closest('[data-nologo]');
   if(sv){
-    const card = sv.closest('.pcard'), body = {}; card.querySelectorAll('[data-sf]').forEach(i => body[i.dataset.sf] = i.value.trim());
+    const card = sv.closest('.pcard'), body = {}; card.querySelectorAll('[data-sf]').forEach(i => body[i.dataset.sf] = i.value.trim()); const calSw = card.querySelector('[data-sfcal]'); if(calSw) body.calendar = calSw.checked;
     busy(sv, true);
     try{ await api('POST', '/owner/stores/' + encodeURIComponent(sv.dataset.savestore), body); toast('Pharmacy details saved.'); await refreshMe(); loadOwner(); }
     catch(err){ if(!err.auth) alert(err.message); } finally{ busy(sv, false); }

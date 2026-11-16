@@ -1,0 +1,4 @@
+calendar_blank.html is the built "new pharmacy" Compliance Calendar from the compliance-calendar-lite repo
+(github.com/fishertg85-pixel/compliance-calendar-lite, run `python3 build.py` there). To update the calendar,
+copy the new calendar_blank.html here, then run `python3 app/src/assemble.py`.
+assemble.py adds the sign-in hand-over (a few lines) and writes app/web/calendar.html.

@@ -214,6 +214,7 @@ function paintStore(){
   $('submitOff').style.display = ME && !PERM('submit') ? '' : 'none';
   $('exportCard').style.display = PERM('export') ? '' : 'none';
   renderStoreInfo();
+  calPaint();
 }
 function renderStoreInfo(){
   const s = STORE; if(!s){ $('storeInfo').innerHTML = ''; return; }

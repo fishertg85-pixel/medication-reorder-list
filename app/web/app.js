@@ -252,6 +252,7 @@ function paintStore(){
   $('submitOff').style.display = ME && !PERM('submit') ? '' : 'none';
   $('exportCard').style.display = PERM('export') ? '' : 'none';
   renderStoreInfo();
+  calPaint();
 }
 function renderStoreInfo(){
   const s = STORE; if(!s){ $('storeInfo').innerHTML = ''; return; }
@@ -1228,8 +1229,8 @@ setInterval(() => {
   if(now - ownLastAct > OWN_MS || now > OWN_UNTIL){ ownerLockNow('Locked after 5 minutes without activity. Re-enter your password.'); return; }
   if(ownLastAct > ownPingAt && now - ownPingAt > 60000){ ownPingAt = now; api('POST', '/owner/keepalive', {}).catch(() => {}); }
 }, 15000);
-const PERM_LABELS = {submit:'Submit orders', archive:'View archive', remove:'Remove lines', export:'Download backup'};
-const PERM_HEADS = {submit:'Submit', archive:'Archive', remove:'Remove', export:'Backup'};
+const PERM_LABELS = {submit:'Submit orders', archive:'View archive', remove:'Remove lines', export:'Download backup', calendar:'Calendar'};
+const PERM_HEADS = {submit:'Submit', archive:'Archive', remove:'Remove', export:'Backup', calendar:'Calendar'};
 let OWN = {stores:[], users:[]};
 // temporary passwords made on this screen, kept only in this page (never saved anywhere) so they can be copied again
 // while the person is still pending; gone on sign-out or reload, or once the person has signed in
@@ -1282,6 +1283,7 @@ function renderOwnStores(){
         ${LOGOS[s.id] ? `<button class="btn2 small" data-nologo="${esc(s.id)}">Remove</button>` : ''}</div>
       <div class="pfields"><div class="pid">Pharmacy ID: <b>${esc(s.id)}</b> <span class="hint">(what people type when they sign in)</span></div>
         ${SF.map(([k, l]) => `<label><span>${l}</span>${k === 'timezone' ? tzSelect(`data-sf="timezone"`, s.timezone) : k === 'state' ? stateSelect(`data-sf="state"`, s.state) : `<input type="text" data-sf="${k}" value="${esc(s[k] || '')}"${k === 'address' ? ' class="wide"' : ''}>`}</label>`).join('')}
+        <div class="calsw"><label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar switched on for this pharmacy <span class="hint">(people also need the Calendar privilege)</span></label></div>
         <div><button class="btn small" data-savestore="${esc(s.id)}">Save details</button></div></div>
     </div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
 }
@@ -1328,7 +1330,7 @@ function renderOwnPeople(){
 function fitPeople(){}   // the two-line layout fits any width; nothing to switch
 function paintNewPerson(){
   $('npStores').innerHTML = OWN.stores.map(s => `<label class="chk">${sw(`data-npst="${esc(s.id)}"`, OWN.stores.length === 1)} ${esc(s.id)} · ${esc(s.name)}</label>`).join('');
-  $('npPerms').innerHTML = Object.entries(PERM_LABELS).map(([p, l]) => `<label class="chk">${sw(`data-npperm="${p}"`, p !== 'export')} ${l}</label>`).join('');
+  $('npPerms').innerHTML = Object.entries(PERM_LABELS).map(([p, l]) => `<label class="chk">${sw(`data-npperm="${p}"`, p !== 'export' && p !== 'calendar')} ${l}</label>`).join('');
 }
 function genTemp(){ const L = 'abcdefghjkmnpqrstuvwxyz', D = '23456789', A = L + D; let p = L[Math.random()*23|0] + D[Math.random()*8|0]; while(p.length < 12) p += A[Math.random()*A.length|0]; return p; }
 function showPassBox(html){ $('passBox').innerHTML = html; $('passBox').style.display = 'block'; $('passBox').scrollIntoView({block:'center'}); }
@@ -1419,7 +1421,7 @@ $('ownPeople').addEventListener('click', async e => {
 $('ownStores').addEventListener('click', async e => {
   const sv = e.target.closest('[data-savestore]'), nl = e.target.closest('[data-nologo]');
   if(sv){
-    const card = sv.closest('.pcard'), body = {}; card.querySelectorAll('[data-sf]').forEach(i => body[i.dataset.sf] = i.value.trim());
+    const card = sv.closest('.pcard'), body = {}; card.querySelectorAll('[data-sf]').forEach(i => body[i.dataset.sf] = i.value.trim()); const calSw = card.querySelector('[data-sfcal]'); if(calSw) body.calendar = calSw.checked;
     busy(sv, true);
     try{ await api('POST', '/owner/stores/' + encodeURIComponent(sv.dataset.savestore), body); toast('Pharmacy details saved.'); await refreshMe(); loadOwner(); }
     catch(err){ if(!err.auth) alert(err.message); } finally{ busy(sv, false); }
@@ -1488,12 +1490,80 @@ $('exportBtn').onclick = async () => {
   }catch(e){ if(!e.auth) alert(e.message); } finally{ busy($('exportBtn'), false); }
 };
 
+/* ---------------- Calendar tab (switched on per pharmacy and per person by the Account Manager) ----------------
+   The calendar is its own page (calendar.html) shown inside this one. It takes its storage and the signed-in
+   person from window.ILCAL_HOST below, so it never has its own sign-in. The server checks every request: the
+   person can open the pharmacy, has the Calendar privilege, and the pharmacy has Calendar switched on. */
+const CAL_CFG = ['v', 'profile', 'sites', 'people', 'equipment', 'documents', 'tracks', 'plans', 'work', 'reminders', 'rooms'];
+const CAL_COLLS = ['records', 'events', 'obl', 'log'];
+const CAL = {store: null, sig: {}, loadedAt: 0, inflight: 0};     // sig: what the server has, per item, as text
+const calOK = () => !!(ME && STORE && STORE.calendar === true && PERM('calendar'));
+const calPath = () => '/stores/' + encodeURIComponent(STORE.id) + '/calendar';
+function calItems(st){                                           // the calendar's state, split the way the server keeps it
+  const out = {};
+  for(const k of CAL_CFG) if(st[k] !== undefined) out['cfg#' + k] = {kind: 'cfg', key: k, json: JSON.stringify(st[k])};
+  const add = (c, a) => (a || []).forEach(o => { if(o && o.id) out[c + '#' + o.id] = {kind: c, key: o.id, json: JSON.stringify(o), obj: o}; });
+  add('records', st.records); add('events', st.events); add('log', st.log);
+  add('obl', Object.values(st.obl || {}).concat(st.custom || []));
+  return out;
+}
+window.ILCAL_HOST = {
+  get user(){ return ME ? {name: ME.name || ME.login, login: ME.login} : null; },
+  get canStart(){ return !!(ME && ME.owner); },
+  async load(){
+    if(!calOK()) throw new Error('The calendar is not available for this login at this pharmacy.');
+    const id = STORE.id, r = await api('GET', calPath());
+    if(!STORE || STORE.id !== id) throw new Error('Pharmacy changed.');
+    CAL.store = id; CAL.sig = {}; CAL.loadedAt = Date.now();
+    if(!r.started) return null;
+    const st = Object.assign({}, r.config, {mode: 'live'});
+    st.records = r.records || []; st.events = r.events || []; st.log = (r.log || []).sort((a, b) => a.ts < b.ts ? 1 : -1).slice(0, 300);
+    st.obl = {}; st.custom = [];
+    (r.obl || []).forEach(o => { if(o.isCustom) st.custom.push(o); else st.obl[o.id] = o; });
+    const items = calItems(st); for(const k in items) CAL.sig[k] = items[k].json;
+    return st;
+  },
+  async save(st){
+    if(!calOK() || CAL.store !== STORE.id) throw new Error('Not saved: the pharmacy or access changed. Reload the Calendar tab.');
+    const items = calItems(st), ops = [];
+    for(const k in items) if(CAL.sig[k] !== items[k].json) ops.push({k, put: items[k]});
+    for(const k in CAL.sig) if(!(k in items) && !k.startsWith('cfg#') && !k.startsWith('log#')) ops.push({k, del: k});
+    CAL.inflight++; saving++;
+    try{
+      for(let i = 0; i < ops.length; i += 60){
+        const chunk = ops.slice(i, i + 60), body = {config: {}, put: {}, del: {}};
+        for(const o of chunk){
+          if(o.put){ if(o.put.kind === 'cfg') body.config[o.put.key] = JSON.parse(o.put.json); else (body.put[o.put.kind] = body.put[o.put.kind] || []).push(o.put.obj); }
+          else { const [c, ...id] = o.del.split('#'); (body.del[c] = body.del[c] || []).push(id.join('#')); }
+        }
+        await api('POST', calPath() + '/commit', body);
+        for(const o of chunk){ if(o.put) CAL.sig[o.k] = o.put.json; else delete CAL.sig[o.k]; }
+      }
+    }finally{ CAL.inflight--; saving--; }
+  }
+};
+function calShow(){                                              // called when the Calendar tab is opened
+  const f = $('calFrame'); if(!calOK()) return;
+  const stale = f.dataset.store !== STORE.id || (CAL.inflight === 0 && Date.now() - CAL.loadedAt > 180000);
+  if(stale || !f.getAttribute('src') || f.getAttribute('src') === 'about:blank'){ f.dataset.store = STORE.id; CAL.loadedAt = Date.now(); f.src = 'calendar.html?v=' + Date.now(); }
+}
+function calPaint(){                                             // called whenever the pharmacy or the person changes
+  const tab = document.querySelector('#tabs [data-tab="calendar"]'); if(!tab) return;
+  const ok = calOK(); tab.style.display = ok ? '' : 'none';
+  const f = $('calFrame');
+  if(!ok || (f.dataset.store && STORE && f.dataset.store !== STORE.id)){
+    f.removeAttribute('data-store'); f.src = 'about:blank'; CAL.sig = {}; CAL.store = null;
+    if(tab.classList.contains('active')) document.querySelector('#tabs [data-tab="list"]').click();
+  }
+}
+
 /* ---------------- tabs, render, start ---------------- */
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('active', x === b));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + b.dataset.tab));
   if(b.dataset.tab === 'owner') openOwnerTab();
   if(b.dataset.tab === 'archive') loadArchive(false).catch(() => {});
+  if(b.dataset.tab === 'calendar') calShow();
 });
 function renderAll(){ renderList(); renderArchive(); }
 

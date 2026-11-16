@@ -208,6 +208,7 @@ cut('<header>', '<nav id="tabs">', '''<div id="login">
 ''')
 rep('''  <button data-tab="setup">Setup</button>
 </nav>''', '''  <button data-tab="setup">Setup</button>
+  <button data-tab="calendar" style="display:none;">Calendar</button>
   <button data-tab="owner" style="display:none;">Account Manager</button>
 </nav>''')
 cut('  <div id="wipeBanner"', '  <!-- ======================= REORDER LIST', '''  <div id="offlineBanner" class="banner warn" style="display:none;">No connection to the server right now. Changes can’t be saved until the connection is back.</div>
@@ -261,6 +262,11 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
       </ol>
       <div class="hint">Barcode scanning is for computers with a USB barcode scanner: click in the search box and scan the bottle or box.</div>
     </div>
+  </section>
+
+  <!-- ======================= CALENDAR ======================= -->
+  <section id="panel-calendar" class="panel" style="padding:0;">
+    <iframe id="calFrame" title="Compliance Calendar" style="width:100%;height:calc(100vh - 120px);min-height:620px;border:0;background:#fff;display:block;"></iframe>
   </section>
 
   <!-- ======================= ACCOUNT MANAGER ======================= -->
@@ -339,7 +345,7 @@ rep('''/* ======================================================================
    Drug search: NLM RxTerms / RxNav live, FDA NDC Directory backup. DailyMed links open labels.
    ======================================================================= */''')
 cut('/* ---------------- shared state ---------------- */', '/* ---------------- drug search:', open(P + 'state.js').read() + '\n' + open(P + 'login.js').read() + '\n')
-cut('/* ---------------- safety net:', '</script>', open(P + 'owner.js').read() + '\n' + open(P + 'start.js').read())
+cut('/* ---------------- safety net:', '</script>', open(P + 'owner.js').read() + '\n' + open(P + 'calendar.js').read() + '\n' + open(P + 'start.js').read())
 # remove the old tabs/start (now in start.js) — it was after the safety-net block, so already cut
 
 # ---------- list rows: who added it, labels for phone layout, remove only with permission
@@ -456,6 +462,19 @@ rep('<img id="ilLogo" src="ironledger-logo.png" alt="" hidden>', '<img id="ilLog
 import hashlib, base64 as b64
 m = re.search(r'<script>\n(/\* =+\n   NorTex Reorder List \(cloud\)[\s\S]*?)</script>', s)
 open(OUT.replace('index.html', 'app.js'), 'w').write(m.group(1))
+# the Compliance Calendar page (built in the compliance-calendar-lite repo), with a few lines that hand it the sign-in
+CAL_SRC = os.path.join(HERE, 'calendar', 'calendar_blank.html')
+cal = open(CAL_SRC, encoding='utf-8').read()
+HOOK = ("window.IL_BLANK=true;\n"
+        "try{ if(window.parent!==window&&window.parent.ILCAL_HOST)window.ILHOST=window.parent.ILCAL_HOST; }catch(e){}\n"
+        "document.addEventListener('click',function(e){ var a=e.target&&e.target.closest&&e.target.closest('a[href]'); if(a&&/^https?:/i.test(a.getAttribute('href'))){ a.target='_blank'; a.rel='noopener noreferrer'; } },true);\n"
+        "['keydown','pointerdown','wheel','input','touchstart'].forEach(function(t){ document.addEventListener(t,function(){ try{ window.parent.markUse(); }catch(e){} },{capture:true,passive:true}); });\n")
+assert cal.count('window.IL_BLANK=true;\n') == 1
+CAL_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"
+cal = cal.replace('window.IL_BLANK=true;\n', HOOK, 1)
+assert cal.startswith('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">')
+cal = cal.replace('<meta charset="utf-8">', '<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="%s">' % CAL_CSP, 1)
+open(OUT.replace('index.html', 'calendar.html'), 'w', encoding='utf-8').write(cal)
 s = s[:m.start()] + '<script src="app.js"></script>' + s[m.end():]
 th = re.search(r'<script>([\s\S]*?)</script>', s).group(1)
 h = b64.b64encode(hashlib.sha256(th.encode()).digest()).decode()

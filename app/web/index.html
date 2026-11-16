@@ -364,6 +364,7 @@
   <button data-tab="list" class="active">Reorder List</button>
   <button data-tab="archive">Archive</button>
   <button data-tab="setup">Setup</button>
+  <button data-tab="calendar" style="display:none;">Calendar</button>
   <button data-tab="owner" style="display:none;">Account Manager</button>
 </nav>
 
@@ -453,6 +454,11 @@
       </ol>
       <div class="hint">Barcode scanning is for computers with a USB barcode scanner: click in the search box and scan the bottle or box.</div>
     </div>
+  </section>
+
+  <!-- ======================= CALENDAR ======================= -->
+  <section id="panel-calendar" class="panel" style="padding:0;">
+    <iframe id="calFrame" title="Compliance Calendar" style="width:100%;height:calc(100vh - 120px);min-height:620px;border:0;background:#fff;display:block;"></iframe>
   </section>
 
   <!-- ======================= ACCOUNT MANAGER ======================= -->

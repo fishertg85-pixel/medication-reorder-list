@@ -60,8 +60,8 @@ const encCursor = k => k ? Buffer.from(JSON.stringify(k)).toString('base64url') 
 const decCursor = c => { try{ return c ? JSON.parse(Buffer.from(c, 'base64url').toString()) : undefined; }catch(e){ throw bad('Bad cursor'); } };
 
 // ---------- who is calling, and what they may do
-const PERMS = ['submit', 'archive', 'remove', 'export'];           // switched on/off per person by the owner
-const DEFAULT_PERMS = { submit: true, archive: true, remove: true, export: false };
+const PERMS = ['submit', 'archive', 'remove', 'export', 'calendar'];           // switched on/off per person by the owner
+const DEFAULT_PERMS = { submit: true, archive: true, remove: true, export: false, calendar: false };
 async function profileOf(sub){
   const r = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: sub } }));
   return r.Item || null;
@@ -74,7 +74,7 @@ const DEFAULT_TZ = 'America/Chicago';
 const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
 async function allStores(){
   return (await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'STORES' } }))
-    .map(s => ({ id: s.sk, ...pick(s, STORE_FIELDS), timezone: TIMEZONES.includes(s.timezone) ? s.timezone : DEFAULT_TZ, hasLogo: !!s.hasLogo }))
+    .map(s => ({ id: s.sk, ...pick(s, STORE_FIELDS), timezone: TIMEZONES.includes(s.timezone) ? s.timezone : DEFAULT_TZ, hasLogo: !!s.hasLogo, calendar: s.calendar === true }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 async function storesFor(me){ const all = await allStores(); return me.owner ? all : all.filter(s => (me.stores || {})[s.id] === true); }
@@ -235,6 +235,7 @@ function storeFields(b){
   if(f.name === '') throw bad('Pharmacy name is required.');
   if(f.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email)) throw bad('Pharmacy email doesn’t look right.');
   if(f.timezone !== undefined && !TIMEZONES.includes(f.timezone)) throw bad('Pick the pharmacy’s time zone from the list.');
+  if(b.calendar !== undefined){ if(typeof b.calendar !== 'boolean') throw bad('Calendar switch must be on or off.'); f.calendar = b.calendar; }
   return f;
 }
 async function addStore(b){
@@ -416,6 +417,61 @@ async function unlock(me, claims, b){
   return { ok: true, minutes: UNLOCK_MS / 60000 };
 }
 
+
+// ---------- compliance calendar (only pharmacies the Account Manager has switched Calendar on for)
+// Kept as one MAIN item per piece: STORE#<id> / CAL#cfg#<key> (profile, sites, people, ...) and CAL#<records|events|obl|log>#<id>.
+// Each item holds the calendar's own JSON as a string in `j`. Rules, all checked here and not only in the screen:
+//   1. the person can open that pharmacy   2. the person has the Calendar privilege   3. the pharmacy has Calendar switched on
+//   4. only the Account Manager can start a pharmacy's calendar (write its profile for the first time)
+const CAL_COLLS = ['records', 'events', 'obl', 'log'];
+const CAL_CFG = ['v', 'profile', 'sites', 'people', 'equipment', 'documents', 'tracks', 'plans', 'work', 'reminders', 'rooms'];
+const CAL_MAX_BYTES = 380000, CAL_MAX_OPS = 100;
+function calGate(me, storeItem){
+  if(storeItem.calendar !== true) throw forbidden('The calendar is not switched on for this pharmacy.');
+  if(!permsOf(me).calendar) throw forbidden('You do not have the Calendar privilege. Ask the Account Manager.');
+}
+const calPk = store => 'STORE#' + store;
+async function calLoad(store){
+  const items = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p AND begins_with(sk, :c)', ExpressionAttributeValues: { ':p': calPk(store), ':c': 'CAL#' } });
+  const out = { started: false, config: {}, records: [], events: [], obl: [], log: [] };
+  for(const it of items){
+    let v; try{ v = JSON.parse(it.j); }catch(e){ continue; }
+    const [, kind, ...rest] = it.sk.split('#');
+    if(kind === 'cfg'){ out.config[rest.join('#')] = v; if(rest[0] === 'profile') out.started = true; }
+    else if(CAL_COLLS.includes(kind)) out[kind].push(v);
+  }
+  return out;
+}
+async function calCommit(store, me, b){
+  const config = b.config && typeof b.config === 'object' ? b.config : {}, put = b.put || {}, del = b.del || {};
+  const writes = [], deletes = [];
+  for(const k of Object.keys(config)){ if(!CAL_CFG.includes(k)) throw bad('Unknown calendar setting: ' + k); writes.push({ sk: 'CAL#cfg#' + k, v: config[k] }); }
+  for(const c of Object.keys(put)){
+    if(!CAL_COLLS.includes(c)) throw bad('Unknown calendar list: ' + c);
+    if(!Array.isArray(put[c])) throw bad('Bad calendar list.');
+    for(const o of put[c]){ if(!o || typeof o !== 'object' || !okId(o.id)) throw bad('Every calendar item needs an id.'); writes.push({ sk: `CAL#${c}#${o.id}`, v: o }); }
+  }
+  for(const c of Object.keys(del)){
+    if(!CAL_COLLS.includes(c)) throw bad('Unknown calendar list: ' + c);
+    if(c === 'log') throw forbidden('The activity log is add-only.');
+    if(!Array.isArray(del[c])) throw bad('Bad calendar list.');
+    for(const id of del[c]){ if(!okId(id)) throw bad('Bad calendar id.'); deletes.push(`CAL#${c}#${id}`); }
+  }
+  if(writes.length + deletes.length > CAL_MAX_OPS) throw bad('Too many calendar changes in one request.');
+  if(!writes.length && !deletes.length) return { ok: true, saved: 0 };
+  if(!me.owner){                                       // only the Account Manager starts a pharmacy's calendar
+    const started = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: calPk(store), sk: 'CAL#cfg#profile' } }));
+    if(!started.Item) throw forbidden('Only the Account Manager can start this pharmacy’s calendar.');
+  }
+  const stamp = now();
+  await inBatches(writes, 25, async w => {
+    const j = JSON.stringify(w.v === undefined ? null : w.v);
+    if(Buffer.byteLength(j) > CAL_MAX_BYTES) throw bad('One calendar item is too large to save (' + w.sk.split('#').slice(1, 3).join(' ') + ').');
+    await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: calPk(store), sk: w.sk, j, updatedAt: stamp, updatedBy: who(me) } }));
+  });
+  await inBatches(deletes, 25, sk => ddb.send(new DeleteCommand({ TableName: MAIN, Key: { pk: calPk(store), sk } })));
+  return { ok: true, saved: writes.length, removed: deletes.length };
+}
 // ---------- router
 async function route(method, path, q, body, me, claims){
   const seg = path.split('/').filter(Boolean);
@@ -431,6 +487,12 @@ async function route(method, path, q, body, me, claims){
     const exists = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: store } }));
     if(!exists.Item) throw new HttpError(404, 'No such store.');
     const what = seg[2];
+    if(what === 'calendar'){
+      calGate(me, exists.Item);
+      if(method === 'GET' && !seg[3]) return await calLoad(store);
+      if(method === 'POST' && seg[3] === 'commit') return await calCommit(store, me, body);
+      throw new HttpError(404, 'Not found');
+    }
     if(method === 'GET' && what === 'lines') return { lines: await lines(store) };
     if(method === 'GET' && what === 'memory') return { memory: await memory(store) };
     if(method === 'GET' && what === 'archive'){ need(me, 'archive', 'view the archive'); return await archivePage(store, q); }

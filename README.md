@@ -39,11 +39,24 @@ python3 host_test.py       # the host page: its own gate, sign-in and lock
 python3 am_people_test.py  # Account Manager: add (pending), first sign-in (active), cancel invite, delete
 python3 edge_test.py       # half-made logins from a failed add; expired temporary passwords
 python3 session_test.py    # shared computers: a sign-in per tab, idle sign-out; Need column (out of stock / replenish)
+python3 calendar_test.py    # Calendar access rules at the API (privilege, pharmacy switch, Account Manager starts it)
+python3 calendar_ui_test.py # Calendar tab in the browser: who sees it, start, saving to the server
 ```
 
 ## Deploy
 
 See `app/README.txt`. Use one AWS region for the app and all SMS setup (US East (Ohio) recommended). Updates are the same command and never touch the data.
+
+## Calendar tab (trial: NTX only)
+
+The Compliance Calendar is its own page (`app/web/calendar.html`) shown inside the app on a **Calendar** tab, with no second sign-in. It is built in the `compliance-calendar-lite` repo; `app/src/calendar/calendar_blank.html` is the copy this repo builds from (see `SOURCE.txt` there). Rules, all enforced on the server:
+
+1. the person can open the pharmacy,
+2. the person has the **Calendar** privilege (Account Manager tab, per person, off by default),
+3. the pharmacy has **Calendar switched on** (Account Manager tab, per pharmacy, off by default),
+4. only the Account Manager can start a pharmacy's calendar.
+
+Each pharmacy's calendar is separate data (`STORE#<id>` / `CAL#...` items in the main table, one item per record). People without both switches see only the Reorder List. Not built yet: file attachments on calendar tasks (they need private S3 storage), live updates between people (changes show when the tab is reopened after a few minutes), and the Documents Repository tab.
 
 ## Host page
 

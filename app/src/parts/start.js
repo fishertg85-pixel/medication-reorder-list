@@ -4,6 +4,7 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + b.dataset.tab));
   if(b.dataset.tab === 'owner') openOwnerTab();
   if(b.dataset.tab === 'archive') loadArchive(false).catch(() => {});
+  if(b.dataset.tab === 'calendar') calShow();
 });
 function renderAll(){ renderList(); renderArchive(); }
 
