@@ -1251,10 +1251,10 @@ const roVal = v => `<div class="ro${v ? '' : ' empty'}">${v ? esc(v) : 'Not set'
 const roField = (s, k, l, t) => `<label><span>${l}</span>${roVal(s[k])}</label>`;
 // c.host: the card is being used by IronLedger (the host login). Everyone else sees license, identifiers, services and the Calendar switch but cannot change them.
 // Identity (name, address, license, NPI, DEA, NCPDP) is set by IronLedger and locked once on file; the Account Manager keeps phone, fax, time zone, hours and the two expiration dates.
-const IDENT = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp'], AM_EDIT = ['phone', 'fax', 'timezone', 'licenseExpires', 'deaExpires'];
+const IDENT = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp'], AM_EDIT = ['phone', 'fax', 'email', 'timezone', 'licenseExpires', 'deaExpires'];
 const cardField = (s, k, l, t, c) => IDENT.includes(k) ? (c.host ? field(s, k, l, t, !c.isNew && !!s[k] && !c.rep && !c.repView) : roField(s, k, l, t)) : (c.host || AM_EDIT.includes(k) ? field(s, k, l, t) : roField(s, k, l, t));
 const LOCKED = 'Set by IronLedger. Contact your IronLedger representative to change this.';
-const LOCKED_ID = 'Name, address, license and identifiers must match your license and billing, so IronLedger sets them. Phone, fax, time zone, hours and expiration dates are yours to keep current.';
+const LOCKED_ID = 'Name, address, license and identifiers must match your license and billing, so IronLedger sets them. Phone, fax, email, time zone, hours and expiration dates are yours to keep current.';
 const deaStat = s => s.deaVerified ? 'Checked on the DEA site ' + esc((s.deaVerified.at || '').slice(0, 10)) + (s.deaVerified.by ? ' by ' + esc(s.deaVerified.by) : '') : 'Not checked yet.';
 const PHARM_BODY = {
   id: (s, c) => c.isNew

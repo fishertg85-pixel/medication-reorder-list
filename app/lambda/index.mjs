@@ -298,7 +298,7 @@ function storeFields(b){
 // What each side may change on a pharmacy.
 // The Account Manager (the pharmacy's primary account holder) may change only these. Everything else (name, address, email, license, NPI, DEA, NCPDP,
 // services, the Calendar switch) is set by IronLedger (the host login); billing follows the client's identity, so those must stay consistent.
-const AM_EDITABLE = ['phone', 'fax', 'timezone', 'hours', 'licenseExpires', 'deaExpires'];
+const AM_EDITABLE = ['phone', 'fax', 'email', 'timezone', 'hours', 'licenseExpires', 'deaExpires'];
 // Identity: once a value is on file it is hard to change. Even the host must give a reason, and every change is written to the pharmacy's change history.
 const IDENTITY = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp'];
 async function nextAcctNo(){                              // the client's IronLedger account number: generated once, never changed
@@ -377,7 +377,7 @@ async function addStore(b, by){
 }
 async function updateStore(id, b, by, isHost){
   if(!okId(id)) throw bad('Bad pharmacy');
-  if(!isHost && Object.keys(b).some(k => !AM_EDITABLE.includes(k))) throw forbidden('Only phone, fax, time zone, hours and license/DEA expiration dates can be changed here. The name, address, license and identifiers, services and Calendar are set by IronLedger. Contact your IronLedger representative.');
+  if(!isHost && Object.keys(b).some(k => !AM_EDITABLE.includes(k))) throw forbidden('Only phone, fax, email, time zone, hours and license/DEA expiration dates can be changed here. The name, address, license and identifiers, services and Calendar are set by IronLedger. Contact your IronLedger representative.');
   const f = storeFields(b);
   const curItem = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }))).Item;
   if(!curItem) throw bad('No such pharmacy.');

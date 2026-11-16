@@ -77,11 +77,11 @@ check("verified flag cannot be set false/edited", api(H, "POST", "/host/stores/N
 check("a staff login cannot edit the pharmacy profile", api(U, "POST", "/owner/stores/NTX1", {"npi": "1234567893"})[0], 403)
 # ---- host-only fields: the Account Manager sees them but the server refuses any change; the host (IronLedger) sets them
 for k, v in [("calendar", True), ("services", ["retail"]), ("servicesOther", "x"), ("npi", "1234567893"), ("dea", "AB1234563"), ("name", "Renamed"), ("address", "1 New St"),
-             ("suite", "9"), ("city", "Keller"), ("state", "OK"), ("zip", "76248"), ("email", "a@b.co"), ("ncpdp", "1234567"), ("license", "999"), ("deaVerified", True), ("changeReason", "because I said so")]:
+             ("suite", "9"), ("city", "Keller"), ("state", "OK"), ("zip", "76248"), ("ncpdp", "1234567"), ("license", "999"), ("deaVerified", True), ("changeReason", "because I said so")]:
     check("Account Manager cannot change " + k, stO({k: v})[0], 403)
 check("a refused request changes nothing", (getS()["license"], getS()["services"], getS()["name"] != "Renamed"), ("12345", ["retail", "controlled", "sterile"], True))
-check("Account Manager can edit phone, fax, time zone, hours and the two expiration dates", stO({"phone": "(817) 555-0100", "fax": "(817) 555-0101", "timezone": "America/Denver", "hours": good_hours, "licenseExpires": "2027-12-31", "deaExpires": "2028-12-31"})[0], 200)
-check("and they show", (getS()["fax"], getS()["timezone"], getS()["licenseExpires"], getS()["deaExpires"]), ("(817) 555-0101", "America/Denver", "2027-12-31", "2028-12-31"))
+check("Account Manager can edit phone, fax, time zone, hours and the two expiration dates", stO({"phone": "(817) 555-0100", "fax": "(817) 555-0101", "email": "pharmacy@example.com", "timezone": "America/Denver", "hours": good_hours, "licenseExpires": "2027-12-31", "deaExpires": "2028-12-31"})[0], 200)
+check("and they show", (getS()["email"], getS()["fax"], getS()["timezone"], getS()["licenseExpires"], getS()["deaExpires"]), ("pharmacy@example.com", "(817) 555-0101", "America/Denver", "2027-12-31", "2028-12-31"))
 stO({"timezone": "America/Chicago"})
 check("and the new phone shows", getS()["phone"], "(817) 555-0100")
 check("Account Manager cannot add a pharmacy", api(O, "POST", "/owner/stores", {"id": "ZZ9", "name": "Nope"})[0], 403)
