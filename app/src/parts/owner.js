@@ -82,40 +82,13 @@ function renderOwner(){ renderOwnStores(); renderOwnPeople();
   const sig = OWN.stores.map(s => s.id + ':' + s.name).join('|');
   if(sig !== npStoresSig || !$('npPerms').innerHTML){ npStoresSig = sig; paintNewPerson(); }   // don't undo switches someone is setting for the next person
   $('impStore').innerHTML = OWN.stores.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join(''); }
-const SF = [['name','Pharmacy name'],['address','Street address'],['suite','Suite / unit (if any)'],['city','City'],['state','State'],['zip','ZIP code'],['phone','Phone'],['fax','Fax'],['email','Email'],['license','State pharmacy license #'],['timezone','Time zone']];
-const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
-const stateSelect = (attrs, cur) => `<select ${attrs}><option value=""></option>${US_STATES.map(v => `<option${v === (cur || '') ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
-const tzSelect = (attrs, cur) => `<select ${attrs}>${Object.entries(TZ_NAMES).map(([v, l]) => `<option value="${v}"${v === (cur || 'America/Chicago') ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
-// identifiers, services and hours kept on each pharmacy (edit-only: the add-pharmacy form stays short)
-const SF2 = [['npi','NPI (10 digits)'],['dea','DEA number'],['deaExpires','DEA expires','date'],['licenseExpires','License expires','date'],['ncpdp','NCPDP ID (7 digits)']];
-const SVC_LABELS = {retail:'Retail dispensing', controlled:'Controlled substances (DEA)', nonsterile:'Nonsterile compounding', sterile:'Sterile compounding', hazardous:'Hazardous drug compounding',
-  immunizations:'Immunizations', delivery:'Delivery', ltc:'Long-term care', specialty:'Specialty', infusion:'Home infusion'};
-const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-const hoursOf = s => Array.isArray(s.hours) && s.hours.length === 7 ? s.hours : [null,{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},null];
 const ACCT_LABELS = {pic:'Pharmacist-in-Charge', pharmacist:'Staff Pharmacist', tech:'Pharmacy Technician', staff:'Other Staff'};
 // choosing a type switches these on or off (the Calendar privilege is never changed by a type; it is set on its own)
 const ACCT_PRESETS = {pic:{submit:true, archive:true, remove:true, export:true}, pharmacist:{submit:true, archive:true, remove:true, export:false},
   tech:{submit:true, archive:true, remove:true, export:false}, staff:{submit:true, archive:false, remove:false, export:false}};
 function renderOwnStores(){
-  const holder = (OWN.users || []).find(u => u.owner);
-  $('ownStores').innerHTML = OWN.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">
-      <div class="plogo">${LOGOS[s.id] ? `<img src="${esc(LOGOS[s.id])}" alt="">` : '<span class="hint">No logo</span>'}
-        <label class="btn2 small">Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" data-logo="${esc(s.id)}" hidden></label>
-        ${LOGOS[s.id] ? `<button class="btn2 small" data-nologo="${esc(s.id)}">Remove</button>` : ''}</div>
-      <div class="pfields"><div class="pid">Pharmacy ID: <b>${esc(s.id)}</b> <span class="hint">(what people type when they sign in)</span></div>
-        <div class="pid">Primary account holder: <b>${holder ? esc(holder.name || holder.login) + ' (' + esc(holder.login) + ')' : 'Account Manager'}</b> <span class="hint">(the Account Manager)</span></div>
-        ${SF.map(([k, l]) => `<label><span>${l}</span>${k === 'timezone' ? tzSelect(`data-sf="timezone"`, s.timezone) : k === 'state' ? stateSelect(`data-sf="state"`, s.state) : `<input type="text" data-sf="${k}" value="${esc(s[k] || '')}"${k === 'address' ? ' class="wide"' : ''}>`}</label>`).join('')}
-        ${SF2.map(([k, l, t]) => `<label><span>${l}</span><input type="${t || 'text'}" data-sf="${k}" value="${esc(s[k] || '')}"></label>`).join('')}
-        <div class="pid npirow"><button class="btn2 small" data-npilook="1">Look up NPI in the federal registry</button> <span class="hint">checks the number above against the public NPI Registry; nothing changes until you press Save details</span><div data-npires></div></div>
-        <div class="pid npirow"><a class="btn2 small" href="https://apps.deadiversion.usdoj.gov/webforms2/spring/validationLogin" target="_blank" rel="noopener noreferrer">Open the DEA registration check</a> <button class="btn2 small" data-deaok="1">I checked this DEA number there</button>
-          <span class="hint" data-deastat>${s.deaVerified ? 'Checked on the DEA site ' + esc((s.deaVerified.at || '').slice(0, 10)) + (s.deaVerified.by ? ' by ' + esc(s.deaVerified.by) : '') : 'Not checked yet.'} The DEA does not offer a public lookup: its tool asks for details from the registration certificate, so this is checked by a person and recorded here.</span></div>
-        <div class="svcs"><span class="plabel">Services provided</span>${Object.entries(SVC_LABELS).map(([k, l]) => `<label class="chk">${sw(`data-svc="${k}"`, (s.services || []).includes(k))} ${l}</label>`).join('')}
-          <label><span>Other services</span><input type="text" data-sf="servicesOther" value="${esc(s.servicesOther || '')}" class="wide"></label></div>
-        <div class="hrs"><span class="plabel">Hours of operation ${s.hours ? '' : '<span class="hint">(not set yet; these are suggestions until you save)</span>'}</span>
-          ${hoursOf(s).map((h, i) => `<div class="hrow"><span>${DAYS[i]}</span><input type="time" data-ho="${i}" value="${h ? h.o : '09:00'}"><input type="time" data-hc="${i}" value="${h ? h.c : '18:00'}"><label class="chk">${sw(`data-hx="${i}"`, !h)} Closed</label></div>`).join('')}</div>
-        <div class="calsw"><label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar switched on for this pharmacy <span class="hint">(people also need the Calendar privilege)</span></label></div>
-        <div><button class="btn small" data-savestore="${esc(s.id)}">Save details</button></div></div>
-    </div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
+  const holder = (OWN.users || []).find(u => u.owner), hn = holder ? (holder.name || holder.login) + ' (' + holder.login + ')' : '';
+  $('ownStores').innerHTML = OWN.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, { logo: LOGOS[s.id], holder: hn })}</div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
 }
 const fmtDay = iso => { try{ return new Date(iso).toLocaleDateString('en-US', {month:'short', day:'numeric'}); }catch(e){ return ''; } };
 function statusBadge(u){
@@ -124,7 +97,6 @@ function statusBadge(u){
   if(u.pending) return `<span class="ustat wait">Pending</span><div class="maker">${u.tempExpires ? 'Temp password until ' + fmtDay(u.tempExpires) : 'Hasn’t signed in yet'}</div>`;
   return '<span class="ustat ok">Active</span>';
 }
-const sw = (attrs, on, title) => `<label class="switch" title="${esc(title || '')}"><input type="checkbox" ${attrs}${on ? ' checked' : ''}><span></span></label>`;
 function renderOwnPeople(){
   const st = OWN.stores, P = Object.keys(PERM_LABELS);
   const priv = (sw_, label, title) => `<span class="priv" title="${esc(title || label)}">${sw_}<span>${esc(label)}</span></span>`;

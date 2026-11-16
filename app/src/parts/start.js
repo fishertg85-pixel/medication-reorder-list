@@ -2,6 +2,7 @@
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('active', x === b));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + b.dataset.tab));
+  document.body.classList.toggle('wideTab', b.dataset.tab === 'owner');
   if(b.dataset.tab === 'owner') openOwnerTab();
   if(b.dataset.tab === 'archive') loadArchive(false).catch(() => {});
   if(b.dataset.tab === 'calendar') calShow();

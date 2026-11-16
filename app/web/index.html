@@ -150,7 +150,7 @@
 
   /* ---- cloud version additions ---- */
   .svcs{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:8px 0;} .svcs .plabel{flex-basis:100%;}
-  .hrs{margin:8px 0;} .hrow{display:flex;gap:10px;align-items:center;margin:3px 0;} .hrow>span{width:84px;} .hrow input[type=time]{width:110px;}
+  .hrs{margin:8px 0;} .hrow{display:flex;gap:8px;align-items:center;margin:3px 0;white-space:nowrap;} .hrow>span{width:78px;} .hrow input[type=time]{width:120px;padding:6px 6px;}
   select[data-utype]{max-width:240px;}
   input[type=tel],input[type=email],input[type=password]{background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:7px 9px;font-size:14px;font-family:inherit;}
   #storeLogo{height:38px;width:38px;object-fit:contain;border-radius:6px;background:#fff;padding:2px;}
@@ -174,7 +174,15 @@
   .li-links{margin-top:12px;font-size:13px;text-align:center;}
   #liCodeIn,#liFCode{letter-spacing:.3em;font-family:Consolas,Menlo,monospace;text-align:center;}
   /* Account Manager tab */
-  .pcard{display:flex;gap:16px;border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px;flex-wrap:wrap;}
+  .pcard{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px;}
+  .pgrid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px;align-items:start;}
+  .pnl{grid-column:var(--x) / span var(--w);grid-row:var(--y) / span var(--h);border:1px solid var(--line);border-radius:8px;padding:0 0 10px;min-width:0;align-self:stretch;}
+  .pnl .pt{margin:0;padding:7px 12px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);white-space:nowrap;}
+  .pnl .pb{padding:10px 12px 0;}
+  .pnl[data-pnl=id] .pb{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;} .pidbox .hint{margin:0 0 6px;}
+  .pnl .oth{grid-column:1/-1;}
+  @media (max-width:1279px){ .pgrid{display:block;} .pnl{margin-bottom:10px;} }
+  body.wideTab main{max-width:none;}
   .plogo{width:150px;display:flex;flex-direction:column;align-items:center;gap:6px;}
   .plogo img{max-width:140px;max-height:100px;object-fit:contain;}
   .pfields{flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 12px;min-width:240px;}
