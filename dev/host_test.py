@@ -72,6 +72,11 @@ check("AM can't reset the host's password", api(OT, "POST", f"/owner/users/{hsub
 check("AM can't switch the host off", api(OT, "POST", f"/owner/users/{hsub}", {"disabled":True})[0] == 403)
 check("AM can't change the host's phone", api(OT, "POST", f"/owner/users/{hsub}", {"phone":"8175550000","smsConsent":True})[0] == 403)
 check("AM can give the host a pharmacy", api(OT, "POST", f"/owner/users/{hsub}", {"stores":{"NTX1":True}})[0] == 200)
+check("AM can set the host's privileges in that pharmacy", api(OT, "POST", f"/owner/users/{hsub}", {"perms":{"remove":False}})[0] == 200
+      and [x for x in api(OT, "GET", "/owner/users")[1]["users"] if x["login"] == "neo"][0]["perms"]["remove"] is False)
+check("host can't change its own privileges", api(HT, "POST", f"/host/users/{hsub}", {"perms":{"remove":True}})[0] == 400)
+check("AM still can't reset, switch off or delete the host", api(OT, "POST", f"/owner/users/{hsub}/reset-password", {})[0] == 403
+      and api(OT, "POST", f"/owner/users/{hsub}", {"disabled":True})[0] == 403 and api(OT, "POST", f"/owner/users/{hsub}/delete", {})[0] == 403)
 check("then the host can open that one", api(HT, "GET", "/stores/NTX1/lines")[0] == 200 and api(HT, "GET", "/stores/NTX2/lines")[0] == 403)
 check("AM still can't switch herself off", api(OT, "POST", f"/owner/users/{amsub}", {"disabled":True})[0] == 400)
 s, r = api(OT, "POST", "/owner/users", {"login":"temp9","name":"Temp Nine","phone":"8175553333","stores":{"NTX1":True},"smsConsent":True})

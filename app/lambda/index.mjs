@@ -331,7 +331,8 @@ async function updatePerson(me, sub, seg3, body){
   const p = await profileOf(sub); if(!p) throw new HttpError(404, 'No such person.');
   // the host login belongs to IronLedger: the Account Manager sees it but only the host changes it
   // except which pharmacies it may open: only the Account Manager grants that
-  if(p.host && !me.host && (seg3 || Object.keys(body).some(k => k !== 'stores'))) throw forbidden('The host login is managed by IronLedger.');
+  // the Account Manager decides which pharmacies the host may open and what it may do there; nothing else about the host login
+  if(p.host && !me.host && (seg3 || Object.keys(body).some(k => k !== 'stores' && k !== 'perms'))) throw forbidden('The host login is managed by IronLedger.');
   if(sub === me.sk && body.disabled === true) throw bad('You can’t switch off your own login.');
   if(seg3 === 'delete'){
     // the login is removed for good (the Login ID can be used again); what they did stays on the orders and archive by name.
@@ -358,8 +359,7 @@ async function updatePerson(me, sub, seg3, body){
   }
   if(p.owner && (body.stores !== undefined || body.perms !== undefined || (body.disabled !== undefined && !me.host)))
     throw bad('The Account Manager always has full access.');
-  if(p.host && body.perms !== undefined) throw bad('The host login is managed by IronLedger.');
-  if(p.host && body.stores !== undefined && me.host) throw bad('Only the Account Manager can give the host access to a pharmacy.');
+  if(p.host && me.host && (body.stores !== undefined || body.perms !== undefined)) throw bad('Only the Account Manager can give the host access to a pharmacy or privileges in it.');
   const upd = {};
   if(body.stores !== undefined) upd.stores = Object.assign({}, p.stores || {}, await cleanStoreToggles(body.stores));
   if(body.perms !== undefined) upd.perms = Object.assign({}, p.perms || {}, cleanPerms(body.perms));

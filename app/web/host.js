@@ -221,7 +221,7 @@ function render(){
       const pharm = u.owner ? '<span class="hint">All pharmacies</span>'
         : u.host ? `<span class="hint">${esc(st.filter(s => u.stores[s.id] === true).map(s => s.id).join(', ') || 'None')} (set by the Account Manager)</span>`
         : st.map(s => priv(box(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('');
-      const privs = u.owner ? `<span class="hint">Full access</span>${on}` : u.host ? `<span class="hint">IronLedger support</span>${on}`
+      const privs = u.owner ? `<span class="hint">Full access</span>${on}` : u.host ? `<span class="hint">${esc(P.filter(p => u.perms[p]).map(p => PERMS[p]).join(', ') || 'None')} (set by the Account Manager)</span>${on}`
         : P.map(p => priv(box(`data-uperm="${p}"`, u.perms[p], PERMS[p]), PERMS[p])).join('') + on;
       const acts = STAGED[u.sub] ? `<button class="btn small" data-upd="${esc(u.sub)}">Update</button> <button class="btn2 small" data-undo="${esc(u.sub)}">Undo</button>`
         : (self ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`) + (u.owner || u.host ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`);

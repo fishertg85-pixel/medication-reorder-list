@@ -125,7 +125,9 @@ function renderOwnPeople(){
       ? `<div class="${rowCls(u)}" data-sub="${esc(u.sub)}"><div class="ucols">${head(u)}<div class="ucell acts">${STAGED[u.sub] ? stageBtns(u.sub) : ''}</div><div class="ucell copycell"></div></div>
          <div class="upriv"><span class="plabel">Pharmacies</span>
            <span class="pgroup">${st.map(s => priv(sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Let the host open ' + s.name), s.id, 'Let the host open ' + s.name)).join('')}</span></div>
-         <div class="upriv"><span class="plabel">Privileges</span><span class="hint">IronLedger support · sees a pharmacy’s list only if switched on above</span></div></div>`
+         <div class="upriv"><span class="plabel">Privileges</span>
+           <span class="pgroup">${P.map(p => priv(sw(`data-uperm="${p}"`, u.perms[p], PERM_LABELS[p] + ' (host)'), PERM_LABELS[p], PERM_LABELS[p])).join('')}</span>
+           <span class="hint">IronLedger support · only in pharmacies switched on above</span></div></div>`
       : `<div class="${rowCls(u)}" data-sub="${esc(u.sub)}"><div class="ucols">${head(u)}${acts(u)}</div>
          <div class="upriv"><span class="plabel">Pharmacies</span>
            <span class="pgroup">${st.map(s => priv(sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('')}</span></div>
