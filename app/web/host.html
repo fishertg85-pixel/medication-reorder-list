@@ -9,6 +9,7 @@
 <link rel="icon" href="mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="brand.css">
 <link rel="stylesheet" href="pharm_panels.css">
+<style>.tabs{display:flex;gap:4px;margin:12px 0;border-bottom:2px solid var(--line);}.tabs button{background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-2px;padding:9px 16px;font:inherit;font-weight:600;color:var(--muted);cursor:pointer;}.tabs button.on{color:var(--text);border-bottom-color:var(--accent);}[data-pane][hidden]{display:none;}</style>
 <style>
   .wrap { max-width: min(1700px, 100%); }
   .gate { max-width: 400px; margin: 60px auto; }
@@ -140,7 +141,23 @@
       <button class="btn2 small" id="bOut">Sign out</button>
     </div>
     <div class="pass" id="passBox"></div>
+    <nav class="tabs" id="hTabs" role="tablist">
+      <button type="button" data-tab="clients" class="on">Clients</button><button type="button" data-tab="pharmacies">Pharmacies</button><button type="button" data-tab="users">Users</button><button type="button" data-tab="billing">Billing</button>
+    </nav>
 
+    <div data-pane="clients">
+    <section class="card">
+      <h2>Clients</h2>
+      <div class="msg ok" id="clientMsg" role="status" style="margin:0 0 8px"></div>
+      <div id="clients"><div class="hint">Loading…</div></div>
+    </section>
+    <section class="card">
+      <h2>Add a client</h2>
+      <div id="newClient"></div>
+    </section>
+    </div>
+
+    <div data-pane="users" hidden>
     <section class="card">
       <h2>Users</h2>
       <div class="hint" style="margin-bottom:8px">Change a user’s pharmacies or privileges, then press <b>Update</b> on that user to save. Resetting a password signs that person out everywhere.</div>
@@ -161,7 +178,9 @@
       <label class="chk" style="margin-top:14px"><input type="checkbox" id="nConsent"> They signed the SMS consent form for this mobile number.</label>
       <div class="row"><button class="btn" id="nAdd">Add user</button></div>
     </section>
+    </div>
 
+    <div data-pane="pharmacies" hidden>
     <section class="card">
       <h2>Pharmacies</h2>
       <div class="hint" style="margin-bottom:8px">You set each pharmacy’s license, identifiers, services and Calendar switch here. The pharmacy’s Account Owner can see them but not change them.</div>
@@ -188,12 +207,21 @@
       <div class="row"><select id="impStore"></select><input type="file" id="impFile" accept=".json,application/json"><button class="btn" id="impGo">Import</button></div>
       <div class="msg ok" id="impMsg"></div>
     </section>
+    </div>
+
+    <div data-pane="billing" hidden>
+    <section class="card">
+      <h2>Billing</h2>
+      <div class="hint">Not built yet. Billing and invoices will be visible only to the Account Owner (read-only) and the IronLedger host.</div>
+    </section>
+    </div>
   </div>
 </main>
 <footer class="foot"><img src="mark.svg" alt=""><span>2026 IronLedger LLC</span></footer>
 <script src="config.js"></script>
 <script src="layout_engine.js"></script>
 <script src="pharm_panels.js"></script>
+<script src="client_panels.js"></script>
 <script src="host.js"></script>
 </body>
 </html>

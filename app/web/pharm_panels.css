@@ -40,3 +40,8 @@
 .clrow .cln{flex:1;}
 .cladd{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:6px;}
 .cladd input[type=text]{flex:1;min-width:10em;}
+
+/* licensed entity (License And Registration panel) */
+.entity{margin-top:12px;padding-top:10px;border-top:1px solid var(--line,#d9dee6);} .entity .clh{display:block;margin-bottom:6px;}
+.lockhint.warn{color:#9c4221;font-weight:600;}
+.pfields>label,.pidbox,.pidbox>*{min-width:0;} .pfields select{text-overflow:ellipsis;}

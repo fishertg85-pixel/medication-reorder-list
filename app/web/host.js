@@ -159,8 +159,8 @@ setInterval(() => {
 /* ---- what the host can do ---- */
 async function load(){
   try{
-    const [s, u, me, dr] = await Promise.all([api('GET', '/host/stores'), api('GET', '/host/users'), api('GET', '/me'), api('GET', '/host/drafts')]);
-    DATA = {stores:s.stores, users:u.users, me, drafts:dr.drafts};
+    const [s, u, me, dr, cl] = await Promise.all([api('GET', '/host/stores'), api('GET', '/host/users'), api('GET', '/me'), api('GET', '/host/drafts'), api('GET', '/host/clients')]);
+    DATA = {stores:s.stores, users:u.users, me, drafts:dr.drafts, clients:cl.clients};
     for(const k in TEMPS) if(!DATA.users.some(x => x.sub === k && x.pending)) delete TEMPS[k];
     for(const k in STAGED) if(!DATA.users.some(x => x.sub === k)) delete STAGED[k];
     render();
@@ -240,7 +240,7 @@ function render(){
   $('nStores').innerHTML = st.map(s => `<label class="chk"><input type="checkbox" data-nst="${esc(s.id)}"${st.length === 1 ? ' checked' : ''}> ${esc(s.id)} · ${esc(s.name)}</label>`).join('') || '<span class="hint">Add a pharmacy first.</span>';
   $('nPerms').innerHTML = Object.entries(PERMS).map(([p, l]) => `<label class="chk"><input type="checkbox" data-nperm="${p}"${p !== 'export' ? ' checked' : ''}> ${l}</label>`).join('');
   if(!$('nPass').value) $('nPass').value = genTemp();
-  renderStores(); renderReviews();
+  renderClients(); renderStores(); renderReviews();
   const keep = $('impStore').value;
   $('impStore').innerHTML = st.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join('');
   if(keep && st.some(s => s.id === keep)) $('impStore').value = keep;
@@ -270,12 +270,24 @@ $('reviewCard').addEventListener('click', async e => {
   }catch(err){ if(!err.auth) alert(err.message); }
 });
 function renderStores(){
-  $('stores').innerHTML = DATA.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, {logo:LOGOS[s.id], host:true, rep:isRepMe(), holder:holderOf()})}</div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
+  $('stores').innerHTML = DATA.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, {logo:LOGOS[s.id], host:true, rep:isRepMe(), holder:holderOf(), clients:DATA.clients})}</div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
 }
-function renderNew(){ if(isRepMe()){ $('newStore').innerHTML = '<div class="hint">New pharmacies are set up by an IronLedger supervisor.</div>'; return; } $('newStore').innerHTML = `<div class="pcard" data-is-new="1">${pharmCardHtml({}, {host:true, isNew:true})}</div>`; }
+function renderNew(){ if(isRepMe()){ $('newStore').innerHTML = '<div class="hint">New pharmacies are set up by an IronLedger supervisor.</div>'; return; } $('newStore').innerHTML = `<div class="pcard" data-is-new="1">${pharmCardHtml({}, {host:true, isNew:true, clients:DATA.clients})}</div>`; }
+function renderClients(){
+  const rep_ = isRepMe(), L = undefined;
+  $('clients').innerHTML = (DATA.clients || []).map(k => `<div class="pcard" data-client="${esc(k.id)}"><h3 class="clt">${esc(k.legalName)}${k.dba ? ' <span class="hint">dba ' + esc(k.dba) + '</span>' : ''}</h3>${clientCardHtml(k, {host:true, stores:DATA.stores, ro:rep_}, L)}</div>`).join('') || '<div class="hint">No clients yet.</div>';
+  if($('newClient').innerHTML && !rep_) return;
+  $('newClient').innerHTML = rep_ ? '<div class="hint">New clients are set up by an IronLedger supervisor.</div>' : `<div class="pcard" data-is-new="1">${clientCardHtml({billingSame:true}, {host:true, isNew:true, stores:DATA.stores}, L)}</div>`;
+}
+const sayClient = t => { $('clientMsg').textContent = t; };
+clientCardEvents($('clients'), {stores:() => DATA.stores, say:sayClient, after: async () => { await load(); }});
+clientCardEvents($('newClient'), {stores:() => DATA.stores, say:sayClient, after: async () => { $('newClient').innerHTML = ''; $('newStore').innerHTML = ''; await load(); }});
+$('hTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if(!b) return;
+  document.querySelectorAll('#hTabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('[data-pane]').forEach(x => x.hidden = x.dataset.pane !== b.dataset.tab); });
 const sayStore = t => { $('storeMsg').textContent = t; };
-pharmCardEvents($('stores'), {base:'/host', stores:() => DATA.stores, say:sayStore, after: async () => { await load(); }});
-pharmCardEvents($('newStore'), {base:'/host', stores:() => DATA.stores, say:sayStore, after: async isNew => { if(isNew) renderNew(); await load(); }});
+pharmCardEvents($('stores'), {base:'/host', stores:() => DATA.stores, clients:() => DATA.clients, say:sayStore, after: async () => { await load(); }});
+pharmCardEvents($('newStore'), {base:'/host', stores:() => DATA.stores, clients:() => DATA.clients, say:sayStore, after: async isNew => { if(isNew) renderNew(); await load(); }});
 async function loadLogo(id){
   LOGOS[id] = '';
   try{ const r = await fetch(CFG.apiUrl.replace(/\/$/, '') + '/public/pharmacy/' + encodeURIComponent(id), {cache:'no-store'}); const j = await r.json(); LOGOS[id] = j.logo || ''; renderStores(); }catch(e){}

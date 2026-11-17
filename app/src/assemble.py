@@ -436,7 +436,8 @@ PCSS = open(os.path.join(HERE, 'parts', 'pharm_panels.css')).read()
 s = s.replace('/*PHARM_CSS*/', PCSS, 1)
 open(OUT.replace('index.html', 'pharm_panels.css'), 'w').write(PCSS)
 open(OUT.replace('index.html', 'layout_engine.js'), 'w').write(open(P + 'layout_engine.js').read())
-open(OUT.replace('index.html', 'pharm_panels.js'), 'w').write(open(P + 'pharm_panels.js').read())          # and its script          # the host page uses the same card and layout
+open(OUT.replace('index.html', 'pharm_panels.js'), 'w').write(open(P + 'pharm_panels.js').read())
+open(OUT.replace('index.html', 'client_panels.js'), 'w').write(open(P + 'client_panels.js').read())          # the host page uses the same card and layout
 # ---------- move the app script out of the page so a strict Content-Security-Policy can block injected scripts
 import hashlib, base64 as b64
 m = re.search(r'<script>\n(/\* =+\n   NorTex Reorder List \(cloud\)[\s\S]*?)</script>', s)

@@ -7,9 +7,10 @@ APP = os.path.join(HERE, '..', 'app')
 css = '\n'.join(re.findall(r'<style>([\s\S]*?)</style>', open(os.path.join(APP, 'web', 'index.html')).read()))
 import sys
 # Pages the editor can lay out (the standard for every page of the suite). To add one: its src/parts/<page>_panels.js defines a PAGE (see layout_engine.js) and a sample.
-PAGES = {'pharm': {'file': 'pharm_panels.js', 'var': 'PHARM_PAGE', 'out': 'layout_editor.html', 'title': 'Pharmacy Setup Page (host)'}}
+PAGES = {'pharm': {'file': 'pharm_panels.js', 'var': 'PHARM_PAGE', 'out': 'layout_editor.html', 'title': 'Pharmacy Setup Page (host)'},
+         'client': {'file': 'client_panels.js', 'deps': ['pharm_panels.js'], 'var': 'CLIENT_PAGE', 'out': 'layout_editor_client.html', 'title': 'Client Account Page (host)'}}
 PG = PAGES[sys.argv[1] if len(sys.argv) > 1 else 'pharm']
-panels = open(os.path.join(APP, 'src', 'parts', 'layout_engine.js')).read() + '\n' + open(os.path.join(APP, 'src', 'parts', PG['file'])).read() + '\nconst PAGE = ' + PG['var'] + ';'
+panels = open(os.path.join(APP, 'src', 'parts', 'layout_engine.js')).read() + '\n' + ''.join(open(os.path.join(APP, 'src', 'parts', d)).read() + '\n' for d in PG.get('deps', [])) + open(os.path.join(APP, 'src', 'parts', PG['file'])).read() + '\nconst PAGE = ' + PG['var'] + ';'
 tz = re.search(r"const TZ_NAMES = \{[\s\S]*?\};", open(os.path.join(APP, 'src', 'parts', 'state.js')).read()).group(0)
 EDITOR_CSS = r'''
 body{margin:0;background:var(--bg,#eef3f8);}
@@ -42,7 +43,7 @@ body.pv #vp{margin-top:14px;} body.pv #vp .pcard{box-shadow:0 2px 14px rgba(0,0,
 '''
 SAMPLE_JS = r'''
 const SAMPLE = {id:'NTX1', name:'NorTex Pharmacy - Haslet', address:'100 Main St', suite:'Suite 5', city:'Haslet', state:'TX', zip:'76052', phone:'817-555-0100', fax:'817-555-0101', email:'pharmacy@example.com',
-  timezone:'America/Chicago', license:'12345', licenseExpires:'2027-06-30', npi:'1234567893', ncpdp:'1234567', dea:'AB1234563', deaExpires:'2028-03-31', services:['retail','controlled','sterile'],
+  timezone:'America/Chicago', clientId:'IL-000001', entityLegalName:'NorTex Haslet LLC', entityType:'llc', ein:'98-7654321', license:'12345', licenseExpires:'2027-06-30', npi:'1234567893', ncpdp:'1234567', dea:'AB1234563', deaExpires:'2028-03-31', services:['retail','controlled','sterile'],
   hours:[null,{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},null], calendar:true, deaVerified:{at:'2026-11-16T12:00:00Z', by:'Pat Owner (owner)'}};
 const SAMPLE_NPI = '<div class="npibox"><b>NORTEX PHARMACY LLC</b> <span class="hint">Organization · Active · registry updated 2024-05-01</span><div>100 MAIN ST, STE 5, HASLET, TX 76252 · 817-555-0100 · fax 817-555-0101</div><div class="hint">Pharmacy - Community/Retail Pharmacy · license on file with registry: TX12345 (TX)</div><div class="npiflag">⚠ The registry name differs from the pharmacy name above.</div><button class="btn2 small">Use these details</button></div>';
 '''

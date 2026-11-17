@@ -114,25 +114,56 @@ api(H, "POST", "/host/stores/NTX1", {"name": nm, "changeReason": "Reverting the 
 hist = api(H, "GET", "/host/stores/NTX1/history")[1]["history"]
 check("history records who, why and what changed", (len(hist) >= 2, hist[0]["reason"], hist[0]["changes"]["name"][1], hist[0]["by"] != ""), (True, "Reverting the test change", nm, True))
 check("Account Owner and staff cannot read the history", (api(O, "GET", "/owner/stores/NTX1/history")[0], api(U, "GET", "/owner/stores/NTX1/history")[0]), (403, 403))
-api(H, "POST", "/host/stores", {"id": "TST3", "name": "Blank Test"})
+CL = lambda **k: dict({"legalName": "NorTex Holdings LLC", "entityType": "llc", "ein": "12-3456789", "address": "100 Main St", "city": "Haslet", "state": "TX", "zip": "76052"}, **k)
+client1 = api(H, "POST", "/host/clients", CL())[1]["id"]; ENT = {"clientId": client1, "entityLegalName": "Blank Test LLC", "entityType": "llc", "ein": "98-7654321"}
+api(H, "POST", "/host/stores", {"id": "TST3", "name": "Blank Test", **ENT})
 check("filling a blank identity value needs no reason", api(H, "POST", "/host/stores/TST3", {"npi": "1234567893", "city": "Haslet"})[0], 200)
 check("changing it afterwards does", api(H, "POST", "/host/stores/TST3", {"city": "Keller"})[0], 400)
-# the client's account number: generated once at creation, never changed
-t3 = [x for x in api(H, "GET", "/host/stores")[1]["stores"] if x["id"] == "TST3"][0]
-check("account number generated at creation", t3["acctNo"][:3], "IL-")
-nos = [x["acctNo"] for x in api(H, "GET", "/host/stores")[1]["stores"] if x["acctNo"]]
-check("account numbers are unique", len(nos), len(set(nos)))
-check("account number cannot be set through an update", api(H, "POST", "/host/stores/TST3", {"acctNo": "IL-999999"})[0] in (200,) and [x for x in api(H, "GET", "/host/stores")[1]["stores"] if x["id"] == "TST3"][0]["acctNo"] == t3["acctNo"], True)
-check("assigning again returns the same number", api(H, "POST", "/host/stores/TST3/acctno", {})[1]["acctNo"], t3["acctNo"])
-check("Account Owner cannot assign or change an account number", api(O, "POST", "/owner/stores/TST3/acctno", {})[0], 403)
-check("Account Owner sees the number (read-only)", [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0].get("acctNo", "x") != "x", True)
+# clients: the bill-to account with the generated IL- account number; pharmacies carry the licensed entity and its EIN
+check("account number generated when the client is created", client1[:3], "IL-")
+client2 = api(H, "POST", "/host/clients", CL(legalName="Second Client Inc", entityType="corporation", ein="55-1234567"))[1]["id"]
+check("account numbers are unique", client1 != client2, True)
+check("account number cannot be set through an update", api(H, "POST", "/host/clients/" + client1, {"acctNo": "IL-999999"})[0], 400)
+check("Account Owner and staff cannot see or change clients", (api(O, "GET", "/owner/clients")[0], api(U, "GET", "/owner/clients")[0], api(O, "POST", "/owner/clients", CL())[0], api(O, "POST", "/owner/clients/" + client1, {"dba": "x"})[0]), (403, 403, 403, 403))
+check("client needs legal name, type, EIN and address", [api(H, "POST", "/host/clients", {k: v for k, v in CL().items() if k != drop})[0] for drop in ("legalName", "entityType", "ein", "address", "city", "state", "zip")], [400] * 7)
+check("EIN must be 9 digits", (api(H, "POST", "/host/clients", CL(ein="12-345"))[0], api(H, "POST", "/host/clients", CL(ein="ab-cdefghi"))[0]), (400, 400))
+check("entity type must be from the list", api(H, "POST", "/host/clients", CL(entityType="trust"))[0], 400)
+check("EIN is stored as XX-XXXXXXX", (api(H, "POST", "/host/clients/" + client2, {"ein": "551234567"})[0], [c for c in api(H, "GET", "/host/clients")[1]["clients"] if c["id"] == client2][0]["ein"]), (200, "55-1234567"))
+check("changing the legal name needs a reason", api(H, "POST", "/host/clients/" + client2, {"legalName": "Second Client Holdings Inc"})[0], 400)
+check("changing EIN needs a reason", api(H, "POST", "/host/clients/" + client2, {"ein": "55-7654321"})[0], 400)
+check("with a reason the legal name changes", api(H, "POST", "/host/clients/" + client2, {"legalName": "Second Client Holdings Inc", "changeReason": "Name changed per Secretary of State filing"})[0], 200)
+check("legal name and EIN cannot be cleared", (api(H, "POST", "/host/clients/" + client2, {"ein": ""})[0], api(H, "POST", "/host/clients/" + client2, {"legalName": ""})[0]), (400, 400))
+chist = api(H, "GET", "/host/clients/" + client2 + "/history")[1]["history"]
+check("client history records who, why and from/to", (chist[0]["reason"][:12], chist[0]["changes"]["legalName"][0], chist[0]["by"] != ""), ("Name changed", "Second Client Inc", True))
+check("Account Owner cannot read client history", api(O, "GET", "/owner/clients/" + client2 + "/history")[0], 403)
+check("billing address differs: needs street and city", api(H, "POST", "/host/clients/" + client2, {"billingSame": False, "bAddress": "", "bCity": ""})[0], 400)
+check("billing address saved when it differs", (api(H, "POST", "/host/clients/" + client2, {"billingSame": False, "bAddress": "PO Box 5", "bCity": "Dallas", "bState": "tx", "bZip": "75201"})[0], [c for c in api(H, "GET", "/host/clients")[1]["clients"] if c["id"] == client2][0]["bState"]), (200, "TX"))
+check("same-as-business clears the separate billing address", (api(H, "POST", "/host/clients/" + client2, {"billingSame": True})[0], [c for c in api(H, "GET", "/host/clients")[1]["clients"] if c["id"] == client2][0]["bAddress"]), (200, ""))
+ctc = [{"role": "relations", "name": "Pat Owner", "title": "Owner", "email": "pat@example.com", "phone": "817-555-0100"}, {"role": "billing", "name": "Bill Ing", "email": "billing@example.com"}]
+check("contacts saved with roles", (api(H, "POST", "/host/clients/" + client2, {"contacts": ctc})[0], [c["role"] for c in [c for c in api(H, "GET", "/host/clients")[1]["clients"] if c["id"] == client2][0]["contacts"]]), (200, ["relations", "billing"]))
+check("contact role, name and email are checked", [api(H, "POST", "/host/clients/" + client2, {"contacts": [dict(ctc[0], **k)]})[0] for k in ({"role": "boss"}, {"name": ""}, {"email": "nope"})], [400, 400, 400])
+check("a pharmacy needs its client, entity name, type and EIN", [api(H, "POST", "/host/stores", {"id": "EE1", "name": "x", **{k: v for k, v in ENT.items() if k != drop}})[0] for drop in ("clientId", "entityLegalName", "entityType", "ein")], [400] * 4)
+check("a pharmacy cannot point at a client that does not exist", api(H, "POST", "/host/stores", {"id": "EE2", "name": "x", **ENT, "clientId": "IL-999999"})[0], 400)
+check("pharmacy EIN is checked", api(H, "POST", "/host/stores", {"id": "EE3", "name": "x", **ENT, "ein": "123"})[0], 400)
+check("an existing pharmacy without an EIN can still be saved, and EIN filled with no reason", (st({"phone": "(817) 555-0100"})[0], st({"clientId": client1, "entityLegalName": "NorTex Haslet LLC", "entityType": "llc", "ein": "987654321"})[0], getS()["ein"]), (200, 200, "98-7654321"))
+check("pharmacy EIN cannot be cleared", st({"ein": ""})[0], 400)
+stn = lambda body: api(H, "POST", "/host/stores/NTX1", body)                # no reason given
+check("changing the pharmacy EIN, entity or client needs a reason", (stn({"ein": "11-2223334"})[0], stn({"entityLegalName": "Other LLC"})[0], stn({"clientId": client2})[0]), (400, 400, 400))
+check("with a reason the pharmacy moves to another client", stn({"clientId": client2, "changeReason": "Pharmacy sold to the second client"})[0], 200)
+stn({"clientId": client1, "changeReason": "Reverting the test change"})
+check("Account Owner sees only the masked EIN", [(x["ein"], x["einMasked"]) for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0], ("", "••-•••4321"))
+check("staff see only the masked EIN in /me", [(x["ein"], x["einMasked"]) for x in api(U, "GET", "/me")[1]["stores"] if x["id"] == "NTX1"][0], ("", "••-•••4321"))
+check("host sees the full EIN", getS()["ein"], "98-7654321")
+check("Account Owner cannot edit EIN, entity or client", [stO({k: v})[0] for k, v in (("ein", "11-2223334"), ("entityLegalName", "x"), ("clientId", client2))], [403, 403, 403])
+check("the pharmacy list shows no per-pharmacy account number any more", "acctNo" in getS(), False)
+check("clients list shows each client's pharmacies", sorted([p for c in api(H, "GET", "/host/clients")[1]["clients"] if c["id"] == client1 for p in c["pharmacies"]])[:1], ["NTX1"])
 check("host turns the Calendar switch on", (st({"calendar": True})[0], getS()["calendar"]), (200, True))
-check("host creates a new pharmacy with its whole profile", api(H, "POST", "/host/stores", {"id": "tst2", "name": "Test Two", "city": "Haslet", "state": "TX", "zip": "76052", "npi": "1234567893", "dea": "AB1234563",
+check("host creates a new pharmacy with its whole profile", api(H, "POST", "/host/stores", {**ENT, "id": "tst2", "name": "Test Two", "city": "Haslet", "state": "TX", "zip": "76052", "npi": "1234567893", "dea": "AB1234563",
       "ncpdp": "1234567", "license": "A1", "services": ["retail", "delivery"], "calendar": False, "hours": good_hours})[0], 200)
 t2 = [x for x in api(H, "GET", "/host/stores")[1]["stores"] if x["id"] == "TST2"]
 check("new pharmacy saved with its fields", (len(t2), t2 and t2[0]["services"], t2 and t2[0]["npi"]), (1, ["retail", "delivery"], "1234567893"))
-check("new pharmacy ID already used is refused", api(H, "POST", "/host/stores", {"id": "TST2", "name": "Again"})[0], 400)
-check("new pharmacy ID must be valid", api(H, "POST", "/host/stores", {"id": "x", "name": "Bad"})[0], 400)
+check("new pharmacy ID already used is refused", api(H, "POST", "/host/stores", {**ENT, "id": "TST2", "name": "Again"})[0], 400)
+check("new pharmacy ID must be valid", api(H, "POST", "/host/stores", {**ENT, "id": "x", "name": "Bad"})[0], 400)
 check("a staff login cannot change types", api(U, "POST", "/owner/users/" + sub, {"acctType": "pic"})[0], 403)
 # ---- an IronLedger rep (none exist yet): passwords and privileges only; pharmacy details and services wait for a supervisor
 node({"makeHost": {"login": "rep1", "name": "Rep One", "phone": "8175559998", "tempPassword": "reptemp12a", "role": "rep"}})
@@ -169,6 +200,7 @@ check("rep cannot turn on services", api(RT, "POST", "/host/stores/NTX1", {"serv
 check("rep cannot turn on the Calendar", api(RT, "POST", "/host/stores/NTX1", {"calendar": False})[0], 403)
 check("rep cannot edit pharmacy details yet", api(RT, "POST", "/host/stores/NTX1", {"phone": "1"})[0], 403)
 check("rep cannot create a pharmacy", api(RT, "POST", "/host/stores", {"id": "RR1", "name": "x"})[0], 403)
+check("a rep can read clients but not create or change them", (api(RT, "GET", "/host/clients")[0], api(RT, "POST", "/host/clients", CL())[0], api(RT, "POST", "/host/clients/" + client1, {"dba": "x"})[0]), (200, 403, 403))
 check("rep cannot use the registry lookup", api(RT, "GET", "/host/npi/1234567893")[0], 403)
 check("services were not changed by the rep", getS()["services"], ["retail", "controlled", "sterile"])
 # ---- rep drafts: a rep proposes, a supervisor approves; nothing is applied before that

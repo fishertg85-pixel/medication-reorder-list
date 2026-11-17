@@ -66,7 +66,7 @@ async function profileOf(sub){
   const r = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: sub } }));
   return r.Item || null;
 }
-const STORE_FIELDS = ['name', 'address', 'suite', 'city', 'state', 'zip', 'phone', 'fax', 'email', 'license', 'licenseExpires', 'npi', 'dea', 'deaExpires', 'ncpdp', 'servicesOther', 'timezone'];
+const STORE_FIELDS = ['name', 'address', 'suite', 'city', 'state', 'zip', 'phone', 'fax', 'email', 'license', 'licenseExpires', 'npi', 'dea', 'deaExpires', 'ncpdp', 'servicesOther', 'timezone', 'clientId', 'entityLegalName', 'entityType', 'ein'];
 // what the pharmacy does (feeds the calendar's programs when its calendar is started) and its weekly hours
 const SERVICES = ['retail', 'controlled', 'nonsterile', 'sterile', 'hazardous', 'immunizations', 'delivery', 'ltc', 'specialty', 'infusion'];
 const ACCT_TYPES = ['pic', 'pharmacist', 'tech', 'staff'];       // the Account Owner and the host are separate roles
@@ -131,6 +131,12 @@ function cleanClosures(c){
   }).sort((a, b) => a.d.localeCompare(b.d));
   return { obs: CLOSE_OBS.filter(x => obs.includes(x)), days: out };
 }
+// ---- clients and legal entities. An EIN belongs to a legal entity, not a location: a pharmacy carries the licensed entity (legal name, type, EIN) and
+// belongs to a client (the bill-to account, with the IL- account number). The client record is kept apart in CLIENTS.
+const ENTITY_TYPES = ['corporation', 'llc', 'sole_prop', 'partnership', 'other'];
+function cleanEin(v){ const d = String(v || '').replace(/\D/g, ''); if(!/^\d{9}$/.test(d)) throw bad('EIN: 9 digits (like 12-3456789).'); return d.slice(0, 2) + '-' + d.slice(2); }
+const maskEin = e => e ? '••-•••' + String(e).slice(-4) : '';
+const CLIENT_ID = /^IL-\d{6}$/;
 // each pharmacy's local time zone: dates/times on its orders are shown in it
 const TIMEZONES = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix', 'America/Los_Angeles',
   'America/Anchorage', 'Pacific/Honolulu', 'America/Puerto_Rico'];
@@ -139,13 +145,13 @@ const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME M
 async function allStores(){
   return (await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'STORES' } }))
     .map(s => ({ id: s.sk, ...pick(s, STORE_FIELDS), timezone: TIMEZONES.includes(s.timezone) ? s.timezone : DEFAULT_TZ, hasLogo: !!s.hasLogo, calendar: s.calendar === true,
-      acctNo: s.acctNo || '',
       deaVerified: s.dea && s.deaVerifiedDea === s.dea ? { at: s.deaVerifiedAt || '', by: s.deaVerifiedBy || '' } : null,
       services: Array.isArray(s.services) ? s.services.filter(x => SERVICES.includes(x)) : [], hours: Array.isArray(s.hours) && s.hours.length === 7 ? s.hours : null,
       closures: s.closures && Array.isArray(s.closures.days) ? { obs: Array.isArray(s.closures.obs) ? s.closures.obs : [], days: s.closures.days } : { obs: [], days: [] } }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
-async function storesFor(me){ const all = await allStores(); return me.owner ? all : all.filter(s => (me.stores || {})[s.id] === true); }
+const maskStore = s => ({ ...s, ein: '', einMasked: maskEin(s.ein) });      // only IronLedger sees a full EIN
+async function storesFor(me){ const all = await allStores(); const mine = me.owner ? all : all.filter(s => (me.stores || {})[s.id] === true); return me.host ? mine : mine.map(maskStore); }
 function canUse(me, store){ return !!me.owner || (me.stores || {})[store] === true; }
 function permsOf(me){ const o = {}; for(const p of PERMS) o[p] = me.owner ? true : ((me.perms || {})[p] ?? DEFAULT_PERMS[p]); return o; }
 function need(me, p, what){ if(!permsOf(me)[p]) throw forbidden(`You don't have permission to ${what}. Ask the Account Owner.`); }
@@ -312,6 +318,9 @@ function storeFields(b){
     if(!Array.isArray(b.services) || b.services.some(x => !SERVICES.includes(x))) throw bad('Pick services from the list.');
     f.services = [...new Set(b.services)];
   }
+  if(f.entityType) { if(!ENTITY_TYPES.includes(f.entityType)) throw bad('Pick the entity type from the list.'); }
+  if(f.ein) f.ein = cleanEin(f.ein);
+  if(f.clientId && !CLIENT_ID.test(f.clientId)) throw bad('Pick the client from the list.');
   if(b.hours !== undefined) f.hours = cleanHours(b.hours);
   if(b.closures !== undefined) f.closures = cleanClosures(b.closures);
   return f;
@@ -321,7 +330,7 @@ function storeFields(b){
 // services, the Calendar switch) is set by IronLedger (the host login); billing follows the client's identity, so those must stay consistent.
 const AM_EDITABLE = ['phone', 'fax', 'email', 'timezone', 'hours', 'closures', 'licenseExpires', 'deaExpires'];
 // Identity: once a value is on file it is hard to change. Even the host must give a reason, and every change is written to the pharmacy's change history.
-const IDENTITY = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp'];
+const IDENTITY = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp', 'clientId', 'entityLegalName', 'entityType', 'ein'];
 async function nextAcctNo(){                              // the client's IronLedger account number: generated once, never changed
   const r = await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'COUNTER', sk: 'ACCT' }, UpdateExpression: 'ADD n :one', ExpressionAttributeValues: { ':one': 1 }, ReturnValues: 'UPDATED_NEW' }));
   return 'IL-' + String(r.Attributes.n).padStart(6, '0');
@@ -372,27 +381,92 @@ async function decideDraft(me, id, sk, action, b){
   catch(e){ if(isCond(e)) throw bad('That draft was just decided by someone else.'); throw e; }
   return { ok: true };
 }
-async function assignAcctNo(id){
-  if(!okId(id)) throw bad('Bad pharmacy');
-  const cur = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }));
-  if(!cur.Item) throw bad('No such pharmacy.');
-  if(cur.Item.acctNo) return { acctNo: cur.Item.acctNo };
-  const a = await nextAcctNo();
-  try{ await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id }, UpdateExpression: 'SET acctNo = :a', ConditionExpression: 'attribute_exists(pk) AND attribute_not_exists(acctNo)', ExpressionAttributeValues: { ':a': a } })); }
-  catch(e){ if(isCond(e)) return { acctNo: (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }))).Item.acctNo }; throw e; }
-  return { acctNo: a };
+// ---- clients (host only): the bill-to account. Account number IL-nnnnnn is generated once and is the client's key; it never changes.
+const CLIENT_TEXT = { legalName: 160, dba: 160, address: 200, suite: 40, city: 80, state: 2, zip: 10, phone: 30, fax: 30, bAddress: 200, bSuite: 40, bCity: 80, bState: 2, bZip: 10 };
+const CLIENT_IDENTITY = ['legalName', 'entityType', 'ein'];
+const CONTACT_ROLES = ['relations', 'billing', 'other'];
+function clientFields(b, creating){
+  const f = {};
+  for(const [k, m] of Object.entries(CLIENT_TEXT)) if(b[k] !== undefined) f[k] = String(clean(b[k], m) || '').trim();
+  if(b.entityType !== undefined){ f.entityType = String(b.entityType); if(!ENTITY_TYPES.includes(f.entityType)) throw bad('Pick the entity type from the list.'); }
+  if(b.ein !== undefined) f.ein = cleanEin(b.ein);
+  for(const k of ['state', 'bState']) if(f[k]){ f[k] = f[k].toUpperCase(); if(!US_STATES.includes(f[k])) throw bad('Pick the state from the list.'); }
+  for(const k of ['zip', 'bZip']) if(f[k] && !/^\d{5}(-\d{4})?$/.test(f[k])) throw bad('ZIP code: 5 digits (or ZIP+4, like 76052-1234).');
+  if(b.billingSame !== undefined){ if(typeof b.billingSame !== 'boolean') throw bad('Billing address: same as business must be on or off.'); f.billingSame = b.billingSame; }
+  if(b.contacts !== undefined){
+    if(!Array.isArray(b.contacts) || b.contacts.length > 20) throw bad('Contacts: up to 20.');
+    f.contacts = b.contacts.map(c => {
+      const o = { role: String(c && c.role || ''), name: String(clean(c && c.name, 80) || '').trim(), title: String(clean(c && c.title, 60) || '').trim(), email: String(clean(c && c.email, 120) || '').trim(), phone: String(clean(c && c.phone, 30) || '').trim() };
+      if(!CONTACT_ROLES.includes(o.role)) throw bad('Contacts: pick the role from the list.');
+      if(!o.name) throw bad('Contacts: each needs a name.');
+      if(o.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(o.email)) throw bad('Contacts: ' + o.name + '’s email doesn’t look right.');
+      return o;
+    });
+  }
+  if(creating){
+    for(const [k, msg] of [['legalName', 'Legal name of the entity is required.'], ['entityType', 'Entity type is required.'], ['ein', 'EIN is required.'], ['address', 'Business street address is required.'], ['city', 'Business city is required.'], ['state', 'Business state is required.'], ['zip', 'Business ZIP is required.']]) if(!f[k]) throw bad(msg);
+    if(f.billingSame === undefined) f.billingSame = true;
+  }
+  if(f.billingSame === false && ((b.bAddress !== undefined && !f.bAddress) || (b.bCity !== undefined && !f.bCity))) throw bad('Billing address: street and city are needed when it differs from the business address.');
+  if(f.billingSame === true) Object.assign(f, { bAddress: '', bSuite: '', bCity: '', bState: '', bZip: '' });
+  return f;
+}
+async function needClient(id){
+  if(!CLIENT_ID.test(String(id))) throw bad('Pick the client from the list.');
+  const r = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'CLIENTS', sk: id } }));
+  if(!r.Item) throw bad('No such client.');
+  return r.Item;
+}
+const clientView = c => ({ id: c.sk, acctNo: c.sk, ...pick(c, [...Object.keys(CLIENT_TEXT), 'entityType', 'ein']), billingSame: c.billingSame !== false, contacts: Array.isArray(c.contacts) ? c.contacts : [], createdAt: c.createdAt || '' });
+async function listClients(){
+  const items = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'CLIENTS' } });
+  const stores = await allStores();
+  return items.map(c => ({ ...clientView(c), pharmacies: stores.filter(s => s.clientId === c.sk).map(s => s.id) })).sort((a, b) => a.id.localeCompare(b.id));
+}
+async function addClient(b, by){
+  const f = clientFields(b, true), id = await nextAcctNo();
+  await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'CLIENTS', sk: id, ...f, createdAt: now(), createdBy: by || '' }, ConditionExpression: 'attribute_not_exists(pk)' }));
+  return { id, acctNo: id };
+}
+async function updateClient(id, b, by){
+  if(!CLIENT_ID.test(String(id))) throw bad('Bad client');
+  const cur = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'CLIENTS', sk: id } }))).Item; if(!cur) throw new HttpError(404, 'No such client.');
+  if(Object.keys(b).some(k => !Object.keys(CLIENT_TEXT).concat(['entityType', 'ein', 'billingSame', 'contacts', 'changeReason']).includes(k))) throw bad('Unknown field. The account number can’t be changed.');
+  const f = clientFields(b, false);
+  if(f.ein === '' || f.legalName === '') throw bad('The legal name and EIN can’t be cleared. Enter the corrected value instead.');
+  const changed = CLIENT_IDENTITY.filter(k => f[k] !== undefined && (cur[k] || '') !== '' && f[k] !== cur[k]), reason = String(b.changeReason || '').trim();
+  if(changed.length && reason.length < 10) throw bad('Changing ' + changed.join(', ') + ' needs a reason (at least 10 characters). Billing follows the client’s identity, so these must stay consistent.');
+  const diff = {};
+  for(const [k, v] of Object.entries(f)){ const o = cur[k]; if(JSON.stringify(o === undefined ? (Array.isArray(v) ? [] : '') : o) !== JSON.stringify(v)) diff[k] = [o === undefined ? null : o, v]; }
+  if(!Object.keys(diff).length) return;
+  await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'CLIENTAUDIT#' + id, sk: now() + '#' + Math.random().toString(36).slice(2, 7), at: now(), by: by || '', reason, changes: diff } }));
+  const names = {}, vals = {}, parts = [];
+  Object.entries({ ...f, updatedAt: now() }).forEach(([k, v], i) => { names['#f' + i] = k; vals[':v' + i] = v; parts.push(`#f${i} = :v${i}`); });
+  await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'CLIENTS', sk: id }, UpdateExpression: 'SET ' + parts.join(', '), ExpressionAttributeNames: names, ExpressionAttributeValues: vals, ConditionExpression: 'attribute_exists(pk)' }));
+}
+async function clientHistory(id){
+  if(!CLIENT_ID.test(String(id))) throw bad('Bad client');
+  const r = await ddb.send(new QueryCommand({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'CLIENTAUDIT#' + id }, ScanIndexForward: false, Limit: 50 }));
+  return { history: (r.Items || []).map(i => ({ at: i.at, by: i.by, reason: i.reason || '', changes: i.changes })) };
 }
 async function storeHistory(id){
   if(!okId(id)) throw bad('Bad pharmacy');
   const r = await ddb.send(new QueryCommand({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'STOREAUDIT#' + id }, ScanIndexForward: false, Limit: 50 }));
   return { history: (r.Items || []).map(i => ({ at: i.at, by: i.by, reason: i.reason || '', changes: i.changes })) };
 }
-async function addStore(b, by){
+async function addStore(b, by, firstRun){
   const id = String(b.id || '').trim().toUpperCase();
   if(!PHARM_ID.test(id)) throw bad('Pharmacy ID: 2–20 letters, numbers or dashes (e.g. NTX1).');
   const f = storeFields(b); if(!f.name) throw bad('Pharmacy name is required.');
   if(!f.timezone) f.timezone = DEFAULT_TZ;
-  try{ await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'STORES', sk: id, ...f, acctNo: await nextAcctNo(), createdAt: now(), createdBy: by || '' }, ConditionExpression: 'attribute_not_exists(pk)' })); }
+  if(!firstRun){      // the first pharmacy made by the setup script has no client yet; every other one needs its client and licensed entity
+    if(!f.clientId) throw bad('Pick the client this pharmacy belongs to (bill-to account).');
+    if(!f.entityLegalName) throw bad('Legal name of the entity that holds the pharmacy license is required.');
+    if(!f.entityType) throw bad('Entity type is required.');
+    if(!f.ein) throw bad('The licensed entity’s EIN is required.');
+  }
+  if(f.clientId) await needClient(f.clientId);
+  try{ await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'STORES', sk: id, ...f, createdAt: now(), createdBy: by || '' }, ConditionExpression: 'attribute_not_exists(pk)' })); }
   catch(e){ if(isCond(e)) throw bad('That Pharmacy ID is already used.'); throw e; }
   return { id, ...f };
 }
@@ -403,6 +477,8 @@ async function updateStore(id, b, by, isHost){
   const curItem = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }))).Item;
   if(!curItem) throw bad('No such pharmacy.');
   // changing an identity value that is already on file needs a written reason (filling a blank does not)
+  if(f.clientId) await needClient(f.clientId);
+  if(f.ein === '' && curItem.ein) throw bad('The licensed entity’s EIN is required and can’t be cleared. Enter the corrected number instead.');
   const changedIdent = IDENTITY.filter(k => f[k] !== undefined && (curItem[k] || '') !== '' && f[k] !== curItem[k]);
   const reason = String(b.changeReason || '').trim();
   if(changedIdent.length && reason.length < 10) throw bad('Changing ' + changedIdent.join(', ') + ' needs a reason (at least 10 characters). The name, address, license and identifiers must stay consistent with the license and with billing.');
@@ -712,7 +788,7 @@ async function route(method, path, q, body, me, claims){
     await requireUnlocked(me);
     if(method === 'POST' && seg[1] === 'keepalive') return { ok: true };
     // an IronLedger rep can help with passwords and privileges, but pharmacy details and services wait for a supervisor (a review step for reps is planned, not built)
-    if(me.host && me.hostRole === 'rep' && (seg[1] === 'npi' || (seg[1] === 'stores' && method !== 'GET' && seg[3] !== 'drafts'))) throw forbidden('Pharmacy details and services are set by an IronLedger supervisor. A rep submits a draft for review.');
+    if(me.host && me.hostRole === 'rep' && (seg[1] === 'npi' || (seg[1] === 'clients' && method !== 'GET') || (seg[1] === 'stores' && method !== 'GET' && seg[3] !== 'drafts'))) throw forbidden('Pharmacy details and services are set by an IronLedger supervisor. A rep submits a draft for review.');
     // an IronLedger rep's reach with people: change the privileges of an existing, active user, or reset that user's password. Nothing else.
     if(me.host && me.hostRole === 'rep' && (seg[1] === 'import' || (seg[1] === 'users' && method === 'POST'))){
       const no = () => forbidden('An IronLedger rep can change the privileges of an existing, active user (and reset their password). Anything else goes to a supervisor.');
@@ -731,12 +807,18 @@ async function route(method, path, q, body, me, claims){
       return await importData(seg[2], body);
     }
     if(method === 'GET' && seg[1] === 'npi' && seg[2]){ if(!me.host) throw forbidden('Registry checks are done by IronLedger.'); return await npiLookup(String(seg[2])); }
-    if(method === 'GET' && seg[1] === 'stores' && !seg[2]) return { stores: await allStores() };
+    if(seg[1] === 'clients'){
+      if(!me.host) throw forbidden('Clients are managed by IronLedger.');
+      if(method === 'GET' && !seg[2]) return { clients: await listClients() };
+      if(method === 'POST' && !seg[2]) return await addClient(body, who(me));
+      if(method === 'GET' && seg[2] && seg[3] === 'history') return await clientHistory(seg[2]);
+      if(method === 'POST' && seg[2] && !seg[3]){ await updateClient(seg[2], body, who(me)); return { ok: true }; }
+    }
+    if(method === 'GET' && seg[1] === 'stores' && !seg[2]) return { stores: me.host ? await allStores() : (await allStores()).map(maskStore) };
     if(method === 'POST' && seg[1] === 'stores' && !seg[2]){ if(!me.host) throw forbidden('New pharmacies are set up by IronLedger.'); return await addStore(body, who(me)); }
     if(method === 'POST' && seg[1] === 'stores' && seg[2] && seg[3] === 'drafts') return await createDraft(me, seg[2], body);
     if(method === 'GET' && seg[1] === 'drafts' && !seg[2]){ if(!me.host) throw forbidden('Drafts are handled by IronLedger.'); return await listDrafts(me); }
     if(method === 'POST' && seg[1] === 'drafts' && seg[2] && seg[3] && (seg[4] === 'approve' || seg[4] === 'reject')) return await decideDraft(me, seg[2], seg[3], seg[4], body);
-    if(method === 'POST' && seg[1] === 'stores' && seg[2] && seg[3] === 'acctno'){ if(!me.host) throw forbidden('Account numbers are assigned by IronLedger.'); return await assignAcctNo(seg[2]); }
     if(method === 'GET' && seg[1] === 'stores' && seg[2] && seg[3] === 'history'){ if(!me.host) throw forbidden('The change history is kept by IronLedger.'); return await storeHistory(seg[2]); }
     if(method === 'POST' && seg[1] === 'stores' && seg[2] && seg[3] === 'logo'){ await setLogo(seg[2], body.dataUrl); return { ok: true }; }
     if(method === 'POST' && seg[1] === 'stores' && seg[2]){ await updateStore(seg[2], body, who(me), !!me.host); return { ok: true }; }
@@ -761,7 +843,7 @@ async function bootstrap(b){
   const people = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'USERS' } });
   if(people.some(p => p.owner)) return { ok: false, message: 'The Account Owner login already exists. Add people from the Account Owner tab in the app.' };
   const stores = await allStores();
-  const store = stores[0] || await addStore({ id: b.storeId, name: b.storeName, timezone: b.timezone || DEFAULT_TZ });
+  const store = stores[0] || await addStore({ id: b.storeId, name: b.storeName, timezone: b.timezone || DEFAULT_TZ }, '', true);
   let u;
   try{ u = await createLogin({ login: b.login, name: b.name, phone: b.phone, tempPassword: b.tempPassword }); }
   catch(e){
