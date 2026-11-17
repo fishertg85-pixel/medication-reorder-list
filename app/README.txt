@@ -5,12 +5,12 @@ phone's home screen. Each pharmacy has its own list, archive and distributor mem
 
 WHO DOES WHAT
   Host (you)         Runs the AWS account: deploys, updates, AWS settings, backups. Doesn't need a login
-                     in the app, but the Account Manager can add you like anyone else.
-  Account Manager    The business owner. The only login that can add pharmacies and people, switch each
+                     in the app, but the Account Owner can add you like anyone else.
+  Account Owner    The business owner. The only login that can add pharmacies and people, switch each
                      person's access on/off per pharmacy, and switch permissions on/off. This role can't
                      be given to anyone else from the app.
   Everyone else      Signs in with Pharmacy ID + Login ID + password, then a code texted to their phone.
-                     Only the Account Manager can change someone's mobile number or reset their password,
+                     Only the Account Owner can change someone's mobile number or reset their password,
                      except her own mobile number: that is the security factor for her sign-in, so only
                      IronLedger (the host) changes it.
 
@@ -34,7 +34,7 @@ ROUGH MONTHLY COST (3 pharmacies, ~20 people; moderate confidence, check AWS pri
 ==========================================================================================
 ONE-TIME AWS PREP FOR TEXT MESSAGES (start this first — approval can take days to weeks)
 ==========================================================================================
-Per person, the only setup is the mobile number the Account Manager types in when creating the login.
+Per person, the only setup is the mobile number the Account Owner types in when creating the login.
 But before AWS will text ANY number, the AWS account itself needs these one-time steps (US carrier
 rules + AWS defaults for new accounts). Until then, codes only reach numbers you verify by hand.
 In the AWS console, in the SAME region you'll deploy to (US East (N. Virginia) us-east-1 is a good choice):
@@ -57,9 +57,9 @@ FIRST DEPLOY (about 15 minutes, mostly waiting)
   3. Actions > Upload file > choose NorTex_Reorder_Cloud.zip. Then type:
          unzip -o NorTex_Reorder_Cloud.zip -d nortex && cd nortex && bash deploy.sh
   4. It builds everything (5–10 minutes the first time), then asks for:
-       the Account Manager's name, Login ID and mobile number, and the first pharmacy's ID and name.
+       the Account Owner's name, Login ID and mobile number, and the first pharmacy's ID and name.
      It prints a temporary password and the web address (something like https://d1abc2def3.cloudfront.net).
-  5. Give the Account Manager: the web address, Pharmacy ID, Login ID and temporary password.
+  5. Give the Account Owner: the web address, Pharmacy ID, Login ID and temporary password.
      On first sign-in they choose their own password, then enter the texted code.
   Optional short link: make a TinyURL that points to the web address for typing it the first time.
   Security comes from the login and text code, not from the address being hard to guess.
@@ -76,12 +76,12 @@ HOST PAGE (no CloudShell needed)
   Then open  <web address>/host.html  and sign in with that Login ID and password (no Pharmacy ID),
   then the texted code. It is a separate gate: only the host login opens it, it asks for the password
   again on reload and locks after 5 minutes idle. From there: reset any password (including the
-  Account Manager's), change mobile numbers, switch logins on/off, add or delete people, add
-  pharmacies, assign people to pharmacies, and import a pharmacy's old nortex_reorder_data.json. The host sees no pharmacy's list unless the Account Manager allows it.
+  Account Owner's), change mobile numbers, switch logins on/off, add or delete people, add
+  pharmacies, assign people to pharmacies, and import a pharmacy's old nortex_reorder_data.json. The host sees no pharmacy's list unless the Account Owner allows it.
   If you ever lose the host password, run the make-host command again for a new temporary one.
   SETTING UP A PHARMACY: the host page has a "Set up a new pharmacy" card. Only the host sets a pharmacy's
-  license, NPI, DEA, NCPDP, Services provided and Calendar switch; the pharmacy's Account Manager sees them
-  but cannot change them or add a pharmacy. The Account Manager edits name, address, phone, fax, email,
+  license, NPI, DEA, NCPDP, Services provided and Calendar switch; the pharmacy's Account Owner sees them
+  but cannot change them or add a pharmacy. The Account Owner edits name, address, phone, fax, email,
   time zone and hours. The host page needs a desktop or tablet screen.
 
 HOST TOOLS (CloudShell, in the same folder)
@@ -89,7 +89,7 @@ HOST TOOLS (CloudShell, in the same folder)
   bash host.sh set-phone maria.t 8175551234      bash host.sh off maria.t   /   bash host.sh on maria.t
   bash host.sh pharmacies                bash host.sh add-pharmacy NTX2 "NorTex Pharmacy - Keller" central
   bash host.sh assign maria.t NTX2       bash host.sh unassign maria.t NTX2
-  Pharmacies and access can be set up by the host here or by the Account Manager in the app; both
+  Pharmacies and access can be set up by the host here or by the Account Owner in the app; both
   change the same records.
 
 UPDATES
@@ -97,11 +97,11 @@ UPDATES
   code. Lists, archives, memory and logins are never touched.
 
 ==========================================================================================
-THE ACCOUNT MANAGER, IN THE APP (Account Manager tab)
+THE ACCOUNT OWNER, IN THE APP (Account Owner tab)
 ==========================================================================================
-  The Account Manager uses the Reorder List like everyone else. Opening the Account Manager tab asks for
+  The Account Owner uses the Reorder List like everyone else. Opening the Account Owner tab asks for
   their password again; it locks after 5 minutes without activity on that tab (the screen clears and the
-  server refuses Account Manager changes until the password is entered again).
+  server refuses Account Owner changes until the password is entered again).
   Pharmacies   Add each pharmacy: Pharmacy ID (what people type at sign-in, e.g. NTX2; can't be changed),
                name, address, phone, fax, email, license #, and time zone (Central unless changed).
                Every date and time on that pharmacy's list and archive uses its time zone, no matter
@@ -118,7 +118,7 @@ THE ACCOUNT MANAGER, IN THE APP (Account Manager tab)
 
 EVERYONE
   Sign in: Pharmacy ID, Login ID, password, then the texted code (only on a new device or every 30 days).
-  Forgot password? The Account Manager (Account Manager tab > Reset password) or the host (host.sh) gives a
+  Forgot password? The Account Owner (Account Owner tab > Reset password) or the host (host.sh) gives a
   new temporary password.
   By design there's no self-service reset: a texted code alone would get around the password.
   Phone: open the web address, then Share > Add to Home Screen (iPhone) or ⋮ > Install app (Android).
@@ -140,7 +140,7 @@ KEEPING ORDERS SAFE
 ==========================================================================================
   - Open lines can be edited or removed (if "Remove lines" is on) until Submit. Submit doesn't send
     anything to a vendor; it records that the lines were ordered and moves them to the Archive.
-  - The archive can only be added to. Nobody, including the Account Manager, can edit or delete an
+  - The archive can only be added to. Nobody, including the Account Owner, can edit or delete an
     archived line in the app; the server has no permission to, so a bug or a bad update can't erase them.
     (Only someone with admin rights to the AWS account itself could alter the database directly.)
   - Both data tables have deletion protection, are kept even if the app is removed, and have 35 days
@@ -155,6 +155,6 @@ KEEPING ORDERS SAFE
 TROUBLESHOOTING
   Codes don't arrive          SMS spend limit, sandbox or toll-free registration (see above);
                               CloudWatch > Logs; SNS > Text messaging > delivery status logs.
-  "Not switched on for this pharmacy"   the Account Manager turns on that pharmacy for the person.
+  "Not switched on for this pharmacy"   the Account Owner turns on that pharmacy for the person.
   Server errors               CloudWatch > Log groups > /aws/lambda/nortex-reorder-api
   A second, separate copy (e.g. another business):  APP=othername bash deploy.sh

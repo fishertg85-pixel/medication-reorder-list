@@ -81,7 +81,7 @@ async function cog(target, body){
     const code = String(j.__type || '').split('#').pop();
     let msg = COG_ERR[code] || j.message || 'Sign-in failed.';
     if(code === 'NotAuthorizedException' && /disabled/i.test(j.message || '')) msg = 'This login is switched off. Ask the account owner.';
-    if(code === 'NotAuthorizedException' && /expired/i.test(j.message || '')) msg = 'Your temporary password has expired. Ask the Account Manager for a new one.';
+    if(code === 'NotAuthorizedException' && /expired/i.test(j.message || '')) msg = 'Your temporary password has expired. Ask the Account Owner for a new one.';
     if(code === 'NotAuthorizedException' && /attempts exceeded/i.test(j.message || '')) msg = 'Too many wrong tries. Wait 15 minutes, then try once more.';
     if(code === 'NotAuthorizedException' && /attempts exceeded/i.test(j.message || '')) msg = 'Too many wrong passwords. Wait a few minutes, or use “Forgot password?”.';
     if(code === 'InvalidPasswordException' || code === 'InvalidParameterException') msg = 'Password must be at least 10 characters and include a lowercase letter and a number.';
@@ -134,7 +134,7 @@ async function api(method, path, body, retried){
 }
 function setOnline(ok){ const b = $('offlineBanner'); if(b) b.style.display = ok ? 'none' : 'block'; }
 const S = () => '/stores/' + encodeURIComponent(STORE.id);
-// each pharmacy's own time zone (set by the Account Manager): all dates and times on its orders use it
+// each pharmacy's own time zone (set by the Account Owner): all dates and times on its orders use it
 const TZ_NAMES = {'America/New_York':'Eastern', 'America/Chicago':'Central', 'America/Denver':'Mountain', 'America/Phoenix':'Arizona (no daylight saving)',
   'America/Los_Angeles':'Pacific', 'America/Anchorage':'Alaska', 'Pacific/Honolulu':'Hawaii', 'America/Puerto_Rico':'Atlantic (Puerto Rico)'};
 function storeTZ(){ try{ return (STORE && STORE.timezone) || 'America/Chicago'; }catch(e){ return 'America/Chicago'; } }
@@ -244,7 +244,7 @@ function paintStore(){
   const sel = $('storeSel');
   sel.style.display = ME && ME.stores.length > 1 ? '' : 'none';
   if(ME) sel.innerHTML = ME.stores.map(s => `<option value="${esc(s.id)}"${STORE && s.id === STORE.id ? ' selected' : ''}>${esc(s.id)} · ${esc(s.name)}</option>`).join('');
-  $('whoLabel').textContent = ME ? (ME.name || ME.login) + (ME.owner ? ' (Account Manager)' : '') : '';
+  $('whoLabel').textContent = ME ? (ME.name || ME.login) + (ME.owner ? ' (Account Owner)' : '') : '';
   // what this login may do
   document.querySelector('#tabs [data-tab="archive"]').style.display = PERM('archive') ? '' : 'none';
   document.querySelector('#tabs [data-tab="owner"]').style.display = ME && ME.owner ? '' : 'none';
@@ -315,7 +315,7 @@ async function afterAuth(res){
     LOGIN.dest = (res.ChallengeParameters && res.ChallengeParameters.CODE_DELIVERY_DESTINATION) || '';
     LOGIN.step = 'code'; paintLogin(''); $('liCodeIn').value = ''; $('liCodeIn').focus(); return;
   }
-  paintLogin('Sign-in needs a step this app doesn’t support (' + res.ChallengeName + '). Tell the Account Manager.');
+  paintLogin('Sign-in needs a step this app doesn’t support (' + res.ChallengeName + '). Tell the Account Owner.');
 }
 $('liUser').addEventListener('input', () => { $('liPass').value = ''; });
 // Pharmacy ID isn't case-sensitive: show it in capitals as it's typed (ntx -> NTX)
@@ -379,9 +379,9 @@ async function enterApp(pharm){
   const want = (pharm || lget('nortex-last-pharmacy') || '').toUpperCase();
   if(pharm && !ME.stores.some(s => s.id === want)){
     signOut(true);
-    return showLogin(`Your login isn’t switched on for pharmacy ${want}. Check the Pharmacy ID, or ask the Account Manager.`);
+    return showLogin(`Your login isn’t switched on for pharmacy ${want}. Check the Pharmacy ID, or ask the Account Owner.`);
   }
-  if(!ME.stores.length){ signOut(true); return showLogin('Your login isn’t switched on for any pharmacy yet. Ask the Account Manager.'); }
+  if(!ME.stores.length){ signOut(true); return showLogin('Your login isn’t switched on for any pharmacy yet. Ask the Account Owner.'); }
   try{ localStorage.removeItem('nortex-last-login'); }catch(e){}
   $('login').style.display = 'none'; $('app').style.display = '';
   await openStore(ME.stores.some(s => s.id === want) ? want : ME.stores[0].id);
@@ -1226,7 +1226,7 @@ function layoutGridHtml(page, L, body){
     return `<section class="pnl" data-pnl="${id}" style="--x:${x};--y:${y};--w:${w};--h:${h}"><h4 class="pt">${title}</h4><div class="pb">${body(id)}</div></section>`; }).join('')}</div>`;
 }
 
-/* ---------------- pharmacy setup page (host) and pharmacy account page (Account Manager): panels and their layout ----------------
+/* ---------------- pharmacy setup page (host) and pharmacy account page (Account Owner): panels and their layout ----------------
    Built on the layout engine (layout_engine.js). PHARM_LAYOUT is set once by Neo with the layout editor and is the same for everyone. */
 const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
 const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['act', 'Calendar And Save']];
@@ -1258,7 +1258,7 @@ const field = (s, k, l, t, lock) => `<label><span>${l}</span>${k === 'timezone' 
 const roVal = v => `<div class="ro${v ? '' : ' empty'}">${v ? esc(v) : 'Not set'}</div>`;
 const roField = (s, k, l, t) => `<label><span>${l}</span>${roVal(s[k])}</label>`;
 // c.host: the card is being used by IronLedger (the host login). Everyone else sees license, identifiers, services and the Calendar switch but cannot change them.
-// Identity (name, address, license, NPI, DEA, NCPDP) is set by IronLedger and locked once on file; the Account Manager keeps phone, fax, time zone, hours and the two expiration dates.
+// Identity (name, address, license, NPI, DEA, NCPDP) is set by IronLedger and locked once on file; the Account Owner keeps phone, fax, time zone, hours and the two expiration dates.
 const IDENT = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp'], AM_EDIT = ['phone', 'fax', 'email', 'timezone', 'licenseExpires', 'deaExpires'];
 const cardField = (s, k, l, t, c) => IDENT.includes(k) ? (c.host ? field(s, k, l, t, !c.isNew && !!s[k] && !c.rep && !c.repView) : roField(s, k, l, t)) : (c.host || AM_EDIT.includes(k) ? field(s, k, l, t) : roField(s, k, l, t));
 const LOCKED = 'Set by IronLedger. Contact your IronLedger representative to change this.';
@@ -1272,7 +1272,7 @@ const PHARM_BODY = {
         <label class="btn2 small">Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" data-logo="${esc(s.id)}" hidden></label>
         ${c.logo ? `<button class="btn2 small" data-nologo="${esc(s.id)}">Remove</button>` : ''}</div>
       <div class="pidbox"><div class="pid">Pharmacy ID: <b>${esc(s.id)}</b></div><div class="hint">(what people type when they sign in)</div>
-        <div class="pid">Primary account holder: <b>${esc(c.holder || 'Account Manager')}</b></div><div class="hint">(the Account Manager)</div>
+        <div class="pid">Primary account holder: <b>${esc(c.holder || 'Account Owner')}</b></div><div class="hint">(the Account Owner)</div>
         <div class="pid">Account number: <b>${s.acctNo ? esc(s.acctNo) : 'Not assigned yet'}</b>${c.host && !s.acctNo ? ` <button class="btn2 small" data-assignacct="${esc(s.id)}">Assign</button>` : ''}</div><div class="hint">(generated once by IronLedger; never changes)</div></div>`,
   contact: (s, c) => `<div class="pfields">${SF.map(([k, l]) => cardField(s, k, l, undefined, c)).join('')}${c.host ? '' : `<div class="lockhint">${LOCKED_ID}</div>`}</div>`,
   reg: (s, c) => c.rep ? ((h) => h.slice(0, h.indexOf('<div class="pid npirow">')) + '<div class="lockhint">A rep drafts changes and a supervisor reviews them. The NPI registry lookup and the DEA check are done by a supervisor.</div></div>')(PHARM_BODY.reg(s, { ...c, rep: false, repView: true }))
@@ -1307,7 +1307,7 @@ const PHARM_BODY = {
 // the whole card, built by the layout engine
 function pharmCardHtml(s, c, L){ return layoutGridHtml(PHARM_PAGE, L, id => PHARM_BODY[id](s, c)); }
 
-// ---------------- behaviour shared by the Account Manager page and the host page ----------------
+// ---------------- behaviour shared by the Account Owner page and the host page ----------------
 // o = { base: '/owner' | '/host', stores: () => [store, …], say: text => …, after: async () => … }
 const normNm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 function pharmCardEvents(root, o){
@@ -1410,7 +1410,7 @@ function pharmCardEvents(root, o){
   });
 }
 
-/* ---------------- Account Manager tab: pharmacies, people, access switches, import ----------------
+/* ---------------- Account Owner tab: pharmacies, people, access switches, import ----------------
    Opening it needs the password again; it locks after 5 minutes without activity on the tab.
    The server enforces the same rule, so the lock can't be skipped by changing the page. */
 const OWN_MS = 5 * 60 * 1000;
@@ -1513,7 +1513,7 @@ function renderOwnPeople(){
   const st = OWN.stores, P = Object.keys(PERM_LABELS);
   const priv = (sw_, label, title) => `<span class="priv" title="${esc(title || label)}">${sw_}<span>${esc(label)}</span></span>`;
   const head = u => `
-      <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${u.owner ? '<span class="urole">Account Manager</span>' : u.host ? '<span class="urole">Host (IronLedger)</span>' : ''}</div>
+      <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${u.owner ? '<span class="urole">Account Owner</span>' : u.host ? '<span class="urole">Host (IronLedger)</span>' : ''}</div>
       <div class="ucell mono" data-l="Username">${esc(u.login)}</div>
       <div class="ucell" data-l="Mobile">${esc(u.phone)}${u.owner ? ' <span class="hint" title="Sign-in codes are texted here, so only IronLedger changes it. Contact IronLedger.">🔒</span>' : u.host ? '' : ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>`}</div>
       <div class="ucell" data-l="Status">${statusBadge(u)}</div>`;
@@ -1524,7 +1524,7 @@ function renderOwnPeople(){
     <div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div><div></div></div>
     ${OWN.users.map(effUser).map(u => u.owner
       ? `<div class="urow"><div class="ucols">${head(u)}<div class="ucell acts"></div><div class="ucell copycell"></div></div>
-         <div class="upriv"><span class="plabel">Account type</span><span class="hint">Account Manager · primary account holder</span></div>
+         <div class="upriv"><span class="plabel">Account type</span><span class="hint">Account Owner · primary account holder</span></div>
          <div class="upriv"><span class="plabel">Pharmacies</span><span class="hint">All pharmacies</span></div>
          <div class="upriv"><span class="plabel">Privileges</span><span class="hint">Full access</span></div></div>`
       : u.host
@@ -1709,7 +1709,7 @@ $('exportBtn').onclick = async () => {
   }catch(e){ if(!e.auth) alert(e.message); } finally{ busy($('exportBtn'), false); }
 };
 
-/* ---------------- Calendar tab (switched on per pharmacy and per person by the Account Manager) ----------------
+/* ---------------- Calendar tab (switched on per pharmacy and per person by the Account Owner) ----------------
    The calendar is its own page (calendar.html) shown inside this one. It takes its storage and the signed-in
    person from window.ILCAL_HOST below, so it never has its own sign-in. The server checks every request: the
    person can open the pharmacy, has the Calendar privilege, and the pharmacy has Calendar switched on. */

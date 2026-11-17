@@ -43,7 +43,7 @@ async function afterAuth(res){
     LOGIN.dest = (res.ChallengeParameters && res.ChallengeParameters.CODE_DELIVERY_DESTINATION) || '';
     LOGIN.step = 'code'; paintLogin(''); $('liCodeIn').value = ''; $('liCodeIn').focus(); return;
   }
-  paintLogin('Sign-in needs a step this app doesn’t support (' + res.ChallengeName + '). Tell the Account Manager.');
+  paintLogin('Sign-in needs a step this app doesn’t support (' + res.ChallengeName + '). Tell the Account Owner.');
 }
 $('liUser').addEventListener('input', () => { $('liPass').value = ''; });
 // Pharmacy ID isn't case-sensitive: show it in capitals as it's typed (ntx -> NTX)
@@ -107,9 +107,9 @@ async function enterApp(pharm){
   const want = (pharm || lget('nortex-last-pharmacy') || '').toUpperCase();
   if(pharm && !ME.stores.some(s => s.id === want)){
     signOut(true);
-    return showLogin(`Your login isn’t switched on for pharmacy ${want}. Check the Pharmacy ID, or ask the Account Manager.`);
+    return showLogin(`Your login isn’t switched on for pharmacy ${want}. Check the Pharmacy ID, or ask the Account Owner.`);
   }
-  if(!ME.stores.length){ signOut(true); return showLogin('Your login isn’t switched on for any pharmacy yet. Ask the Account Manager.'); }
+  if(!ME.stores.length){ signOut(true); return showLogin('Your login isn’t switched on for any pharmacy yet. Ask the Account Owner.'); }
   try{ localStorage.removeItem('nortex-last-login'); }catch(e){}
   $('login').style.display = 'none'; $('app').style.display = '';
   await openStore(ME.stores.some(s => s.id === want) ? want : ME.stores[0].id);

@@ -97,7 +97,7 @@ def items(p): return [t.split('✎')[0].strip() for t in p.locator('#listBody td
 
 with sync_playwright() as pw:
     b = pw.chromium.launch()
-    # ================= Account Manager, desktop
+    # ================= Account Owner, desktop
     ctx = b.new_context(viewport={"width": 1400, "height": 900}); setup(ctx); p = page_for(ctx)
     p.goto(BASE); p.wait_for_selector('#login', state='visible')
     p.fill('#liPharm', 'ntx1'); p.wait_for_timeout(700); print('1 brand on sign-in:', p.inner_text('#liBrand'))
@@ -112,7 +112,7 @@ with sync_playwright() as pw:
     row = p.locator('#listBody tr').first
     row.locator('select[data-f=dist]').select_option('Anda Inc'); p.wait_for_timeout(700)
     row.locator('input[data-f=ordered]').check(); p.wait_for_timeout(700)
-    # Account Manager tab: pharmacy details + logo + new pharmacy + person
+    # Account Owner tab: pharmacy details + logo + new pharmacy + person
     p.click('#tabs [data-tab=owner]'); p.wait_for_timeout(500)
     print('L1 owner tab locked at first:', p.is_visible('#ownLock'), '| body hidden:', not p.is_visible('#ownBody'))
     p.fill('#ownPw', 'wrongpass99'); p.click('#ownUnlock'); p.wait_for_timeout(700); print('L2 wrong password:', p.inner_text('#ownLockMsg'))

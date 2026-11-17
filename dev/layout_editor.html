@@ -152,7 +152,7 @@
   .li-msg{min-height:18px;margin-top:12px;font-size:13px;color:var(--danger);} .li-msg.ok{color:var(--accent);}
   .li-links{margin-top:12px;font-size:13px;text-align:center;}
   #liCodeIn,#liFCode{letter-spacing:.3em;font-family:Consolas,Menlo,monospace;text-align:center;}
-  /* Account Manager tab */
+  /* Account Owner tab */
   .svcs{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:8px 0;} .svcs .plabel{flex-basis:100%;}
 .hrs{margin:8px 0;} .hrow{display:flex;gap:8px;align-items:center;margin:3px 0;white-space:nowrap;} .hrow>span{width:78px;} .hrow input[type=time]{width:120px;padding:6px 6px;}
 .pcard{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px;}
@@ -352,7 +352,7 @@ function layoutGridHtml(page, L, body){
     return `<section class="pnl" data-pnl="${id}" style="--x:${x};--y:${y};--w:${w};--h:${h}"><h4 class="pt">${title}</h4><div class="pb">${body(id)}</div></section>`; }).join('')}</div>`;
 }
 
-/* ---------------- pharmacy setup page (host) and pharmacy account page (Account Manager): panels and their layout ----------------
+/* ---------------- pharmacy setup page (host) and pharmacy account page (Account Owner): panels and their layout ----------------
    Built on the layout engine (layout_engine.js). PHARM_LAYOUT is set once by Neo with the layout editor and is the same for everyone. */
 const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
 const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['act', 'Calendar And Save']];
@@ -384,7 +384,7 @@ const field = (s, k, l, t, lock) => `<label><span>${l}</span>${k === 'timezone' 
 const roVal = v => `<div class="ro${v ? '' : ' empty'}">${v ? esc(v) : 'Not set'}</div>`;
 const roField = (s, k, l, t) => `<label><span>${l}</span>${roVal(s[k])}</label>`;
 // c.host: the card is being used by IronLedger (the host login). Everyone else sees license, identifiers, services and the Calendar switch but cannot change them.
-// Identity (name, address, license, NPI, DEA, NCPDP) is set by IronLedger and locked once on file; the Account Manager keeps phone, fax, time zone, hours and the two expiration dates.
+// Identity (name, address, license, NPI, DEA, NCPDP) is set by IronLedger and locked once on file; the Account Owner keeps phone, fax, time zone, hours and the two expiration dates.
 const IDENT = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp'], AM_EDIT = ['phone', 'fax', 'email', 'timezone', 'licenseExpires', 'deaExpires'];
 const cardField = (s, k, l, t, c) => IDENT.includes(k) ? (c.host ? field(s, k, l, t, !c.isNew && !!s[k] && !c.rep && !c.repView) : roField(s, k, l, t)) : (c.host || AM_EDIT.includes(k) ? field(s, k, l, t) : roField(s, k, l, t));
 const LOCKED = 'Set by IronLedger. Contact your IronLedger representative to change this.';
@@ -398,7 +398,7 @@ const PHARM_BODY = {
         <label class="btn2 small">Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" data-logo="${esc(s.id)}" hidden></label>
         ${c.logo ? `<button class="btn2 small" data-nologo="${esc(s.id)}">Remove</button>` : ''}</div>
       <div class="pidbox"><div class="pid">Pharmacy ID: <b>${esc(s.id)}</b></div><div class="hint">(what people type when they sign in)</div>
-        <div class="pid">Primary account holder: <b>${esc(c.holder || 'Account Manager')}</b></div><div class="hint">(the Account Manager)</div>
+        <div class="pid">Primary account holder: <b>${esc(c.holder || 'Account Owner')}</b></div><div class="hint">(the Account Owner)</div>
         <div class="pid">Account number: <b>${s.acctNo ? esc(s.acctNo) : 'Not assigned yet'}</b>${c.host && !s.acctNo ? ` <button class="btn2 small" data-assignacct="${esc(s.id)}">Assign</button>` : ''}</div><div class="hint">(generated once by IronLedger; never changes)</div></div>`,
   contact: (s, c) => `<div class="pfields">${SF.map(([k, l]) => cardField(s, k, l, undefined, c)).join('')}${c.host ? '' : `<div class="lockhint">${LOCKED_ID}</div>`}</div>`,
   reg: (s, c) => c.rep ? ((h) => h.slice(0, h.indexOf('<div class="pid npirow">')) + '<div class="lockhint">A rep drafts changes and a supervisor reviews them. The NPI registry lookup and the DEA check are done by a supervisor.</div></div>')(PHARM_BODY.reg(s, { ...c, rep: false, repView: true }))
@@ -433,7 +433,7 @@ const PHARM_BODY = {
 // the whole card, built by the layout engine
 function pharmCardHtml(s, c, L){ return layoutGridHtml(PHARM_PAGE, L, id => PHARM_BODY[id](s, c)); }
 
-// ---------------- behaviour shared by the Account Manager page and the host page ----------------
+// ---------------- behaviour shared by the Account Owner page and the host page ----------------
 // o = { base: '/owner' | '/host', stores: () => [store, …], say: text => …, after: async () => … }
 const normNm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 function pharmCardEvents(root, o){

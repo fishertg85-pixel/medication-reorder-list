@@ -65,7 +65,7 @@ case "$cmd" in
       '{pk:{S:"STORES"}, sk:{S:$id}, name:{S:$n}, timezone:{S:$z}, createdAt:{S:$t}}')"
     aws dynamodb put-item --table-name "$MAIN" --region "$REGION" --item "$item" --condition-expression 'attribute_not_exists(pk)' 2>/dev/null \
       || { echo "That Pharmacy ID is already used (see: bash host.sh pharmacies)."; exit 1; }
-    echo "Pharmacy ${pid} (${pname}) added. Address, phone, fax, email, license and logo can be filled in from the Account Manager tab." ;;
+    echo "Pharmacy ${pid} (${pname}) added. Address, phone, fax, email, license and logo can be filled in from the Account Owner tab." ;;
   assign|unassign)
     need_login; pid="$(echo "${3:-}" | tr 'a-z' 'A-Z')"; [ -n "$pid" ] || { echo "Which Pharmacy ID?"; exit 1; }
     found="$(aws dynamodb get-item --table-name "$MAIN" --region "$REGION" --key "{\"pk\":{\"S\":\"STORES\"},\"sk\":{\"S\":\"${pid}\"}}" --query 'Item.sk.S' --output text)"
@@ -89,7 +89,7 @@ case "$cmd" in
     need_login
     p="$(aws dynamodb query --table-name "$MAIN" --region "$REGION" --key-condition-expression "pk = :p" --expression-attribute-values '{":p":{"S":"USERS"}}' --output json | jq -c --arg l "$login" '[.Items[] | select(.login.S == $l and (.deleted.BOOL // false | not))][0]')"
     [ "$p" != "null" ] || { echo "No login \"$login\" in the list."; exit 1; }
-    [ "$(echo "$p" | jq -r '.host.BOOL // false')" = true ] || { echo "\"$login\" is not a host login. Delete staff from the Account Manager tab or the host page."; exit 1; }
+    [ "$(echo "$p" | jq -r '.host.BOOL // false')" = true ] || { echo "\"$login\" is not a host login. Delete staff from the Account Owner tab or the host page."; exit 1; }
     hosts="$(aws dynamodb query --table-name "$MAIN" --region "$REGION" --key-condition-expression "pk = :p" --expression-attribute-values '{":p":{"S":"USERS"}}' --output json | jq '[.Items[] | select((.host.BOOL // false) and (.deleted.BOOL // false | not))] | length')"
     [ "$hosts" -gt 1 ] || { echo "That is the only host login. Not removed."; exit 1; }
     sub="$(echo "$p" | jq -r '.sk.S')"

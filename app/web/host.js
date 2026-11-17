@@ -207,18 +207,18 @@ window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = set
 const box = (attrs, on, title) => `<input type="checkbox" ${attrs}${on ? ' checked' : ''} title="${esc(title || '')}">`;
 function render(){
   const st = DATA.stores, P = Object.keys(PERMS);
-  // two lines per user, like the Account Manager tab: user / username / mobile / status, then Pharmacies, then Privileges
+  // two lines per user, like the Account Owner tab: user / username / mobile / status, then Pharmacies, then Privileges
   const priv = (b, label, title) => `<label class="priv" title="${esc(title || label)}">${b}<span>${esc(label)}</span></label>`;
   $('people').innerHTML = `<div class="ulist">
     <div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div><div></div></div>
     ${DATA.users.map(effUser).map(u => {
       const self = u.sub === (ME && ME.sub) || (u.host && u.login === ME.login);
-      const role = u.owner ? 'Account Manager' : u.host ? 'Host (IronLedger)' : '';
+      const role = u.owner ? 'Account Owner' : u.host ? 'Host (IronLedger)' : '';
       const on = self ? '' : priv(box('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on');
       const pharm = u.owner ? '<span class="hint">All pharmacies</span>'
-        : u.host ? `<span class="hint">${esc(st.filter(s => u.stores[s.id] === true).map(s => s.id).join(', ') || 'None')} (set by the Account Manager)</span>`
+        : u.host ? `<span class="hint">${esc(st.filter(s => u.stores[s.id] === true).map(s => s.id).join(', ') || 'None')} (set by the Account Owner)</span>`
         : st.map(s => priv(box(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('');
-      const privs = u.owner ? `<span class="hint">Full access</span>${on}` : u.host ? `<span class="hint">${esc(P.filter(p => u.perms[p]).map(p => PERMS[p]).join(', ') || 'None')} (set by the Account Manager)</span>${on}`
+      const privs = u.owner ? `<span class="hint">Full access</span>${on}` : u.host ? `<span class="hint">${esc(P.filter(p => u.perms[p]).map(p => PERMS[p]).join(', ') || 'None')} (set by the Account Owner)</span>${on}`
         : P.map(p => priv(box(`data-uperm="${p}"`, u.perms[p], PERMS[p]), PERMS[p])).join('') + on;
       const acts = STAGED[u.sub] ? `<button class="btn small" data-upd="${esc(u.sub)}">Update</button> <button class="btn2 small" data-undo="${esc(u.sub)}">Undo</button>`
         : (self ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`) + (u.owner || u.host ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`);
@@ -296,7 +296,7 @@ $('people').addEventListener('click', async e => {
   if(un){ delete STAGED[un.dataset.undo]; $('peopleMsg').textContent = ''; render(); return; }
   if(up){
     const u = DATA.users.find(x => x.sub === up.dataset.upd), body = STAGED[up.dataset.upd]; if(!u || !body) return;
-    const am = u.owner ? '\n\nThis is the Account Manager.' : '';
+    const am = u.owner ? '\n\nThis is the Account Owner.' : '';
     if(body.disabled === true && !confirm(`Switch off ${nameOf(u.sub)}'s login? They are signed out everywhere and can't sign in until it's switched back on.${am}`)) return;
     busy(up, true);
     try{

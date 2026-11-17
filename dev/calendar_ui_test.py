@@ -1,4 +1,4 @@
-# Calendar tab in the browser (run ./reset.sh first): who sees it, start by the Account Manager, saving to the server.
+# Calendar tab in the browser (run ./reset.sh first): who sees it, start by the Account Owner, saving to the server.
 import json, urllib.request, boto3, sys
 from playwright.sync_api import sync_playwright
 ids = json.load(open('moto_ids.json')); BASE = 'http://localhost:8790/'
@@ -43,16 +43,16 @@ with sync_playwright() as pw:
     vis = lambda p: p.evaluate("getComputedStyle(document.querySelector('#tabs [data-tab=calendar]')).display !== 'none'")
     # no privilege: no tab, reorder works
     p = newpage(); signin(p, "NTX1", "calb", tB, "calbpass12345"); check("no privilege: no Calendar tab", vis(p), False); p.close()
-    # privileged, not owner: sees tab, not started -> told to ask the Account Manager
+    # privileged, not owner: sees tab, not started -> told to ask the Account Owner
     p = newpage(); signin(p, "NTX1", "cala", tA, "calapass12345"); check("privileged person sees Calendar tab at NTX1", vis(p), True)
     p.click('#tabs [data-tab=calendar]'); fr = p.frame_locator('#calFrame'); fr.locator('.card .hd').first.wait_for(timeout=8000)
-    txt = fr.locator('.card').first.inner_text(); check("not started: asked to see the Account Manager, no Start button", ('Ask the Account Manager' in txt, fr.locator('[data-act=wizard]').count()), (True, 0))
+    txt = fr.locator('.card').first.inner_text(); check("not started: asked to see the Account Owner, no Start button", ('Ask the Account Owner' in txt, fr.locator('[data-act=wizard]').count()), (True, 0))
     # other pharmacy: tab hidden
     p.select_option('#storeSel', 'NTX2'); p.wait_for_timeout(1200); check("tab hidden at pharmacy with Calendar off", vis(p), False)
     check("left the Calendar panel", p.evaluate("document.querySelector('#panel-calendar').classList.contains('active')"), False)
     p.select_option('#storeSel', 'NTX1'); p.wait_for_timeout(1200); check("tab back at NTX1", vis(p), True); p.close()
-    # Account Manager starts the calendar; data reaches the server
-    p = newpage(); signin(p, "NTX1", "owner", "ownerpass99"); check("Account Manager sees tab at NTX1", vis(p), True)
+    # Account Owner starts the calendar; data reaches the server
+    p = newpage(); signin(p, "NTX1", "owner", "ownerpass99"); check("Account Owner sees tab at NTX1", vis(p), True)
     p.click('#tabs [data-tab=calendar]'); fr = p.frame_locator('#calFrame'); fr.locator('[data-act=wizard]').wait_for(timeout=8000)
     fr.locator('[data-act=wizard]').click(); fr.locator('#f_name').wait_for()
     check("wizard pre-filled from the account: name", fr.locator('#f_name').input_value(), "NorTex Pharmacy - Haslet")
@@ -62,23 +62,23 @@ with sync_playwright() as pw:
     check("calendar hours came from the account", (g["config"]["profile"]["hours"][1], g["config"]["profile"]["hours"][0]), ({"o": "08:00", "c": "20:00"}, None))
     check("audit log names the signed-in login", [l["by"] for l in g["log"]][:1], ["Pat Owner"])
     p.screenshot(path='screenshots/calendar_tab.png')
-    # Account Manager tab: account type for a person, identifiers on the pharmacy
+    # Account Owner tab: account type for a person, identifiers on the pharmacy
     p.click('#tabs [data-tab=owner]'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_selector('select[data-utype]', timeout=8000)
     row = p.locator('.urow[data-sub]').filter(has_text='CALA'); row.locator('select[data-utype]').select_option('pharmacist'); p.wait_for_timeout(300)
     row = p.locator('.urow[data-sub]').filter(has_text='CALA'); row.locator('[data-upd]').click(); p.wait_for_timeout(1500)
     cu = {u["login"]: u for u in api(O, "GET", "/owner/users")[1]["users"]}["cala"]
     check("type saved from the screen, Calendar privilege untouched", (cu["acctType"], cu["perms"]["calendar"], cu["perms"]["submit"]), ("pharmacist", True, True))
     p.screenshot(path='screenshots/account_manager_people.png')
-    # the Account Manager's pharmacy card: name/address/phone/hours editable; licenses, identifiers, services and Calendar are shown but locked
+    # the Account Owner's pharmacy card: name/address/phone/hours editable; licenses, identifiers, services and Calendar are shown but locked
     card = p.locator('.pcard[data-store=NTX1]')
     check("identifiers show as read-only text", (card.locator('[data-sf=npi]').count(), card.locator('[data-sf=dea]').count(), "1234567893" in card.inner_text(), "AB1234563" in card.inner_text()), (0, 0, True, True))
     check("no services switches, no Calendar switch, no registry buttons", (card.locator('[data-svc]').count(), card.locator('[data-sfcal]').count(), card.locator('[data-npilook]').count(), card.locator('[data-deaok]').count()), (0, 0, 0, 0))
     check("locked message and services shown", ("Set by IronLedger" in card.inner_text(), "Sterile compounding" in card.inner_text(), "Calendar: On" in card.inner_text()), (True, True, True))
-    check("no Add-a-pharmacy form for the Account Manager", p.locator('#psAdd').count(), 0)
+    check("no Add-a-pharmacy form for the Account Owner", p.locator('#psAdd').count(), 0)
     card.locator('[data-sf=phone]').fill('(817) 555-0123'); card.locator('[data-savestore]').click(); p.wait_for_timeout(1500)
     ns = [x for x in api(H, "GET", "/host/stores")[1]["stores"] if x["id"] == "NTX1"][0]
     check("phone saved from the screen; services, identifiers and hours untouched", (ns["phone"], ns["npi"], ns["services"], ns["hours"][1]), ("(817) 555-0123", "1234567893", ["controlled", "sterile", "immunizations"], {"o": "08:00", "c": "20:00"}))
-    # closed days on the Hours panel: the Account Manager adds them; they show on the calendar for everyone who can open it
+    # closed days on the Hours panel: the Account Owner adds them; they show on the calendar for everyone who can open it
     check("Hours panel has the closed-days editor", (card.locator('[data-clobs]').count(), card.locator('[data-cladd]').count()), (5, 1))
     card.locator('[data-clobs=xmaseve]').evaluate("e=>e.click()"); card.locator('[data-clobs=blackfriday]').evaluate("e=>e.click()")
     card.locator('[data-cld]').fill('2027-02-09'); card.locator('[data-cln]').fill('Mardi Gras'); card.locator('[data-cly]').evaluate("e=>e.click()"); card.locator('[data-cladd]').click()

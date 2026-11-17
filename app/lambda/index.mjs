@@ -3,7 +3,7 @@
 // MAIN table (pk / sk):
 //   STORES          / <PHARMACY ID>    pharmacy registry {name}; the ID is what people type at sign-in
 //   USERS           / <cognito sub>    profile {login, name, phone, owner, stores:{ID:true}, perms:{...}, disabled}
-// Only the one Account Manager can add people/pharmacies and switch access on or off.
+// Only the one Account Owner can add people/pharmacies and switch access on or off.
 //   STORE#<id>      / LINE#<lineId>    open reorder line
 //   STORE#<id>      / MEM#<key>        memory {v:{...}}: pkg size / distributor / wording by NDC, drug, rxcui
 // ARCHIVE table (pk / sk):
@@ -69,7 +69,7 @@ async function profileOf(sub){
 const STORE_FIELDS = ['name', 'address', 'suite', 'city', 'state', 'zip', 'phone', 'fax', 'email', 'license', 'licenseExpires', 'npi', 'dea', 'deaExpires', 'ncpdp', 'servicesOther', 'timezone'];
 // what the pharmacy does (feeds the calendar's programs when its calendar is started) and its weekly hours
 const SERVICES = ['retail', 'controlled', 'nonsterile', 'sterile', 'hazardous', 'immunizations', 'delivery', 'ltc', 'specialty', 'infusion'];
-const ACCT_TYPES = ['pic', 'pharmacist', 'tech', 'staff'];       // the Account Manager and the host are separate roles
+const ACCT_TYPES = ['pic', 'pharmacist', 'tech', 'staff'];       // the Account Owner and the host are separate roles
 const cleanType = v => { v = String(v == null ? '' : v); if(v !== '' && !ACCT_TYPES.includes(v)) throw bad('Pick the account type from the list.'); return v; };
 function validNpi(s){                                         // 10 digits; Luhn check over the number with prefix 80840
   if(!/^\d{10}$/.test(s)) return false;
@@ -148,7 +148,7 @@ async function allStores(){
 async function storesFor(me){ const all = await allStores(); return me.owner ? all : all.filter(s => (me.stores || {})[s.id] === true); }
 function canUse(me, store){ return !!me.owner || (me.stores || {})[store] === true; }
 function permsOf(me){ const o = {}; for(const p of PERMS) o[p] = me.owner ? true : ((me.perms || {})[p] ?? DEFAULT_PERMS[p]); return o; }
-function need(me, p, what){ if(!permsOf(me)[p]) throw forbidden(`You don't have permission to ${what}. Ask the Account Manager.`); }
+function need(me, p, what){ if(!permsOf(me)[p]) throw forbidden(`You don't have permission to ${what}. Ask the Account Owner.`); }
 const who = me => me.name || me.login;
 
 // ---------- store data
@@ -317,7 +317,7 @@ function storeFields(b){
   return f;
 }
 // What each side may change on a pharmacy.
-// The Account Manager (the pharmacy's primary account holder) may change only these. Everything else (name, address, email, license, NPI, DEA, NCPDP,
+// The Account Owner (the pharmacy's primary account holder) may change only these. Everything else (name, address, email, license, NPI, DEA, NCPDP,
 // services, the Calendar switch) is set by IronLedger (the host login); billing follows the client's identity, so those must stay consistent.
 const AM_EDITABLE = ['phone', 'fax', 'email', 'timezone', 'hours', 'closures', 'licenseExpires', 'deaExpires'];
 // Identity: once a value is on file it is hard to change. Even the host must give a reason, and every change is written to the pharmacy's change history.
@@ -469,7 +469,7 @@ async function listPeople(){
   return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host, hostRole: p.host ? (p.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: p.host ? (p.repStores || {}) : {}, acctType: p.acctType || '',
     stores: p.stores || {}, perms: permsOf(p), disabled: status[p.sk] ? !status[p.sk].enabled : !!p.disabled,
     status: (status[p.sk] || {}).status || 'UNKNOWN', ...pendingOf(p, status[p.sk]) }))
-    // Account Manager, host, then people still waiting to sign in for the first time, then everyone else
+    // Account Owner, host, then people still waiting to sign in for the first time, then everyone else
     .sort((a, b) => (b.owner - a.owner) || (b.host - a.host) || (b.pending - a.pending) || (a.name || a.login).localeCompare(b.name || b.login));
 }
 async function cleanStoreToggles(obj){
@@ -507,7 +507,7 @@ async function repGuard(p, seg3, body){
   if(seg3) throw forbidden('A rep can’t do that. Ask an IronLedger supervisor.');
   const keys = Object.keys(body);
   if(!keys.length || keys.some(k => k !== 'perms')) throw forbidden('A rep can change privileges only. Ask an IronLedger supervisor for anything else.');
-  if(p.owner) throw forbidden('The Account Manager always has full access.');
+  if(p.owner) throw forbidden('The Account Owner always has full access.');
   if(!p.acctType) throw forbidden('A rep can change privileges only on a person who has an account type. Ask an IronLedger supervisor.');
   if(body.perms && Object.prototype.hasOwnProperty.call(body.perms, 'calendar')) throw forbidden('The Calendar privilege is part of a service line and is set by an IronLedger supervisor.');
   const g = await idp.send(new AdminGetUserCommand({ UserPoolId: POOL, Username: p.login })).catch(() => null);
@@ -516,16 +516,16 @@ async function repGuard(p, seg3, body){
 async function updatePerson(me, sub, seg3, body){
   if(!okId(sub)) throw bad('Bad user');
   const p = await profileOf(sub); if(!p) throw new HttpError(404, 'No such person.');
-  // the host login belongs to IronLedger: the Account Manager sees it but only the host changes it
-  // except which pharmacies it may open: only the Account Manager grants that
-  // the Account Manager decides which pharmacies the host may open and what it may do there; nothing else about the host login
+  // the host login belongs to IronLedger: the Account Owner sees it but only the host changes it
+  // except which pharmacies it may open: only the Account Owner grants that
+  // the Account Owner decides which pharmacies the host may open and what it may do there; nothing else about the host login
   if(p.host && !me.host && (seg3 || Object.keys(body).some(k => k !== 'stores' && k !== 'perms'))) throw forbidden('The host login is managed by IronLedger.');
   if(sub === me.sk && body.disabled === true) throw bad('You can’t switch off your own login.');
   if(me.host && me.hostRole === 'rep') await repGuard(p, seg3, body);
   if(seg3 === 'delete'){
     // the login is removed for good (the Login ID can be used again); what they did stays on the orders and archive by name.
     // A short record is kept of who existed and who removed them, with their SMS consent dates.
-    if(p.owner) throw bad('The Account Manager can’t be deleted.');
+    if(p.owner) throw bad('The Account Owner can’t be deleted.');
     if(p.host) throw bad('The host login can’t be deleted here.');
     if(sub === me.sk) throw bad('You can’t delete your own login.');
     if(p.deleted) return { ok: true };
@@ -545,15 +545,15 @@ async function updatePerson(me, sub, seg3, body){
     await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: sub }, UpdateExpression: 'SET tempIssuedAt = :n', ExpressionAttributeValues: { ':n': now() } }));
     return { ok: true, tempPassword: pw };
   }
-  // the Account Manager's own mobile is her second sign-in factor (Login ID + password + texted code), so only IronLedger changes it
-  if(p.owner && !me.host && body.phone !== undefined) throw forbidden('The Account Manager’s own mobile number is changed by IronLedger. Contact IronLedger to update it.');
-  // no per-person email exists today; if one is ever added, changing it for the Account Manager must also need the host
+  // the Account Owner's own mobile is her second sign-in factor (Login ID + password + texted code), so only IronLedger changes it
+  if(p.owner && !me.host && body.phone !== undefined) throw forbidden('The Account Owner’s own mobile number is changed by IronLedger. Contact IronLedger to update it.');
+  // no per-person email exists today; if one is ever added, changing it for the Account Owner must also need the host
   if(body.email !== undefined) throw bad('People don’t have an email address in this app.');
   if(p.owner && (body.stores !== undefined || body.perms !== undefined || (body.disabled !== undefined && !me.host)))
-    throw bad('The Account Manager always has full access.');
-  if(p.host && me.host && (body.stores !== undefined || body.perms !== undefined)) throw bad('Only the Account Manager can give the host access to a pharmacy or privileges in it.');
+    throw bad('The Account Owner always has full access.');
+  if(p.host && me.host && (body.stores !== undefined || body.perms !== undefined)) throw bad('Only the Account Owner can give the host access to a pharmacy or privileges in it.');
   const upd = {};
-  if(body.acctType !== undefined){ if(p.owner || p.host) throw bad('The Account Manager and host logins have their own account type.'); upd.acctType = cleanType(body.acctType); }
+  if(body.acctType !== undefined){ if(p.owner || p.host) throw bad('The Account Owner and host logins have their own account type.'); upd.acctType = cleanType(body.acctType); }
   if(body.repStores !== undefined){ if(!isSupervisor(me)) throw forbidden('A supervisor assigns reps to pharmacies.'); if(!(p.host && p.hostRole === 'rep')) throw bad('Only rep logins have assigned pharmacies.'); upd.repStores = Object.assign({}, p.repStores || {}, await cleanStoreToggles(body.repStores)); }
   if(body.stores !== undefined) upd.stores = Object.assign({}, p.stores || {}, await cleanStoreToggles(body.stores));
   if(body.perms !== undefined) upd.perms = Object.assign({}, p.perms || {}, cleanPerms(body.perms));
@@ -578,12 +578,12 @@ async function updatePerson(me, sub, seg3, body){
   return { ok: true };
 }
 
-// ---------- Account Manager tab lock: password again to open it; locks after 5 minutes without activity there
+// ---------- Account Owner tab lock: password again to open it; locks after 5 minutes without activity there
 const UNLOCK_MS = 5 * 60 * 1000;
-class Locked extends HttpError { constructor(){ super(423, 'The Account Manager tab is locked. Re-enter your password.'); this.locked = true; } }
-const manages = me => !!(me.owner || me.host);         // the Account Manager, and the host (IronLedger)
+class Locked extends HttpError { constructor(){ super(423, 'The Account Owner tab is locked. Re-enter your password.'); this.locked = true; } }
+const manages = me => !!(me.owner || me.host);         // the Account Owner, and the host (IronLedger)
 async function requireUnlocked(me){
-  if(!manages(me)) throw forbidden('Only the Account Manager can do that.');
+  if(!manages(me)) throw forbidden('Only the Account Owner can do that.');
   if(!(me.unlockUntil > Date.now())) throw new Locked();
   await setUnlock(me.sk, Date.now() + UNLOCK_MS);              // activity keeps it open
 }
@@ -592,7 +592,7 @@ async function setUnlock(sub, until){
 }
 // checks the password with Cognito without sending a text: "change" it to itself using the caller's own access token
 async function unlock(me, claims, b){
-  if(!manages(me)) throw forbidden('Only the Account Manager can do that.');
+  if(!manages(me)) throw forbidden('Only the Account Owner can do that.');
   const pw = typeof b.password === 'string' ? b.password : '', at = typeof b.accessToken === 'string' ? b.accessToken : '';
   if(!pw || !at) throw bad('Enter your password.');
   let tokSub = '';
@@ -611,17 +611,17 @@ async function unlock(me, claims, b){
 }
 
 
-// ---------- compliance calendar (only pharmacies the Account Manager has switched Calendar on for)
+// ---------- compliance calendar (only pharmacies the Account Owner has switched Calendar on for)
 // Kept as one MAIN item per piece: STORE#<id> / CAL#cfg#<key> (profile, sites, people, ...) and CAL#<records|events|obl|log>#<id>.
 // Each item holds the calendar's own JSON as a string in `j`. Rules, all checked here and not only in the screen:
 //   1. the person can open that pharmacy   2. the person has the Calendar privilege   3. the pharmacy has Calendar switched on
-//   4. only the Account Manager can start a pharmacy's calendar (write its profile for the first time)
+//   4. only the Account Owner can start a pharmacy's calendar (write its profile for the first time)
 const CAL_COLLS = ['records', 'events', 'obl', 'log'];
 const CAL_CFG = ['v', 'profile', 'sites', 'people', 'equipment', 'documents', 'tracks', 'plans', 'work', 'reminders', 'rooms'];
 const CAL_MAX_BYTES = 380000, CAL_MAX_OPS = 100;
 function calGate(me, storeItem){
   if(storeItem.calendar !== true) throw forbidden('The calendar is not switched on for this pharmacy.');
-  if(!permsOf(me).calendar) throw forbidden('You do not have the Calendar privilege. Ask the Account Manager.');
+  if(!permsOf(me).calendar) throw forbidden('You do not have the Calendar privilege. Ask the Account Owner.');
 }
 const calPk = store => 'STORE#' + store;
 async function calLoad(store){
@@ -652,9 +652,9 @@ async function calCommit(store, me, b){
   }
   if(writes.length + deletes.length > CAL_MAX_OPS) throw bad('Too many calendar changes in one request.');
   if(!writes.length && !deletes.length) return { ok: true, saved: 0 };
-  if(!me.owner){                                       // only the Account Manager starts a pharmacy's calendar
+  if(!me.owner){                                       // only the Account Owner starts a pharmacy's calendar
     const started = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: calPk(store), sk: 'CAL#cfg#profile' } }));
-    if(!started.Item) throw forbidden('Only the Account Manager can start this pharmacy’s calendar.');
+    if(!started.Item) throw forbidden('Only the Account Owner can start this pharmacy’s calendar.');
   }
   const stamp = now();
   await inBatches(writes, 25, async w => {
@@ -696,15 +696,15 @@ async function route(method, path, q, body, me, claims){
       do { const p = await archivePage(store, { cursor, limit: 2000 }); arch.push(...p.items); cursor = p.cursor; } while(cursor);
       return { meta: { pharmacy: exists.Item.name, store, exportedAt: now(), version: 3 }, reorder: await lines(store), archive: arch, remember: await memory(store) };
     }
-    if(method === 'POST' && what === 'import'){ if(!me.owner) throw forbidden('Only the Account Manager can import.'); await requireUnlocked(me); return await importData(store, body); }
+    if(method === 'POST' && what === 'import'){ if(!me.owner) throw forbidden('Only the Account Owner can import.'); await requireUnlocked(me); return await importData(store, body); }
   }
 
-  // two separate gates: /owner/* answers only the Account Manager, /host/* answers only the host (and is a 404 to everyone else)
+  // two separate gates: /owner/* answers only the Account Owner, /host/* answers only the host (and is a 404 to everyone else)
   if(seg[0] === 'host-unlock' || seg[0] === 'host-lock' || seg[0] === 'host'){
     if(!me.host) throw new HttpError(404, 'Not found');
     seg[0] = seg[0].replace('host', 'owner');
   } else if(seg[0] === 'owner-unlock' || seg[0] === 'owner-lock' || seg[0] === 'owner'){
-    if(!me.owner) throw forbidden('Only the Account Manager can do that.');
+    if(!me.owner) throw forbidden('Only the Account Owner can do that.');
   }
   if(method === 'POST' && seg[0] === 'owner-unlock') return await unlock(me, claims, body);
   if(method === 'POST' && seg[0] === 'owner-lock'){ await setUnlock(me.sk, 0); return { ok: true }; }
@@ -756,17 +756,17 @@ async function route(method, path, q, body, me, claims){
   throw new HttpError(404, 'Not found');
 }
 
-// Account Manager + first pharmacy, run once from the deploy script with `aws lambda invoke` (not reachable from the web)
+// Account Owner + first pharmacy, run once from the deploy script with `aws lambda invoke` (not reachable from the web)
 async function bootstrap(b){
   const people = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'USERS' } });
-  if(people.some(p => p.owner)) return { ok: false, message: 'The Account Manager login already exists. Add people from the Account Manager tab in the app.' };
+  if(people.some(p => p.owner)) return { ok: false, message: 'The Account Owner login already exists. Add people from the Account Owner tab in the app.' };
   const stores = await allStores();
   const store = stores[0] || await addStore({ id: b.storeId, name: b.storeName, timezone: b.timezone || DEFAULT_TZ });
   let u;
   try{ u = await createLogin({ login: b.login, name: b.name, phone: b.phone, tempPassword: b.tempPassword }); }
   catch(e){
     if(!/already taken/.test(e.message)) throw e;
-    // a previous setup run created the login but stopped before saving it as Account Manager: finish it now
+    // a previous setup run created the login but stopped before saving it as Account Owner: finish it now
     const login = String(b.login || '').trim().toLowerCase(), pw = b.tempPassword || tempPassword();
     const g = await idp.send(new AdminGetUserCommand({ UserPoolId: POOL, Username: login }));
     const attr = n => ((g.UserAttributes || []).find(a => a.Name === n) || {}).Value || '';
@@ -775,7 +775,7 @@ async function bootstrap(b){
   }
   await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'USERS', sk: u.sub, login: u.login, name: u.name, phone: u.phone,
     owner: true, stores: {}, perms: {}, createdAt: now(), createdBy: 'setup' } }));
-  return { ok: true, message: `Account Manager login "${u.login}" created. Pharmacy ID: ${store.id} (${store.name}). Temporary password: ${u.tempPassword}`, store, tempPassword: u.tempPassword };
+  return { ok: true, message: `Account Owner login "${u.login}" created. Pharmacy ID: ${store.id} (${store.name}). Temporary password: ${u.tempPassword}`, store, tempPassword: u.tempPassword };
 }
 
 // host login (IronLedger): made from CloudShell with host.sh make-host, never through the API
@@ -815,7 +815,7 @@ export const handler = async (event) => {
     const claims = (((event.requestContext || {}).authorizer || {}).jwt || {}).claims || {};
     if(!claims.sub) throw new HttpError(401, 'Please sign in again.');
     const me = await profileOf(claims.sub);
-    if(!me || me.disabled || me.deleted) throw forbidden('Your login isn’t switched on for any pharmacy. Ask the Account Manager.');
+    if(!me || me.disabled || me.deleted) throw forbidden('Your login isn’t switched on for any pharmacy. Ask the Account Owner.');
     me.login = me.login || claims['cognito:username'];
     const method = event.requestContext.http.method, path = event.rawPath || '/';
     let body = {};
@@ -831,6 +831,6 @@ export const handler = async (event) => {
       return json(e.code, { error: e.message, ...(e.locked ? { locked: true } : {}) });
     }
     console.error(e);
-    return json(500, { error: 'Something went wrong on the server. Try again; if it keeps happening tell the Account Manager.' });
+    return json(500, { error: 'Something went wrong on the server. Try again; if it keeps happening tell the Account Owner.' });
   }
 };

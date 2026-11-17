@@ -1,4 +1,4 @@
-/* ---------------- Account Manager tab: pharmacies, people, access switches, import ----------------
+/* ---------------- Account Owner tab: pharmacies, people, access switches, import ----------------
    Opening it needs the password again; it locks after 5 minutes without activity on the tab.
    The server enforces the same rule, so the lock can't be skipped by changing the page. */
 const OWN_MS = 5 * 60 * 1000;
@@ -101,7 +101,7 @@ function renderOwnPeople(){
   const st = OWN.stores, P = Object.keys(PERM_LABELS);
   const priv = (sw_, label, title) => `<span class="priv" title="${esc(title || label)}">${sw_}<span>${esc(label)}</span></span>`;
   const head = u => `
-      <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${u.owner ? '<span class="urole">Account Manager</span>' : u.host ? '<span class="urole">Host (IronLedger)</span>' : ''}</div>
+      <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${u.owner ? '<span class="urole">Account Owner</span>' : u.host ? '<span class="urole">Host (IronLedger)</span>' : ''}</div>
       <div class="ucell mono" data-l="Username">${esc(u.login)}</div>
       <div class="ucell" data-l="Mobile">${esc(u.phone)}${u.owner ? ' <span class="hint" title="Sign-in codes are texted here, so only IronLedger changes it. Contact IronLedger.">🔒</span>' : u.host ? '' : ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>`}</div>
       <div class="ucell" data-l="Status">${statusBadge(u)}</div>`;
@@ -112,7 +112,7 @@ function renderOwnPeople(){
     <div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div><div></div></div>
     ${OWN.users.map(effUser).map(u => u.owner
       ? `<div class="urow"><div class="ucols">${head(u)}<div class="ucell acts"></div><div class="ucell copycell"></div></div>
-         <div class="upriv"><span class="plabel">Account type</span><span class="hint">Account Manager · primary account holder</span></div>
+         <div class="upriv"><span class="plabel">Account type</span><span class="hint">Account Owner · primary account holder</span></div>
          <div class="upriv"><span class="plabel">Pharmacies</span><span class="hint">All pharmacies</span></div>
          <div class="upriv"><span class="plabel">Privileges</span><span class="hint">Full access</span></div></div>`
       : u.host

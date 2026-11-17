@@ -171,7 +171,7 @@
   .li-msg{min-height:18px;margin-top:12px;font-size:13px;color:var(--danger);} .li-msg.ok{color:var(--accent);}
   .li-links{margin-top:12px;font-size:13px;text-align:center;}
   #liCodeIn,#liFCode{letter-spacing:.3em;font-family:Consolas,Menlo,monospace;text-align:center;}
-  /* Account Manager tab */
+  /* Account Owner tab */
   .svcs{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:8px 0;} .svcs .plabel{flex-basis:100%;}
 .hrs{margin:8px 0;} .hrow{display:flex;gap:8px;align-items:center;margin:3px 0;white-space:nowrap;} .hrow>span{width:78px;} .hrow input[type=time]{width:120px;padding:6px 6px;}
 .pcard{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px;}
@@ -349,7 +349,7 @@
       <label for="liUser">Login ID</label><input type="text" id="liUser" autocomplete="username" autocapitalize="none" spellcheck="false">
       <label for="liPass">Password</label><input type="password" id="liPass" autocomplete="current-password">
       <button class="btn" id="liGo">Sign in</button>
-      <div class="li-links hint">Forgot your password? Ask the Account Manager for a temporary one.</div>
+      <div class="li-links hint">Forgot your password? Ask the Account Owner for a temporary one.</div>
       <a href="#" id="liForgotLink" style="display:none;"></a>
     </div>
     <div id="liNew" style="display:none;">
@@ -396,7 +396,7 @@
   <button data-tab="archive">Archive</button>
   <button data-tab="setup">Setup</button>
   <button data-tab="calendar" style="display:none;">Calendar</button>
-  <button data-tab="owner" style="display:none;">Account Manager</button>
+  <button data-tab="owner" style="display:none;">Account Owner</button>
 </nav>
 
 <main>
@@ -492,10 +492,10 @@
     <iframe id="calFrame" title="Compliance Calendar" style="width:100%;height:calc(100vh - 120px);min-height:620px;border:0;background:#fff;display:block;"></iframe>
   </section>
 
-  <!-- ======================= ACCOUNT MANAGER ======================= -->
+  <!-- ======================= ACCOUNT OWNER ======================= -->
   <section id="panel-owner" class="panel">
     <div class="card" id="ownLock" style="max-width:420px;">
-      <h2>🔒 Account Manager</h2>
+      <h2>🔒 Account Owner</h2>
       <div class="hint">Re-enter your password to open this tab. It locks again after 5 minutes without activity here.</div>
       <div class="toolbar" style="margin-top:10px;"><input type="password" id="ownPw" autocomplete="current-password" style="flex:1;min-width:180px;"><button class="btn" id="ownUnlock">Unlock</button></div>
       <div class="li-msg" id="ownLockMsg"></div>

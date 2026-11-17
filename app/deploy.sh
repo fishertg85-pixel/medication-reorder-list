@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # NorTex Reorder List — deploy or update, from AWS CloudShell (or any shell with the AWS CLI).
-#   First time:  bash deploy.sh          (asks for the Account Manager's details at the end)
+#   First time:  bash deploy.sh          (asks for the Account Owner's details at the end)
 #   Updates:     bash deploy.sh          (same command; data is never touched)
 #   Texted sign-in codes off/on:  TEXT_CODES=off bash deploy.sh   /   TEXT_CODES=on bash deploy.sh
 #                (the choice is kept for later updates until you change it)
@@ -50,16 +50,16 @@ aws s3 cp "$BUILD/manifest.webmanifest" "s3://${BUCKET}/manifest.webmanifest" --
 aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/*" >/dev/null
 rm -rf "$BUILD"
 
-# 4) first time only: the Account Manager login and the first pharmacy
+# 4) first time only: the Account Owner login and the first pharmacy
 OWNERS="$(aws dynamodb query --table-name "$MAIN" --region "$REGION" --key-condition-expression 'pk = :p' \
   --filter-expression 'attribute_exists(#o) AND #o = :t' --expression-attribute-names '{"#o":"owner"}' \
   --expression-attribute-values '{":p":{"S":"USERS"},":t":{"BOOL":true}}' --select COUNT --query Count --output text)"
 if [ "$OWNERS" = "0" ]; then
-  say "First-time setup: the Account Manager (the business owner) and the first pharmacy"
-  echo "Only the Account Manager can add people and pharmacies and switch access on/off."
-  read -rp "Account Manager's full name: " NAME
-  read -rp "Account Manager's Login ID (e.g. jsmith): " LOGIN
-  read -rp "Account Manager's mobile number (sign-in codes are texted here): " PHONE
+  say "First-time setup: the Account Owner (the business owner) and the first pharmacy"
+  echo "Only the Account Owner can add people and pharmacies and switch access on/off."
+  read -rp "Account Owner's full name: " NAME
+  read -rp "Account Owner's Login ID (e.g. jsmith): " LOGIN
+  read -rp "Account Owner's mobile number (sign-in codes are texted here): " PHONE
   read -rp "First pharmacy's Pharmacy ID (typed at sign-in, e.g. NTX1): " PID
   read -rp "First pharmacy's name: " PNAME
   read -rp "First pharmacy's time zone: 1 Eastern, 2 Central, 3 Mountain, 4 Arizona, 5 Pacific [2]: " TZN
@@ -68,7 +68,7 @@ if [ "$OWNERS" = "0" ]; then
     '{bootstrap:{name:$n, login:$l, phone:$p, storeId:$i, storeName:$s, timezone:$z}}')"
   aws lambda invoke --function-name "$FN" --region "$REGION" --cli-binary-format raw-in-base64-out --payload "$PAYLOAD" .boot.json >/dev/null
   echo; jq -r '.message // .errorMessage // .' .boot.json; rm -f .boot.json
-  echo "Give the Account Manager: the web address below, their Pharmacy ID, Login ID and that temporary password."
+  echo "Give the Account Owner: the web address below, their Pharmacy ID, Login ID and that temporary password."
 fi
 
 if [ "$TEXT_CODES" = on ]; then                     # codes back on: make sure every login gets them

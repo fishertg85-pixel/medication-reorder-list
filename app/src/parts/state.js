@@ -43,7 +43,7 @@ async function cog(target, body){
     const code = String(j.__type || '').split('#').pop();
     let msg = COG_ERR[code] || j.message || 'Sign-in failed.';
     if(code === 'NotAuthorizedException' && /disabled/i.test(j.message || '')) msg = 'This login is switched off. Ask the account owner.';
-    if(code === 'NotAuthorizedException' && /expired/i.test(j.message || '')) msg = 'Your temporary password has expired. Ask the Account Manager for a new one.';
+    if(code === 'NotAuthorizedException' && /expired/i.test(j.message || '')) msg = 'Your temporary password has expired. Ask the Account Owner for a new one.';
     if(code === 'NotAuthorizedException' && /attempts exceeded/i.test(j.message || '')) msg = 'Too many wrong tries. Wait 15 minutes, then try once more.';
     if(code === 'NotAuthorizedException' && /attempts exceeded/i.test(j.message || '')) msg = 'Too many wrong passwords. Wait a few minutes, or use “Forgot password?”.';
     if(code === 'InvalidPasswordException' || code === 'InvalidParameterException') msg = 'Password must be at least 10 characters and include a lowercase letter and a number.';
@@ -96,7 +96,7 @@ async function api(method, path, body, retried){
 }
 function setOnline(ok){ const b = $('offlineBanner'); if(b) b.style.display = ok ? 'none' : 'block'; }
 const S = () => '/stores/' + encodeURIComponent(STORE.id);
-// each pharmacy's own time zone (set by the Account Manager): all dates and times on its orders use it
+// each pharmacy's own time zone (set by the Account Owner): all dates and times on its orders use it
 const TZ_NAMES = {'America/New_York':'Eastern', 'America/Chicago':'Central', 'America/Denver':'Mountain', 'America/Phoenix':'Arizona (no daylight saving)',
   'America/Los_Angeles':'Pacific', 'America/Anchorage':'Alaska', 'Pacific/Honolulu':'Hawaii', 'America/Puerto_Rico':'Atlantic (Puerto Rico)'};
 function storeTZ(){ try{ return (STORE && STORE.timezone) || 'America/Chicago'; }catch(e){ return 'America/Chicago'; } }
@@ -206,7 +206,7 @@ function paintStore(){
   const sel = $('storeSel');
   sel.style.display = ME && ME.stores.length > 1 ? '' : 'none';
   if(ME) sel.innerHTML = ME.stores.map(s => `<option value="${esc(s.id)}"${STORE && s.id === STORE.id ? ' selected' : ''}>${esc(s.id)} · ${esc(s.name)}</option>`).join('');
-  $('whoLabel').textContent = ME ? (ME.name || ME.login) + (ME.owner ? ' (Account Manager)' : '') : '';
+  $('whoLabel').textContent = ME ? (ME.name || ME.login) + (ME.owner ? ' (Account Owner)' : '') : '';
   // what this login may do
   document.querySelector('#tabs [data-tab="archive"]').style.display = PERM('archive') ? '' : 'none';
   document.querySelector('#tabs [data-tab="owner"]').style.display = ME && ME.owner ? '' : 'none';

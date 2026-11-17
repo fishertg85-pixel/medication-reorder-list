@@ -52,7 +52,7 @@ rep('</style>\n</head>', r'''
   .li-msg{min-height:18px;margin-top:12px;font-size:13px;color:var(--danger);} .li-msg.ok{color:var(--accent);}
   .li-links{margin-top:12px;font-size:13px;text-align:center;}
   #liCodeIn,#liFCode{letter-spacing:.3em;font-family:Consolas,Menlo,monospace;text-align:center;}
-  /* Account Manager tab */
+  /* Account Owner tab */
   /*PHARM_CSS*/
   body.wideTab main{max-width:none;}
   .btn.small,.btn2.small{padding:5px 10px;font-size:12.5px;}
@@ -198,7 +198,7 @@ cut('<header>', '<nav id="tabs">', '''<div id="login">
 rep('''  <button data-tab="setup">Setup</button>
 </nav>''', '''  <button data-tab="setup">Setup</button>
   <button data-tab="calendar" style="display:none;">Calendar</button>
-  <button data-tab="owner" style="display:none;">Account Manager</button>
+  <button data-tab="owner" style="display:none;">Account Owner</button>
 </nav>''')
 cut('  <div id="wipeBanner"', '  <!-- ======================= REORDER LIST', '''  <div id="offlineBanner" class="banner warn" style="display:none;">No connection to the server right now. Changes can’t be saved until the connection is back.</div>
 
@@ -258,10 +258,10 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
     <iframe id="calFrame" title="Compliance Calendar" style="width:100%;height:calc(100vh - 120px);min-height:620px;border:0;background:#fff;display:block;"></iframe>
   </section>
 
-  <!-- ======================= ACCOUNT MANAGER ======================= -->
+  <!-- ======================= ACCOUNT OWNER ======================= -->
   <section id="panel-owner" class="panel">
     <div class="card" id="ownLock" style="max-width:420px;">
-      <h2>🔒 Account Manager</h2>
+      <h2>🔒 Account Owner</h2>
       <div class="hint">Re-enter your password to open this tab. It locks again after 5 minutes without activity here.</div>
       <div class="toolbar" style="margin-top:10px;"><input type="password" id="ownPw" autocomplete="current-password" style="flex:1;min-width:180px;"><button class="btn" id="ownUnlock">Unlock</button></div>
       <div class="li-msg" id="ownLockMsg"></div>
@@ -374,9 +374,9 @@ rep("""data-edit="${r.id}\"""", """data-edit="${esc(r.id)}\"""")
 rep("""data-ndcin="${r.id}\"""", """data-ndcin="${esc(r.id)}\"""")
 # submitted lines carry the open line's id, so the server can copy who added/ordered it and check permissions
 rep("""      s.archive.push({id:uid(), dateAdded:r.dateAdded,""", """      s.archive.push({id:uid(), lineId:r.id, dateAdded:r.dateAdded,""")
-# password help: only the Account Manager resets passwords (a texted code alone would bypass the password)
+# password help: only the Account Owner resets passwords (a texted code alone would bypass the password)
 rep("""      <div class="li-links"><a href="#" id="liForgotLink">Forgot password?</a></div>""",
-    """      <div class="li-links hint">Forgot your password? Ask the Account Manager for a temporary one.</div>
+    """      <div class="li-links hint">Forgot your password? Ask the Account Owner for a temporary one.</div>
       <a href="#" id="liForgotLink" style="display:none;"></a>""")
 
 

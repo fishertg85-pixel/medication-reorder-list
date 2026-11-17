@@ -21,7 +21,7 @@ def node(arg): return json.loads(subprocess.check_output(["node", "boot.mjs", js
 node({"makeHost": {"login": "Neo", "name": "Thomas Fisher", "phone": "8175559999", "tempPassword": "hosttemp12a"}})
 h = login("neo", "hosttemp12a", "hostpass999"); H = h["IdToken"]; api(H, "POST", "/host-unlock", {"password": "hostpass999", "accessToken": h["AccessToken"]})
 st = lambda body: api(H, "POST", "/host/stores/NTX1", {**body, "changeReason": "test change reason"})           # licenses, identifiers, services and the Calendar switch are set by the host
-stO = lambda body: api(O, "POST", "/owner/stores/NTX1", body)         # the Account Manager can only change name, address, phone, hours...
+stO = lambda body: api(O, "POST", "/owner/stores/NTX1", body)         # the Account Owner can only change name, address, phone, hours...
 getS = lambda: [x for x in api(H, "GET", "/host/stores")[1]["stores"] if x["id"] == "NTX1"][0]
 good_hours = [None] + [{"o": "09:00", "c": "18:00"}] * 5 + [None]
 check("valid profile saves", st({"npi": "1234567893", "dea": "ab1234563", "deaExpires": "2028-03-31", "license": "12345", "licenseExpires": "2027-06-30", "ncpdp": "1234567",
@@ -49,12 +49,12 @@ check("type listed", {u["login"]: u["acctType"] for u in api(O, "GET", "/owner/u
 check("bad type refused", api(O, "POST", "/owner/users/" + sub, {"acctType": "wizard"})[0], 400)
 check("clear type", api(O, "POST", "/owner/users/" + sub, {"acctType": ""})[0], 200)
 ownersub = [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["owner"]][0]["sub"]
-check("Account Manager has no type to set", api(O, "POST", "/owner/users/" + ownersub, {"acctType": "tech"})[0], 400)
+check("Account Owner has no type to set", api(O, "POST", "/owner/users/" + ownersub, {"acctType": "tech"})[0], 400)
 api(O, "POST", "/owner/users/" + sub, {"acctType": "tech"})
-check("Account Manager cannot change her OWN mobile number", api(O, "POST", "/owner/users/" + ownersub, {"phone": "8175550777", "smsConsent": True})[0], 403)
+check("Account Owner cannot change her OWN mobile number", api(O, "POST", "/owner/users/" + ownersub, {"phone": "8175550777", "smsConsent": True})[0], 403)
 check("her number is unchanged", [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["owner"]][0]["phone"] != "+18175550777", True)
-check("Account Manager can still change a staff member's number", api(O, "POST", "/owner/users/" + sub, {"phone": "8175550778", "smsConsent": True})[0], 200)
-check("host can change the Account Manager's number", api(H, "POST", "/host/users/" + ownersub, {"phone": "8175550001", "smsConsent": True})[0], 200)
+check("Account Owner can still change a staff member's number", api(O, "POST", "/owner/users/" + sub, {"phone": "8175550778", "smsConsent": True})[0], 200)
+check("host can change the Account Owner's number", api(H, "POST", "/host/users/" + ownersub, {"phone": "8175550001", "smsConsent": True})[0], 200)
 check("no per-person email is accepted", (api(O, "POST", "/owner/users/" + sub, {"email": "x@example.com"})[0], api(H, "POST", "/host/users/" + ownersub, {"email": "x@example.com"})[0]), (400, 400))
 U = login("acct1", tmp, "acct1pass12345")["IdToken"]
 check("/me carries the type", api(U, "GET", "/me")[1]["acctType"], "tech")
@@ -80,17 +80,17 @@ st({"dea": "AB1234563"})
 check("changing back does not revive it", getS()["deaVerified"], None)
 check("verified flag cannot be set false/edited", api(H, "POST", "/host/stores/NTX1", {"deaVerified": False})[0], 400)
 check("a staff login cannot edit the pharmacy profile", api(U, "POST", "/owner/stores/NTX1", {"npi": "1234567893"})[0], 403)
-# ---- host-only fields: the Account Manager sees them but the server refuses any change; the host (IronLedger) sets them
+# ---- host-only fields: the Account Owner sees them but the server refuses any change; the host (IronLedger) sets them
 for k, v in [("calendar", True), ("services", ["retail"]), ("servicesOther", "x"), ("npi", "1234567893"), ("dea", "AB1234563"), ("name", "Renamed"), ("address", "1 New St"),
              ("suite", "9"), ("city", "Keller"), ("state", "OK"), ("zip", "76248"), ("ncpdp", "1234567"), ("license", "999"), ("deaVerified", True), ("changeReason", "because I said so")]:
-    check("Account Manager cannot change " + k, stO({k: v})[0], 403)
+    check("Account Owner cannot change " + k, stO({k: v})[0], 403)
 check("a refused request changes nothing", (getS()["license"], getS()["services"], getS()["name"] != "Renamed"), ("12345", ["retail", "controlled", "sterile"], True))
-check("Account Manager can edit phone, fax, time zone, hours and the two expiration dates", stO({"phone": "(817) 555-0100", "fax": "(817) 555-0101", "email": "pharmacy@example.com", "timezone": "America/Denver", "hours": good_hours, "licenseExpires": "2027-12-31", "deaExpires": "2028-12-31"})[0], 200)
+check("Account Owner can edit phone, fax, time zone, hours and the two expiration dates", stO({"phone": "(817) 555-0100", "fax": "(817) 555-0101", "email": "pharmacy@example.com", "timezone": "America/Denver", "hours": good_hours, "licenseExpires": "2027-12-31", "deaExpires": "2028-12-31"})[0], 200)
 check("and they show", (getS()["email"], getS()["fax"], getS()["timezone"], getS()["licenseExpires"], getS()["deaExpires"]), ("pharmacy@example.com", "(817) 555-0101", "America/Denver", "2027-12-31", "2028-12-31"))
 stO({"timezone": "America/Chicago"})
 check("and the new phone shows", getS()["phone"], "(817) 555-0100")
 cl_ok = {"obs": ["xmaseve", "goodfriday"], "days": [{"d": "2026-11-27", "n": "Day after Thanksgiving", "y": False}, {"d": "2026-02-17", "n": "Mardi Gras", "y": True}]}
-check("Account Manager adds closed days", stO({"closures": cl_ok})[0], 200)
+check("Account Owner adds closed days", stO({"closures": cl_ok})[0], 200)
 check("closed days come back sorted, observances in list order", (getS()["closures"]["obs"], [x["n"] for x in getS()["closures"]["days"]]), (["goodfriday", "xmaseve"], ["Mardi Gras", "Day after Thanksgiving"]))
 check("closed day: unknown observance refused", stO({"closures": {"obs": ["bogus"], "days": []}})[0], 400)
 check("closed day: not a real date refused", stO({"closures": {"obs": [], "days": [{"d": "2026-02-30", "n": "x", "y": False}]}})[0], 400)
@@ -101,8 +101,8 @@ check("a refused request changes nothing", len(getS()["closures"]["days"]), 2)
 check("staff cannot edit closed days", api(U, "POST", "/owner/stores/NTX1", {"closures": {"obs": [], "days": []}})[0], 403)
 check("closed days appear for staff who open the pharmacy", [x for x in api(U, "GET", "/me")[1]["stores"] if x["id"] == "NTX1"][0]["closures"]["obs"], ["goodfriday", "xmaseve"])
 check("closed-day change is in the history", "closures" in api(H, "GET", "/host/stores/NTX1/history")[1]["history"][0]["changes"], True)
-check("Account Manager cannot add a pharmacy", api(O, "POST", "/owner/stores", {"id": "ZZ9", "name": "Nope"})[0], 403)
-check("Account Manager still sees the identifiers (read-only)", [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0]["npi"], "")
+check("Account Owner cannot add a pharmacy", api(O, "POST", "/owner/stores", {"id": "ZZ9", "name": "Nope"})[0], 403)
+check("Account Owner still sees the identifiers (read-only)", [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0]["npi"], "")
 # identity values on file are hard to change: a reason is required even for the host, and every change is kept in the history
 nm = getS()["name"]
 check("host cannot change the name without a reason", api(H, "POST", "/host/stores/NTX1", {"name": "Different Name LLC"})[0], 400)
@@ -113,7 +113,7 @@ check("saving the same values again needs no reason", api(H, "POST", "/host/stor
 api(H, "POST", "/host/stores/NTX1", {"name": nm, "changeReason": "Reverting the test change"})
 hist = api(H, "GET", "/host/stores/NTX1/history")[1]["history"]
 check("history records who, why and what changed", (len(hist) >= 2, hist[0]["reason"], hist[0]["changes"]["name"][1], hist[0]["by"] != ""), (True, "Reverting the test change", nm, True))
-check("Account Manager and staff cannot read the history", (api(O, "GET", "/owner/stores/NTX1/history")[0], api(U, "GET", "/owner/stores/NTX1/history")[0]), (403, 403))
+check("Account Owner and staff cannot read the history", (api(O, "GET", "/owner/stores/NTX1/history")[0], api(U, "GET", "/owner/stores/NTX1/history")[0]), (403, 403))
 api(H, "POST", "/host/stores", {"id": "TST3", "name": "Blank Test"})
 check("filling a blank identity value needs no reason", api(H, "POST", "/host/stores/TST3", {"npi": "1234567893", "city": "Haslet"})[0], 200)
 check("changing it afterwards does", api(H, "POST", "/host/stores/TST3", {"city": "Keller"})[0], 400)
@@ -124,8 +124,8 @@ nos = [x["acctNo"] for x in api(H, "GET", "/host/stores")[1]["stores"] if x["acc
 check("account numbers are unique", len(nos), len(set(nos)))
 check("account number cannot be set through an update", api(H, "POST", "/host/stores/TST3", {"acctNo": "IL-999999"})[0] in (200,) and [x for x in api(H, "GET", "/host/stores")[1]["stores"] if x["id"] == "TST3"][0]["acctNo"] == t3["acctNo"], True)
 check("assigning again returns the same number", api(H, "POST", "/host/stores/TST3/acctno", {})[1]["acctNo"], t3["acctNo"])
-check("Account Manager cannot assign or change an account number", api(O, "POST", "/owner/stores/TST3/acctno", {})[0], 403)
-check("Account Manager sees the number (read-only)", [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0].get("acctNo", "x") != "x", True)
+check("Account Owner cannot assign or change an account number", api(O, "POST", "/owner/stores/TST3/acctno", {})[0], 403)
+check("Account Owner sees the number (read-only)", [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0].get("acctNo", "x") != "x", True)
 check("host turns the Calendar switch on", (st({"calendar": True})[0], getS()["calendar"]), (200, True))
 check("host creates a new pharmacy with its whole profile", api(H, "POST", "/host/stores", {"id": "tst2", "name": "Test Two", "city": "Haslet", "state": "TX", "zip": "76052", "npi": "1234567893", "dea": "AB1234563",
       "ncpdp": "1234567", "license": "A1", "services": ["retail", "delivery"], "calendar": False, "hours": good_hours})[0], 200)
@@ -159,7 +159,7 @@ check("rep cannot change a phone number", api(RT, "POST", "/host/users/" + sub, 
 check("rep cannot change pharmacy access", api(RT, "POST", "/host/users/" + sub, {"stores": {"NTX1": False}})[0], 403)
 check("rep cannot mix an allowed and a disallowed change", api(RT, "POST", "/host/users/" + sub, {"acctType": "tech", "disabled": True})[0], 403)
 check("rep cannot add a user", api(RT, "POST", "/host/users", {"login": "zz1", "name": "Z", "phone": "8175550003", "stores": {}, "smsConsent": True})[0], 403)
-check("rep cannot touch the Account Manager", (api(RT, "POST", "/host/users/" + ownersub, {"perms": {"remove": False}})[0], api(RT, "POST", "/host/users/" + ownersub + "/reset-password", {})[0]), (403, 403))
+check("rep cannot touch the Account Owner", (api(RT, "POST", "/host/users/" + ownersub, {"perms": {"remove": False}})[0], api(RT, "POST", "/host/users/" + ownersub + "/reset-password", {})[0]), (403, 403))
 check("rep cannot import", api(RT, "POST", "/host/import/NTX1", {"archive": []})[0], 403)
 api(H, "POST", "/host/users/" + sub, {"disabled": True})
 check("rep cannot change a user who is switched off", api(RT, "POST", "/host/users/" + sub, {"acctType": "tech"})[0], 403)
@@ -202,5 +202,5 @@ r2 = dr("NTX1", {"city": "Haslet"}); d2 = [d for d in api(H, "GET", "/host/draft
 check("supervisor rejects with a reason", api(H, "POST", "/host/drafts/NTX1/%s/reject" % d2, {"note": "Does not match the license"})[0], 200)
 check("rejected draft changes nothing", getS().get("city"), "Keller")
 check("rep sees the decision", [(d["status"], d["decisionNote"]) for d in api(RT, "GET", "/host/drafts")[1]["drafts"]][0], ("rejected", "Does not match the license"))
-check("Account Manager and staff cannot see drafts", (api(O, "GET", "/owner/drafts")[0], api(U, "GET", "/owner/drafts")[0]), (403, 403))
+check("Account Owner and staff cannot see drafts", (api(O, "GET", "/owner/drafts")[0], api(U, "GET", "/owner/drafts")[0]), (403, 403))
 print("\nFAILED:", fails if fails else "none"); sys.exit(1 if fails else 0)

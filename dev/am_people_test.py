@@ -1,4 +1,4 @@
-# Account Manager tab: add people (pending until first sign-in), see them go active, cancel an invite, delete.
+# Account Owner tab: add people (pending until first sign-in), see them go active, cancel an invite, delete.
 # Real local sign-in (moto), no mocks. Run ./reset.sh first.
 import json, sys, os
 from playwright.sync_api import sync_playwright
@@ -55,7 +55,7 @@ with sync_playwright() as pw:
     rows = am.locator('.ulist .urow')
     row = am.locator('.ulist .urow:has-text("dtech")')
     check('new person is listed as Pending', 'Pending' in row.inner_text() and 'Temp password until' in row.inner_text())
-    check('pending person sits right under the Account Manager', 'dtech' in rows.nth(1).inner_text())
+    check('pending person sits right under the Account Owner', 'dtech' in rows.nth(1).inner_text())
     check('pending row offers Cancel invite', row.locator('[data-del]').inner_text() == 'Cancel invite')
     row.locator('[data-copy]').click(); am.wait_for_timeout(300)
     clip = am.evaluate('navigator.clipboard.readText()')
@@ -123,7 +123,7 @@ with sync_playwright() as pw:
     check('active person deleted', True)
     st.reload(); st.wait_for_timeout(2500)
     check("deleted person's open session is shut out", not st.is_visible('#listBody') or st.is_visible('#liUser'))
-    # 7. one shared computer: the Account Manager signs out, the new person signs in on the same browser
+    # 7. one shared computer: the Account Owner signs out, the new person signs in on the same browser
     am.fill('#npName', 'Kim Shared'); am.fill('#npLogin', 'kshared'); am.fill('#npPhone', '8175551515'); am.check('#npConsent'); am.click('#npAdd')
     am.wait_for_selector('#passBox:has-text("kshared")')
     ktemp = am.locator('#passBox b.mono').nth(2).inner_text()
@@ -134,7 +134,7 @@ with sync_playwright() as pw:
     am.fill('#liPass', 'ownerpass99'); am.fill('#liUser', 'kshared')
     check('typing a different Login ID clears a password the browser filled in', am.input_value('#liPass') == '')
     sign_in(am, 'NTX1', 'kshared', ' ' + ktemp + ' ', 'kimpass1234')          # pasted with stray spaces
-    check('new person signs in on the same browser with a pasted temporary password', am.is_visible('#tabs') and 'Account Manager' not in am.inner_text('#tabs'))
+    check('new person signs in on the same browser with a pasted temporary password', am.is_visible('#tabs') and 'Account Owner' not in am.inner_text('#tabs'))
     check('no script errors', not errs); print(errs) if errs else None
     b.close()
 print("\n%d failed" % len(FAIL) if FAIL else "\nall passed"); sys.exit(1 if FAIL else 0)

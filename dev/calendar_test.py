@@ -24,7 +24,7 @@ def node(arg): return json.loads(subprocess.check_output(["node", "boot.mjs", js
 node({"makeHost": {"login": "Neo", "name": "Thomas Fisher", "phone": "8175559999", "tempPassword": "hosttemp12a"}})
 H, HA = login("neo", "hosttemp12a", "hostpass999"); api(H, "POST", "/host-unlock", {"password": "hostpass999", "accessToken": HA})
 check("add NTX2 (host)", api(H, "POST", "/host/stores", {"id": "NTX2", "name": "Other Pharmacy"})[0], 200)
-check("Account Manager cannot switch the calendar on", api(O, "POST", "/owner/stores/NTX1", {"calendar": True})[0], 403)
+check("Account Owner cannot switch the calendar on", api(O, "POST", "/owner/stores/NTX1", {"calendar": True})[0], 403)
 def mk(login_id, stores, cal):
     s, r = api(O, "POST", "/owner/users", {"login": login_id, "name": login_id.upper(), "phone": "(817) 555-%04d" % (abs(hash(login_id)) % 10000), "smsConsent": True,
         "stores": stores, "perms": {"calendar": cal}})

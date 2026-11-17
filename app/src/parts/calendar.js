@@ -1,4 +1,4 @@
-/* ---------------- Calendar tab (switched on per pharmacy and per person by the Account Manager) ----------------
+/* ---------------- Calendar tab (switched on per pharmacy and per person by the Account Owner) ----------------
    The calendar is its own page (calendar.html) shown inside this one. It takes its storage and the signed-in
    person from window.ILCAL_HOST below, so it never has its own sign-in. The server checks every request: the
    person can open the pharmacy, has the Calendar privilege, and the pharmacy has Calendar switched on. */
