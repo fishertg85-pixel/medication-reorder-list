@@ -114,6 +114,12 @@ function cleanHours(h){
 }
 // Additional closed days beyond the weekly hours: dated days the pharmacy enters by hand (Christmas Eve, a regional day like Good Friday in south
 // Louisiana). A day is saved for that year only, or repeats every year. All show on the calendar for everyone who can open it. Anything else is dropped.
+// Federal holidays the pharmacy is closed on (a list of ids). The calendar still shows federal holidays as its own display setting.
+const FED_HOL = ['newyear', 'mlk', 'presidents', 'memorial', 'juneteenth', 'july4', 'labor', 'columbus', 'veterans', 'thanks', 'xmas'];
+function cleanHolClosed(h){
+  if(!Array.isArray(h) || h.some(x => !FED_HOL.includes(x))) throw bad('Federal holidays: pick them from the list.');
+  return FED_HOL.filter(x => h.includes(x));
+}
 function cleanClosures(c){
   if(c == null || typeof c !== 'object' || Array.isArray(c)) throw bad('Closed days: unrecognized format.');
   const days = Array.isArray(c.days) ? c.days : [];
@@ -145,7 +151,8 @@ async function allStores(){
     .map(s => ({ id: s.sk, ...pick(s, STORE_FIELDS), timezone: TIMEZONES.includes(s.timezone) ? s.timezone : DEFAULT_TZ, hasLogo: !!s.hasLogo, calendar: s.calendar === true,
       deaVerified: s.dea && s.deaVerifiedDea === s.dea ? { at: s.deaVerifiedAt || '', by: s.deaVerifiedBy || '' } : null,
       services: Array.isArray(s.services) ? s.services.filter(x => SERVICES.includes(x)) : [], hours: Array.isArray(s.hours) && s.hours.length === 7 ? s.hours : null,
-      closures: s.closures && Array.isArray(s.closures.days) ? { days: s.closures.days } : { days: [] } }))
+      closures: s.closures && Array.isArray(s.closures.days) ? { days: s.closures.days } : { days: [] },
+      holClosed: Array.isArray(s.holClosed) ? s.holClosed : null }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 const maskStore = s => ({ ...s, ein: '', einMasked: maskEin(s.ein) });      // only IronLedger sees a full EIN
@@ -321,12 +328,13 @@ function storeFields(b){
   if(f.clientId && !CLIENT_ID.test(f.clientId)) throw bad('Pick the client from the list.');
   if(b.hours !== undefined) f.hours = cleanHours(b.hours);
   if(b.closures !== undefined) f.closures = cleanClosures(b.closures);
+  if(b.holClosed !== undefined) f.holClosed = cleanHolClosed(b.holClosed);
   return f;
 }
 // What each side may change on a pharmacy.
 // The Account Owner (the pharmacy's primary account holder) may change only these. Everything else (name, address, email, license, NPI, DEA, NCPDP,
 // services, the Calendar switch) is set by IronLedger (the host login); billing follows the client's identity, so those must stay consistent.
-const AM_EDITABLE = ['phone', 'fax', 'email', 'timezone', 'hours', 'closures', 'licenseExpires', 'deaExpires'];
+const AM_EDITABLE = ['phone', 'fax', 'email', 'timezone', 'hours', 'closures', 'holClosed', 'licenseExpires', 'deaExpires'];
 // Identity: once a value is on file it is hard to change. Even the host must give a reason, and every change is written to the pharmacy's change history.
 const IDENTITY = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp', 'clientId', 'entityLegalName', 'entityType', 'ein'];
 async function nextAcctNo(){                              // the client's IronLedger account number: generated once, never changed

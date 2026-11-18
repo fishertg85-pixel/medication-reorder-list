@@ -98,9 +98,13 @@ check("closed day: name required", stO({"closures": {"days": [{"d": "2026-12-28"
 check("closed day: same date twice refused", stO({"closures": {"days": [{"d": "2026-12-28", "n": "a", "y": False}, {"d": "2026-12-28", "n": "b", "y": False}]}})[0], 400)
 check("closed day: more than 60 refused", stO({"closures": {"days": [{"d": "2026-%02d-%02d" % (1 + i // 28, 1 + i % 28), "n": "x", "y": False} for i in range(61)]}})[0], 400)
 check("a refused request changes nothing", len(getS()["closures"]["days"]), 2)
+check("federal holiday closures saved by the Account Owner", (stO({"holClosed": ["xmas", "july4"]})[0], getS()["holClosed"]), (200, ["july4", "xmas"]))
+check("federal holiday: unknown id refused", stO({"holClosed": ["bogus"]})[0], 400)
+check("staff cannot edit federal holiday closures", api(U, "POST", "/owner/stores/NTX1", {"holClosed": []})[0], 403)
 check("staff cannot edit closed days", api(U, "POST", "/owner/stores/NTX1", {"closures": {"days": []}})[0], 403)
 check("closed days appear for staff who open the pharmacy", [x["n"] for x in [x for x in api(U, "GET", "/me")[1]["stores"] if x["id"] == "NTX1"][0]["closures"]["days"]], ["Mardi Gras", "Day after Thanksgiving"])
-check("closed-day change is in the history", "closures" in api(H, "GET", "/host/stores/NTX1/history")[1]["history"][0]["changes"], True)
+_h = api(H, "GET", "/host/stores/NTX1/history")[1]["history"]
+check("closed-day and federal-holiday changes are in the history", (any("closures" in x["changes"] for x in _h), any("holClosed" in x["changes"] for x in _h)), (True, True))
 check("Account Owner cannot add a pharmacy", api(O, "POST", "/owner/stores", {"id": "ZZ9", "name": "Nope"})[0], 403)
 check("Account Owner still sees the identifiers (read-only)", [x for x in api(O, "GET", "/owner/stores")[1]["stores"] if x["id"] == "NTX1"][0]["npi"], "")
 # identity values on file are hard to change: a reason is required even for the host, and every change is kept in the history

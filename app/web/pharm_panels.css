@@ -44,3 +44,4 @@
 .entity{margin-top:12px;padding-top:10px;border-top:1px solid var(--line,#d9dee6);} .entity .clh{display:block;margin-bottom:6px;}
 .lockhint.warn{color:#9c4221;font-weight:600;}
 .pfields>label,.pidbox,.pidbox>*{min-width:0;} .pfields select{text-overflow:ellipsis;}
+.hdrop{margin:8px 0;} .hdrop summary{cursor:pointer;font-size:13px;font-weight:600;padding:6px 9px;border:1px solid var(--line,#ccc);border-radius:6px;} .hdlist{padding:6px 4px;display:grid;gap:4px;}
