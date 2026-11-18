@@ -7,7 +7,7 @@ const CLIENT_PANELS = [['ent', 'Client And Legal Entity'], ['addr', 'Addresses']
 const CLIENT_LAYOUT = {"v":2,"cols":12,"panels":{"ent":[1,1,4,30],"addr":[5,1,4,44],"contact":[9,1,4,44],"act":[1,45,12,14]}};
 const CLIENT_SAMPLE = {id:'IL-000001', legalName:'NorTex Holdings LLC', dba:'NorTex Pharmacy', entityType:'llc', ein:'12-3456789', address:'100 Main St', suite:'Suite 5', city:'Haslet', state:'TX', zip:'76052', billingSame:false, bAddress:'PO Box 12', bCity:'Haslet', bState:'TX', bZip:'76052', phone:'817-555-0100', fax:'817-555-0101',
   contacts:[{role:'relations', name:'Pat Owner', title:'Owner', email:'pat@example.com', phone:'817-555-0102'},{role:'billing', name:'Sam Books', title:'Bookkeeper', email:'sam@example.com', phone:''}], pharmacies:['NTX1','NTX2']};
-const CLIENT_PAGE = { id: 'client', title: 'Client Account Page (host)', panels: CLIENT_PANELS, layout: CLIENT_LAYOUT,
+const CLIENT_PAGE = { id: 'client', title: 'Host Account (Client) Setup Page', panels: CLIENT_PANELS, layout: CLIENT_LAYOUT,
   render: (_unused, panels) => clientCardHtml(CLIENT_SAMPLE, { host: true, stores: [{ id: 'NTX1', name: 'NorTex Pharmacy - Haslet' }, { id: 'NTX2', name: 'NorTex Pharmacy - Keller' }] }, { panels }) };
 const CONTACT_ROLE_LABELS = { relations: 'Client relations', billing: 'Billing', other: 'Other' };
 const clientLocked = (k, cl, c) => !c.isNew && !!cl[k];                 // identity values already on file are locked until the host unlocks them with a reason

@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Client Account Page (host) Layout Editor</title><meta name="viewport" content="width=device-width, initial-scale=1">
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Host Account (Client) Setup Page Layout Editor</title><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root{
     --bg:#f4f6fa; --panel:#ffffff; --text:#1a1d23; --muted:#5f6673; --line:#d9dee7;
@@ -315,7 +315,7 @@ body.pv #vp{margin-top:14px;} body.pv #vp .pcard{box-shadow:0 2px 14px rgba(0,0,
 #codebox{max-width:1100px;margin:14px 20px 40px;} #codebox textarea{width:100%;box-sizing:border-box;height:84px;font:12px Consolas,monospace;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--input-bg);color:var(--text);}
 #codebox .row{display:flex;gap:8px;margin:6px 0;flex-wrap:wrap;align-items:center;} #report{font-size:13px;margin-top:8px;white-space:pre-line;}
 </style></head><body>
-<div id="bar"><b>Layout Editor: Client Account Page (host)</b>
+<div id="bar"><b>Layout Editor: Host Account (Client) Setup Page</b>
 <label>Preview width <select id="width"><option value="full">Full window</option><option value="1920">1920</option><option value="1680">1680</option><option value="1536">1536</option><option value="1366">1366</option><option value="1280">1280</option><option value="1100">1100 (stacked)</option><option value="820">820 (tablet, stacked)</option></select></label>
 <label class="ed"><input type="checkbox" id="sample" checked> Show sample registry result</label>
 <button id="preview" class="ed" title="See the page as it will look in a browser, without the editing tools">Preview</button><span class="pvonly"><b>Preview: how the page will look</b> <button id="back">Back To Editing</button> <span>(Esc also goes back)</span></span>
@@ -362,8 +362,12 @@ function layoutGridHtml(page, L, body){
 const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
 const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['act', 'Calendar And Save']];
 const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,35],"contact":[4,1,4,35],"hrs":[8,1,5,55],"reg":[1,36,7,37],"svc":[1,79,12,19],"act":[8,56,5,23]}};
-const PHARM_PAGE = { id: 'pharm', title: 'Pharmacy Setup Page (host)', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
+const PHARM_PAGE = { id: 'pharm', title: 'Host Pharmacy Setup Page', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
   render: (sample, panels) => pharmCardHtml(sample, { logo: '', holder: 'Pat Owner (owner)', host: true, clients: [{ id: 'IL-000001', legalName: 'NorTex Holdings LLC', entityType: 'llc', ein: '12-3456789' }] }, { panels }) };
+// The Account Owner's version of the same page has its own layout (Neo arranges it separately in the layout editor: page key pharm_owner).
+const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,35],"contact":[4,1,4,35],"hrs":[8,1,5,55],"reg":[1,36,7,37],"svc":[1,79,12,19],"act":[8,56,5,23]}};
+const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_PANELS, layout: PHARM_OWNER_LAYOUT,
+  render: (sample, panels) => pharmCardHtml(Object.assign({}, sample, { ein: '', einMasked: '••-•••4321' }), { logo: '', holder: 'Pat Owner (owner)' }, { panels }) };
 const pharmLayoutOk = L => layoutOk(PHARM_PAGE, L);
 const pharmLayout = () => pharmLayoutOk(PHARM_LAYOUT) ? PHARM_LAYOUT : null;
 const sw = (attrs, on, title) => `<label class="switch" title="${esc(title || '')}"><input type="checkbox" ${attrs}${on ? ' checked' : ''}><span></span></label>`;
@@ -458,7 +462,7 @@ const PHARM_BODY = {
           <div style="margin-top:8px"><button class="btn2 small" data-hist="${esc(s.id)}">Change history</button><div data-histout></div></div></div>` : ''}</div>`
 };
 // the whole card, built by the layout engine
-function pharmCardHtml(s, c, L){ return layoutGridHtml(PHARM_PAGE, L, id => PHARM_BODY[id](s, c)); }
+function pharmCardHtml(s, c, L){ return layoutGridHtml(c.host ? PHARM_PAGE : PHARM_OWNER_PAGE, L, id => PHARM_BODY[id](s, c)); }
 
 // ---------------- behaviour shared by the Account Owner page and the host page ----------------
 // o = { base: '/owner' | '/host', stores: () => [store, …], say: text => …, after: async () => … }
@@ -580,7 +584,7 @@ const CLIENT_PANELS = [['ent', 'Client And Legal Entity'], ['addr', 'Addresses']
 const CLIENT_LAYOUT = {"v":2,"cols":12,"panels":{"ent":[1,1,4,30],"addr":[5,1,4,44],"contact":[9,1,4,44],"act":[1,45,12,14]}};
 const CLIENT_SAMPLE = {id:'IL-000001', legalName:'NorTex Holdings LLC', dba:'NorTex Pharmacy', entityType:'llc', ein:'12-3456789', address:'100 Main St', suite:'Suite 5', city:'Haslet', state:'TX', zip:'76052', billingSame:false, bAddress:'PO Box 12', bCity:'Haslet', bState:'TX', bZip:'76052', phone:'817-555-0100', fax:'817-555-0101',
   contacts:[{role:'relations', name:'Pat Owner', title:'Owner', email:'pat@example.com', phone:'817-555-0102'},{role:'billing', name:'Sam Books', title:'Bookkeeper', email:'sam@example.com', phone:''}], pharmacies:['NTX1','NTX2']};
-const CLIENT_PAGE = { id: 'client', title: 'Client Account Page (host)', panels: CLIENT_PANELS, layout: CLIENT_LAYOUT,
+const CLIENT_PAGE = { id: 'client', title: 'Host Account (Client) Setup Page', panels: CLIENT_PANELS, layout: CLIENT_LAYOUT,
   render: (_unused, panels) => clientCardHtml(CLIENT_SAMPLE, { host: true, stores: [{ id: 'NTX1', name: 'NorTex Pharmacy - Haslet' }, { id: 'NTX2', name: 'NorTex Pharmacy - Keller' }] }, { panels }) };
 const CONTACT_ROLE_LABELS = { relations: 'Client relations', billing: 'Billing', other: 'Other' };
 const clientLocked = (k, cl, c) => !c.isNew && !!cl[k];                 // identity values already on file are locked until the host unlocks them with a reason

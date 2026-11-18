@@ -1,0 +1,684 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Account Owner Pharmacy Page Layout Editor</title><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#f4f6fa; --panel:#ffffff; --text:#1a1d23; --muted:#5f6673; --line:#d9dee7;
+    --head:#1f3864; --head-text:#ffffff; --head-sub:#c9d3e6; --nav:#172b4f;
+    --accent:#1f7a3d; --accent-hover:#186331; --link:#1a5fb4; --danger:#b42318;
+    --input-bg:#ffffff; --input-line:#b9c2d0; --row-alt:#fafbfd; --hover:#eaf1ff;
+    --sect:#eef2f8; --sect-text:#1f3864; --sect-fda:#e6f3ea; --sect-fda-text:#1d5c34;
+    --warn-bg:#fdecea; --warn-line:#f2b8b5; --warn-text:#7a271a;
+    --info-bg:#eaf1ff; --info-line:#b9d0f5; --info-text:#1f3864;
+    --new-bg:#fff4e5; --shadow:0 8px 24px rgba(0,0,0,.14);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#14171c; --panel:#1d2128; --text:#e6e8ec; --muted:#9aa3b2; --line:#323844;
+      --head:#111827; --head-text:#f3f4f6; --head-sub:#9aa3b2; --nav:#0b1220;
+      --accent:#2e9e55; --accent-hover:#38b463; --link:#7cb3ff; --danger:#f0715f;
+      --input-bg:#14171c; --input-line:#3d4452; --row-alt:#20252d; --hover:#263247;
+      --sect:#232a36; --sect-text:#b9c8e6; --sect-fda:#1d2e24; --sect-fda-text:#9ad3ad;
+      --warn-bg:#3a1f1c; --warn-line:#6b302a; --warn-text:#f5b7ae;
+      --info-bg:#1b2638; --info-line:#2f4466; --info-text:#b9cdf0;
+      --new-bg:#33291b; --shadow:0 8px 24px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#14171c; --panel:#1d2128; --text:#e6e8ec; --muted:#9aa3b2; --line:#323844;
+    --head:#111827; --head-text:#f3f4f6; --head-sub:#9aa3b2; --nav:#0b1220;
+    --accent:#2e9e55; --accent-hover:#38b463; --link:#7cb3ff; --danger:#f0715f;
+    --input-bg:#14171c; --input-line:#3d4452; --row-alt:#20252d; --hover:#263247;
+    --sect:#232a36; --sect-text:#b9c8e6; --sect-fda:#1d2e24; --sect-fda-text:#9ad3ad;
+    --warn-bg:#3a1f1c; --warn-line:#6b302a; --warn-text:#f5b7ae;
+    --info-bg:#1b2638; --info-line:#2f4466; --info-text:#b9cdf0;
+    --new-bg:#33291b; --shadow:0 8px 24px rgba(0,0,0,.5);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 "Segoe UI",Arial,Helvetica,sans-serif;}
+  a{color:var(--link);}
+  header{background:var(--head);color:var(--head-text);padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+  header h1{font-size:18px;margin:0;font-weight:600;}
+  header .sub{font-size:12px;color:var(--head-sub);}
+  .spacer{flex:1;}
+  .conn{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--head-sub);}
+  .dot{width:9px;height:9px;border-radius:50%;background:#d9534f;display:inline-block;}
+  .dot.ok{background:#2ecc71;}
+  .hbtn{background:transparent;color:var(--head-text);border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;}
+  .hbtn:hover{background:rgba(255,255,255,.1);}
+  .theme-btn{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;padding:0;}
+  .theme-btn svg{width:18px;height:18px;}
+  nav{display:flex;background:var(--nav);padding:0 12px;}
+  nav button{background:none;border:none;color:var(--head-sub);padding:10px 16px;cursor:pointer;font-size:13px;border-bottom:3px solid transparent;}
+  nav button.active{color:var(--head-text);border-bottom-color:#f0b429;}
+  main{padding:18px 20px 60px;max-width:1300px;margin:0 auto;}
+  .panel{display:none;} .panel.active{display:block;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px;}
+  h2{font-size:15px;margin:0 0 10px;}
+  .hint{font-size:12.5px;color:var(--muted);}
+  input[type=text],input[type=number],input[type=date],input[type=file]{background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:7px 9px;font-size:14px;font-family:inherit;}
+  input:focus{outline:2px solid var(--link);outline-offset:-1px;}
+  .search-wrap{position:relative;}
+  #search{width:100%;font-size:16px;padding:11px 12px;}
+  .results{position:absolute;left:0;right:0;z-index:50;background:var(--panel);border:1px solid var(--line);border-radius:0 0 8px 8px;max-height:440px;overflow-y:auto;box-shadow:var(--shadow);display:none;}
+  .results > div{padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px;}
+  .results > div.hi, .results > div[data-i]:hover{background:var(--hover);}
+  .results .sect{background:var(--sect);color:var(--sect-text);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;cursor:default;position:sticky;top:0;}
+  .results .sect.fda{background:var(--sect-fda);color:var(--sect-fda-text);}
+  .results .sub{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .results .none{color:var(--muted);cursor:default;}
+  .results .newdrug{color:var(--accent);font-weight:600;}
+  .usedb{color:#e0a100;font-weight:700;}
+  .brandfoot{display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 10px 18px;font-size:11.5px;color:var(--muted);letter-spacing:.02em;}
+  .brandfoot img{height:20px;width:auto;}
+  .spin{display:inline-block;width:11px;height:11px;margin-right:7px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-1px;}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .results .muted{color:var(--muted);}
+  .dm{color:var(--link);font-size:11.5px;font-weight:600;text-decoration:none;white-space:nowrap;margin-left:6px;}
+  .dm:hover{text-decoration:underline;}
+  #newDrug{display:none;margin-top:10px;padding:12px;border-radius:8px;background:var(--new-bg);border:1px solid var(--line);}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);border-bottom:2px solid var(--line);padding:8px 6px;white-space:nowrap;}
+  td{border-bottom:1px solid var(--line);padding:6px;vertical-align:middle;}
+  tbody tr:nth-child(even) td{background:var(--row-alt);}
+  td input[type=text], td input[type=number]{width:100%;padding:5px 7px;font-size:13px;}
+  td input.ndcin{font-family:Consolas,Menlo,monospace;font-size:13px;width:100%;max-width:150px;min-width:130px;}
+  #ndcPop > div{padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px;}
+  #ndcPop > div.hi, #ndcPop > div[data-p]:hover{background:var(--hover);}
+  .mono{font-family:Consolas,Menlo,monospace;}
+  .ndc-txt{font-family:Consolas,Menlo,monospace;font-weight:400;letter-spacing:.02em;}
+  .ndcmid{font-weight:800;font-size:1.12em;color:var(--text);background:var(--sect);padding:0 2px;border-radius:3px;}
+  td select{background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:5px 6px;font-size:12.5px;font-family:inherit;width:100%;max-width:330px;}
+  td.ndc{min-width:170px;}
+  td.mfr{font-size:12.5px;min-width:120px;max-width:180px;}
+  #listBody td:nth-child(2), #archBody td:nth-child(2){min-width:200px;}
+  td.pkg{width:140px;}
+  td.dist select{min-width:165px;max-width:210px;font-size:12.5px;}
+  td.qty input.lastqty{border-color:#e0a100;background:var(--new-bg);}
+  #listBody td.qty input{min-width:58px;width:58px;} #listBody td.pkg input{min-width:90px;width:90px;}
+  td.need select{min-width:112px;font-size:12.5px;} td.need select.need{border-color:#e0a100;background:var(--new-bg);}
+  td.need select.out{border-color:#c0392b;color:#b03020;font-weight:700;}
+  #listBody tr.is-out td:first-child{box-shadow:inset 4px 0 0 #c0392b;}
+  .needtag{font-size:12px;font-weight:600;white-space:nowrap;} .needtag.out{color:#b03020;}
+  td.dist select.need{border-color:#e0a100;background:var(--new-bg);}
+  td.qty{width:80px;}
+  button.edit{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 3px;}
+  button.edit:hover{color:var(--link);}
+  th.chk, td.chk{text-align:center;width:70px;}
+  td.chk input{width:20px;height:20px;cursor:pointer;accent-color:var(--accent);}
+  #listBody tr.is-ordered td{background:color-mix(in srgb, var(--accent) 12%, var(--panel)) !important;}
+  #listBody tr.is-ordered td b{color:var(--muted);} td.pkg{width:170px;} td.ven{width:160px;} td.ndc{white-space:nowrap;font-family:Consolas,Menlo,monospace;font-size:12.5px;}
+  .maker{font-size:11.5px;color:var(--muted);}
+  #archBody tr.order td{cursor:pointer;background:var(--panel);font-size:13px;}
+  #archBody tr.order:hover td{background:var(--hover);}
+  #archBody tr.order.open td{background:var(--sect);border-bottom-color:transparent;}
+  #archBody tr.order-line td{background:var(--row-alt);font-size:12.5px;}
+  #archBody tr.order-line td:first-child{border-left:3px solid var(--sect-text);}
+  .caret{display:inline-block;width:12px;color:var(--muted);}
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:7px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;}
+  .btn:hover{background:var(--accent-hover);}
+  .btn:disabled{opacity:.45;cursor:default;}
+  .btn2{background:transparent;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:7px 12px;font-size:13px;cursor:pointer;}
+  .btn2:hover{background:var(--hover);}
+  .x{background:none;border:none;color:var(--danger);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px;}
+  .empty{text-align:center;color:var(--muted);padding:18px !important;}
+  .banner{padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:12px;border:1px solid;}
+  .banner.warn{background:var(--warn-bg);border-color:var(--warn-line);color:var(--warn-text);}
+  .banner.info{background:var(--info-bg);border-color:var(--info-line);color:var(--info-text);}
+  ol.steps{margin:6px 0 0;padding-left:20px;line-height:1.9;}
+  .toast{position:fixed;bottom:20px;right:20px;background:#111;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:200;}
+  .toast.show{opacity:.95;}
+  @media (max-width:700px){ td.pkg,td.ven{width:auto;} header{padding:10px 14px;} main{padding:14px;} }
+
+  /* ---- cloud version additions ---- */
+  select[data-utype]{max-width:240px;}
+  input[type=tel],input[type=email],input[type=password]{background:var(--input-bg);color:var(--text);border:1px solid var(--input-line);border-radius:6px;padding:7px 9px;font-size:14px;font-family:inherit;}
+  #storeLogo{height:38px;width:38px;object-fit:contain;border-radius:6px;background:#fff;padding:2px;}
+  .hsel{background:rgba(255,255,255,.08);color:var(--head-text);border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:6px 8px;font-size:12.5px;max-width:260px;}
+  .hsel option{color:#111;}
+  .who{font-size:12px;color:var(--head-sub);}
+  .addrow{display:flex;gap:8px;align-items:stretch;}
+  .addrow .search-wrap{flex:1;}
+  .added-by{font-size:11px;color:var(--muted);}
+  /* sign-in */
+  #login{min-height:calc(100vh - 52px);display:none;align-items:center;justify-content:center;padding:20px;background:var(--bg);}
+  .li-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:26px 24px;width:100%;max-width:380px;box-shadow:var(--shadow);}
+  .li-card h1{font-size:18px;margin:0 0 4px;} .li-card .hint{margin-bottom:14px;}
+  .li-card label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.04em;}
+  .li-card input{width:100%;font-size:16px;padding:10px 11px;}
+  .li-card .btn{width:100%;margin-top:16px;padding:11px;font-size:15px;}
+  #liBrand{text-align:center;min-height:20px;margin-bottom:6px;}
+  #liBrand img{max-height:96px;max-width:200px;object-fit:contain;display:block;margin:0 auto 8px;}
+  .li-pname{font-weight:700;font-size:15px;} .li-none{color:var(--muted);font-size:13px;}
+  .li-msg{min-height:18px;margin-top:12px;font-size:13px;color:var(--danger);} .li-msg.ok{color:var(--accent);}
+  .li-links{margin-top:12px;font-size:13px;text-align:center;}
+  #liCodeIn,#liFCode{letter-spacing:.3em;font-family:Consolas,Menlo,monospace;text-align:center;}
+  /* Account Owner tab */
+  .svcs{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:8px 0;} .svcs .plabel{flex-basis:100%;}
+.hrs{margin:8px 0;} .hrow{display:flex;gap:8px;align-items:center;margin:3px 0;white-space:nowrap;} .hrow>span{width:78px;} .hrow input[type=time]{width:120px;padding:6px 6px;}
+.pcard{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px;}
+.pgrid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-template-rows:repeat(var(--rows,1),minmax(12px,auto));column-gap:12px;row-gap:0;}
+.pnl{grid-column:var(--x) / span var(--w);grid-row:var(--y) / span var(--h);border:1px solid var(--line);border-radius:8px;padding:0 0 10px;margin-bottom:12px;min-width:0;align-self:stretch;box-sizing:border-box;}
+.pnl .pt{margin:0;padding:7px 12px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);white-space:nowrap;}
+.pnl .pb{padding:10px 12px 0;}
+.pnl[data-pnl=id] .pb{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;} .pidbox .hint{margin:0 0 6px;}
+.pnl .oth{grid-column:1/-1;}
+@media (max-width:1279px){ .pgrid{display:block;} .pnl{margin-bottom:10px;} }
+.plogo{width:150px;display:flex;flex-direction:column;align-items:center;gap:6px;}
+.plogo img{max-width:140px;max-height:100px;object-fit:contain;}
+.pfields{flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 12px;min-width:240px;}
+.pfields .npirow{grid-column:1/-1;}.npibox{margin-top:6px;padding:8px 10px;border:1px solid var(--line,#ccc);border-radius:6px;font-size:13px;}.npibox.bad{color:#a11;}.npiflag{color:#8a5a00;margin-top:4px;}
+.pfields .pid,.pfields .svcs,.pfields .hrs,.pfields .calsw{grid-column:1/-1;font-size:13px;}
+.pfields label span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;}
+.pfields input,.pfields select,.formgrid select{width:100%;background:var(--input-bg,var(--bg));color:var(--text,var(--ink));border:1px solid var(--input-line,var(--line));border-radius:6px;padding:7px 9px;font-size:14px;font-family:inherit;} .pfields label:has(.wide){grid-column:span 2;}
+.switch{position:relative;display:inline-block;width:38px;height:22px;vertical-align:middle;}
+.switch input{opacity:0;width:0;height:0;}
+.switch span{position:absolute;inset:0;background:var(--input-line,var(--line));border-radius:22px;transition:.15s;cursor:pointer;}
+.switch span:before{content:"";position:absolute;height:16px;width:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.15s;}
+.switch input:checked + span{background:var(--accent);}
+.switch input:checked + span:before{transform:translateX(16px);}
+.switch input:disabled + span{opacity:.5;}
+.pnl label.chk{display:inline-flex;align-items:center;gap:6px;margin:4px 14px 4px 0;font-size:13px;}
+.pnl .ro{padding:7px 9px;border:1px dashed var(--line);border-radius:6px;font-size:14px;min-height:20px;color:var(--text,var(--ink));}
+.pnl .ro.empty{color:var(--muted);}
+.pnl .lockhint{grid-column:1/-1;font-size:12px;color:var(--muted);}
+.pnl .chips{display:flex;flex-wrap:wrap;gap:6px;} .pnl .chip{border:1px solid var(--line);border-radius:14px;padding:3px 10px;font-size:13px;}
+.pnl .newid{max-width:220px;text-transform:uppercase;}
+@media (max-width:520px){ .hrow{flex-wrap:wrap;white-space:normal;} .hrow input[type=time]{width:104px;} .hrow>span{width:70px;} .pfields{min-width:0;} .pnl .pt{white-space:normal;} }
+.pnl [hidden]{display:none!important;} .pnl .identbar{grid-column:1/-1;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);} .pnl input[readonly],.pnl select:disabled{background:transparent;border-style:dashed;opacity:.85;}
+
+/* closed days (Hours panel) */
+.closed{margin-top:12px;padding-top:10px;border-top:1px solid var(--line,#d9dee6);}
+.closed .clh{display:block;margin-bottom:6px;}
+.clrow{display:flex;align-items:center;gap:10px;padding:2px 0;}
+.clrow .cld{min-width:8.5em;color:var(--muted,#5b6675);}
+.clrow .cln{flex:1;}
+.cladd{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin-top:6px;}
+.cladd input[type=text]{flex:1;min-width:10em;}
+
+/* licensed entity (License And Registration panel) */
+.entity{margin-top:12px;padding-top:10px;border-top:1px solid var(--line,#d9dee6);} .entity .clh{display:block;margin-bottom:6px;}
+.lockhint.warn{color:#9c4221;font-weight:600;}
+.pfields>label,.pidbox,.pidbox>*{min-width:0;} .pfields select{text-overflow:ellipsis;}
+.hdrop{margin:8px 0;} .hdrop summary{cursor:pointer;font-size:13px;font-weight:600;padding:6px 9px;border:1px solid var(--line,#ccc);border-radius:6px;} .hdlist{padding:6px 4px;display:grid;gap:4px;}
+
+  body.wideTab main{max-width:none;}
+  .btn.small,.btn2.small{padding:5px 10px;font-size:12.5px;}
+  .btn2.danger{color:var(--bad, #a33);border-color:currentColor;}
+  .copyb{padding:4px 8px;vertical-align:middle;line-height:0;} .copyb svg{display:block;}
+  table.people th, table.people td{white-space:nowrap;}
+  table.people tr.dirty td{background:color-mix(in srgb, #e0a100 14%, var(--panel)) !important;}   /* no wrapping in the people list */
+  table.people td.acts{white-space:nowrap;} table.people td.copycell{padding-left:18px;}
+  @media (max-width:820px){ table.people td.copycell:empty{display:none;}
+    table.people td.acts, table.people td.hint, table.people td[data-l="Status"]{grid-column:1 / -1;} }
+  #idleWarn{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:60;max-width:min(560px,calc(100vw - 32px));background:#fff4d6;color:#3a2a00;border:2px solid #e0a100;border-radius:10px;padding:12px 16px;font-weight:600;box-shadow:0 6px 24px rgba(0,0,0,.25);}
+  .npmsg{min-height:1.4em;margin-top:8px;font-weight:600;color:var(--bad, #a33);} .npmsg.ok{color:var(--ok, #2f6b4e);}
+  .ustat{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:1px 9px;white-space:nowrap;}
+  .ustat.ok{background:var(--ok-soft, #d5e6dc);color:var(--ok, #2f6b4e);} .ustat.wait{background:var(--warn-soft, #f3e7d8);color:var(--warn, #8a5a22);}
+  .ustat.bad{background:var(--bad-soft, #f2ded9);color:var(--bad, #8e3d2b);} .ustat.off{background:var(--panel-2, #ddd);color:var(--muted, #555);}
+  label.btn2{display:inline-block;}
+  .tscroll{overflow-x:auto;} #ownPeople .tscroll{overflow-x:visible;}
+  table.people th.c, table.people td.c{text-align:center;}
+  /* users: line 1 = user, username, mobile, status, buttons; line 2 = privileges */
+  .ulist{margin-top:4px;}
+  .ucols{display:grid;grid-template-columns:minmax(170px,1.6fr) minmax(100px,1fr) minmax(130px,1fr) minmax(170px,1.3fr) 240px 40px;gap:12px;align-items:center;}
+  .uhead{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700;padding:8px 8px;border-bottom:2px solid var(--line);}
+  .urow{padding:10px 8px;border-bottom:1px solid var(--line);}
+  .urow.off{opacity:.6;} .urow.dirty{background:color-mix(in srgb, #e0a100 14%, var(--panel));border-radius:6px;}
+  .ucell{white-space:nowrap;min-width:0;} .ucell.uname, .ucell.mono{overflow:hidden;text-overflow:ellipsis;}
+  .ucell.acts{text-align:right;} .ucell.copycell{text-align:center;}
+  .urole{margin-left:8px;font-size:11.5px;font-weight:600;color:var(--muted);}
+  .upriv{display:flex;flex-wrap:wrap;align-items:center;gap:8px 22px;margin-top:8px;}
+  .plabel{min-width:88px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;}
+  .pgroup{display:inline-flex;align-items:center;gap:14px;flex-wrap:wrap;} .pg{font-size:12px;color:var(--muted);font-weight:600;}
+  .priv{display:inline-flex;align-items:center;gap:6px;font-size:13px;white-space:nowrap;}
+  @media (max-width:820px){
+    .uhead{display:none;}
+    .ucols{grid-template-columns:1fr 1fr;gap:6px 12px;}
+    .ucell[data-l]:before{content:attr(data-l);display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;}
+    .ucell.uname, .ucell.acts{grid-column:1 / -1;} .ucell.acts{text-align:left;} .ucell.copycell:empty{display:none;}
+    .ucell.uname, .ucell.mono{white-space:normal;}
+  }
+  /* when the full table is wider than the space it has, each person becomes a card instead of scrolling sideways */
+  table.people.cards thead{display:none;}
+  table.people.cards, table.people.cards tbody{display:block;}
+  table.people.cards tr{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px 12px;padding:10px 0;border-bottom:2px solid var(--line);}
+  table.people.cards td{border:none;text-align:left !important;padding:2px 4px;}
+  table.people.cards td[data-l]:before{content:attr(data-l);display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;}
+  table.people.cards td[data-l="Person"], table.people.cards td.acts, table.people.cards td.hint{grid-column:1 / -1;}
+  table.people.cards td.copycell:empty{display:none;}
+  table.people.cards td{background:transparent;} table.people.cards td[data-l="Status"]{grid-column:span 2;}
+  table.people tr.off td{opacity:.55;}
+  .formgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px 12px;}
+  .formgrid label span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;}
+  .formgrid input{width:100%;}
+  label.chk{display:inline-flex;align-items:center;gap:6px;margin:4px 14px 4px 0;font-size:13px;}
+  #passBox{display:none;}
+  /* phones: tables become cards */
+  @media (max-width:760px){
+    header{gap:8px;padding:10px 12px;} header h1{font-size:15px;} header .sub,.hide-sm{display:none;}
+    nav{overflow-x:auto;} nav button{padding:10px 12px;white-space:nowrap;}
+    main{padding:10px 10px 80px;} .card{padding:12px;}
+    #listTable thead, #archTable thead{display:none;}
+    #listBody tr{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;padding:10px 4px;border-bottom:2px solid var(--line);}
+    #listBody tr td{border:none;padding:2px 0;background:transparent !important;}
+    #listBody td[data-l]:before{content:attr(data-l);display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+    #listBody td.drug{grid-column:1/-1;font-size:14px;order:-2;}
+    #listBody td.added{order:-3;grid-column:1/-1;font-size:11.5px;color:var(--muted);}
+    #listBody td.ndc, #listBody td.dist{grid-column:1/-1;}
+    #listBody td.ndc input.ndcin{max-width:none;font-size:15px;}
+    #listBody td.dist select{max-width:none;font-size:15px;padding:8px;}
+    #listBody td.pkg, #listBody td.qty{width:auto;}
+    #listBody td input{font-size:15px;padding:7px;}
+    #listBody td.chk{text-align:left;} #listBody td.chk input{width:26px;height:26px;}
+    #listBody tr.is-ordered{background:color-mix(in srgb, var(--accent) 12%, var(--panel));}
+    #listBody td.empty{grid-column:1/-1;}
+    #archBody tr.order td:nth-child(2){display:block;}
+    #archBody tr.order{display:grid;grid-template-columns:1fr;} #archBody tr.order td{border:none;}
+    #archBody tr.order-line{display:grid;grid-template-columns:1fr 1fr;padding:6px 0;border-bottom:1px solid var(--line);}
+    #archBody tr.order-line td{border:none;padding:2px 4px;} #archBody tr.order-line td:first-child{display:none;}
+    #archBody tr.order-line td.drug{grid-column:1/-1;}
+    #archBody td[data-l]:before{content:attr(data-l);display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;}
+    .results{max-height:60vh;}
+    table.people thead{display:none;}
+    table.people tr{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:10px 0;border-bottom:2px solid var(--line);}
+    table.people td{border:none;text-align:left !important;}
+    table.people td[data-l]:before{content:attr(data-l);display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;}
+    .pfields label:has(.wide){grid-column:auto;}
+    .toast{left:10px;right:10px;bottom:14px;text-align:center;}
+  }
+</style><style>
+body{margin:0;background:var(--bg,#eef3f8);}
+#bar{position:sticky;top:0;z-index:30;background:#0e2238;color:#fff;padding:8px 14px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:13px;}
+#bar b{font-size:14px;} #bar select,#bar button{font-size:13px;padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;cursor:pointer;font-family:inherit;}
+#bar select option{color:#000;} #bar button:disabled{opacity:.4;cursor:default;} #bar .sp{flex:1;} #bar label{display:flex;align-items:center;gap:5px;}
+#msg{font-weight:600;color:#ffd77a;min-height:1em;}
+#help{max-width:1100px;margin:10px 20px 0;font-size:13px;color:var(--muted);line-height:1.5;}
+#vp{margin:10px auto 0;padding:0 20px;box-sizing:content-box;}
+#vp .pcard{margin-bottom:12px;}
+.pgrid.force-stack{display:block !important;} .pgrid.force-stack .pnl{margin-bottom:10px;} .pgrid.force-grid{display:grid !important;}
+.pgrid.guides{background-image:repeating-linear-gradient(to right,rgba(43,108,176,.10) 0,rgba(43,108,176,.10) calc((100% - 132px)/12),transparent calc((100% - 132px)/12),transparent calc((100% - 132px)/12 + 12px));}
+.pnl{position:relative;} .pnl .pb{pointer-events:none;user-select:none;} .pnl .pt{cursor:grab;touch-action:none;display:flex;justify-content:space-between;} .pnl .pt small{font-weight:400;opacity:.7;letter-spacing:0;text-transform:none;}
+.pnl.drag{box-shadow:0 0 0 3px #2b6cb0;z-index:5;} .pnl.drag .pt{cursor:grabbing;}
+.rz{position:absolute;background:#2b6cb0;opacity:.45;touch-action:none;border-radius:4px;z-index:3;} .rz:hover{opacity:1;}
+.rz[data-s=e]{right:-6px;top:20%;bottom:20%;width:11px;cursor:ew-resize;} .rz[data-s=w]{left:-6px;top:20%;bottom:20%;width:11px;cursor:ew-resize;}
+.rz[data-s=s]{bottom:-6px;left:20%;right:20%;height:11px;cursor:ns-resize;} .rz[data-s=n]{top:-6px;left:20%;right:20%;height:11px;cursor:ns-resize;}
+.rz[data-s=se]{right:-7px;bottom:-7px;width:16px;height:16px;cursor:nwse-resize;} .rz[data-s=nw]{left:-7px;top:-7px;width:16px;height:16px;cursor:nwse-resize;}
+.rz[data-s=ne]{right:-7px;top:-7px;width:16px;height:16px;cursor:nesw-resize;} .rz[data-s=sw]{left:-7px;bottom:-7px;width:16px;height:16px;cursor:nesw-resize;}
+.force-stack .rz{display:none;}
+.pvonly{display:none;}
+body.pv .ed,body.pv #help,body.pv #codebox,body.pv .rz,body.pv .pnl .pt small{display:none !important;}
+body.pv .pvonly{display:inline-flex;align-items:center;gap:8px;}
+body.pv #bar{background:#44546a;}
+body.pv .pgrid.guides{background-image:none;}
+body.pv .pnl .pb{pointer-events:auto;user-select:auto;} body.pv .pnl .pt{cursor:default;}
+body.pv #vp{margin-top:14px;} body.pv #vp .pcard{box-shadow:0 2px 14px rgba(0,0,0,.18);}
+#codebox{max-width:1100px;margin:14px 20px 40px;} #codebox textarea{width:100%;box-sizing:border-box;height:84px;font:12px Consolas,monospace;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--input-bg);color:var(--text);}
+#codebox .row{display:flex;gap:8px;margin:6px 0;flex-wrap:wrap;align-items:center;} #report{font-size:13px;margin-top:8px;white-space:pre-line;}
+</style></head><body>
+<div id="bar"><b>Layout Editor: Account Owner Pharmacy Page</b>
+<label>Preview width <select id="width"><option value="full">Full window</option><option value="1920">1920</option><option value="1680">1680</option><option value="1536">1536</option><option value="1366">1366</option><option value="1280">1280</option><option value="1100">1100 (stacked)</option><option value="820">820 (tablet, stacked)</option></select></label>
+<label class="ed"><input type="checkbox" id="sample" checked> Show sample registry result</label>
+<button id="preview" class="ed" title="See the page as it will look in a browser, without the editing tools">Preview</button><span class="pvonly"><b>Preview: how the page will look</b> <button id="back">Back To Editing</button> <span>(Esc also goes back)</span></span>
+<button class="ed" id="undo" disabled>Undo</button><button class="ed" id="reset">Reset To Start</button><button class="ed" id="check">Check All Widths</button><span class="sp"></span><span id="msg"></span><button class="ed" id="copy">Copy Layout Code</button></div>
+<div id="help">Drag a panel by its title bar to move it. Drag any blue edge or corner to make it wider, narrower, taller or shorter (width snaps to 12 columns, height to 12 px steps). Double-click a title bar to fit the box to its content. Panels never overlap and never go shorter than their content, so nothing is ever cut off. The page uses the full window width. Sample data is shown; nothing here is saved to the pharmacy.</div>
+<div id="vp"><div class="pcard"></div></div>
+<div id="codebox"><b>Layout Code</b> <span class="hint">(copy it and send it back to be built into the app; to reload an earlier layout, paste a code here and press Apply)</span>
+<textarea id="code" spellcheck="false"></textarea><div class="row"><button class="btn2 small" id="apply">Apply Pasted Code</button></div><div id="report"></div></div>
+<script>
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const TZ_NAMES = {'America/New_York':'Eastern', 'America/Chicago':'Central', 'America/Denver':'Mountain', 'America/Phoenix':'Arizona (no daylight saving)',
+  'America/Los_Angeles':'Pacific', 'America/Anchorage':'Alaska', 'Pacific/Honolulu':'Hawaii', 'America/Puerto_Rico':'Atlantic (Puerto Rico)'};
+/* ---------------- layout engine: the standard for every page of the suite ----------------
+   A page is a set of panels placed on a 12-column grid. Each panel's place is [column, row, width in columns, height in rows]
+   (1-based; a row is 12 px; a panel is never shorter than its content, so nothing is cut off). Narrow screens (under 1280 px wide)
+   ignore the layout and stack the panels in reading order (top row first, then left to right).
+   A page is described once, as a PAGE object:  { id, title, panels:[[panelId, 'Title'], ...], layout:{v:2, cols:12, panels:{id:[x,y,w,h]}}, render(sample, panels) }
+   Its look is arranged ONLY in the layout editor (dev/build_layout_editor.py <page>), by Neo, then the code it gives is pasted into the page's
+   layout constant and is permanent: nobody can change it from the app.
+   To add a page: write src/parts/<page>_panels.js with a PAGE, its panel bodies and a sample, add it to build_layout_editor.py's PAGES, add it to assemble.py. */
+const LAYOUT_COLS = 12, LAYOUT_ROW = 12;   // a row unit is 12 px; a panel's height is a number of rows
+function layoutOk(page, L){
+  if(!L || L.v !== 2 || L.cols !== LAYOUT_COLS || !L.panels) return false;
+  const seen = [];
+  for(const [id] of page.panels){
+    const p = L.panels[id]; if(!Array.isArray(p) || p.length !== 4 || p.some(n => !Number.isInteger(n) || n < 1)) return false;
+    const [x, y, w, h] = p; if(x + w - 1 > LAYOUT_COLS || w < 2 || h < 6 || h > 200) return false;
+    if(seen.some(q => x < q[0] + q[2] && q[0] < x + w && y < q[1] + q[3] && q[1] < y + h)) return false;     // overlapping panels
+    seen.push(p);
+  }
+  return true;
+}
+// the grid: panels in reading order (row, then column) so narrow screens stack them sensibly; body(id) gives a panel's inner HTML
+function layoutGridHtml(page, L, body){
+  L = L || (layoutOk(page, page.layout) ? page.layout : null) || { panels: Object.fromEntries(page.panels.map(([id], i) => [id, [1, i + 1, LAYOUT_COLS, 6]])) };
+  const order = page.panels.slice().sort((a, b) => (L.panels[a[0]][1] - L.panels[b[0]][1]) || (L.panels[a[0]][0] - L.panels[b[0]][0]));
+  const rows = Math.max(...Object.values(L.panels).map(p => p[1] + p[3] - 1));
+  return `<div class="pgrid" style="--rows:${rows}">${order.map(([id, title]) => { const [x, y, w, h] = L.panels[id];
+    return `<section class="pnl" data-pnl="${id}" style="--x:${x};--y:${y};--w:${w};--h:${h}"><h4 class="pt">${title}</h4><div class="pb">${body(id)}</div></section>`; }).join('')}</div>`;
+}
+
+/* ---------------- pharmacy setup page (host) and pharmacy account page (Account Owner): panels and their layout ----------------
+   Built on the layout engine (layout_engine.js). PHARM_LAYOUT is set once by Neo with the layout editor and is the same for everyone. */
+const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
+const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['act', 'Calendar And Save']];
+const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,35],"contact":[4,1,4,35],"hrs":[8,1,5,55],"reg":[1,36,7,37],"svc":[1,79,12,19],"act":[8,56,5,23]}};
+const PHARM_PAGE = { id: 'pharm', title: 'Host Pharmacy Setup Page', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
+  render: (sample, panels) => pharmCardHtml(sample, { logo: '', holder: 'Pat Owner (owner)', host: true, clients: [{ id: 'IL-000001', legalName: 'NorTex Holdings LLC', entityType: 'llc', ein: '12-3456789' }] }, { panels }) };
+// The Account Owner's version of the same page has its own layout (Neo arranges it separately in the layout editor: page key pharm_owner).
+const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,35],"contact":[4,1,4,35],"hrs":[8,1,5,55],"reg":[1,36,7,37],"svc":[1,79,12,19],"act":[8,56,5,23]}};
+const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_PANELS, layout: PHARM_OWNER_LAYOUT,
+  render: (sample, panels) => pharmCardHtml(Object.assign({}, sample, { ein: '', einMasked: '••-•••4321' }), { logo: '', holder: 'Pat Owner (owner)' }, { panels }) };
+const pharmLayoutOk = L => layoutOk(PHARM_PAGE, L);
+const pharmLayout = () => pharmLayoutOk(PHARM_LAYOUT) ? PHARM_LAYOUT : null;
+const sw = (attrs, on, title) => `<label class="switch" title="${esc(title || '')}"><input type="checkbox" ${attrs}${on ? ' checked' : ''}><span></span></label>`;
+const SF = [['name','Pharmacy name'],['address','Street address'],['suite','Suite / unit (if any)'],['city','City'],['state','State'],['zip','ZIP code'],['phone','Phone'],['fax','Fax'],['email','Email'],['timezone','Time zone']];
+const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
+const stateSelect = (attrs, cur) => `<select ${attrs}><option value=""></option>${US_STATES.map(v => `<option${v === (cur || '') ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
+const tzSelect = (attrs, cur) => `<select ${attrs}>${Object.entries(TZ_NAMES).map(([v, l]) => `<option value="${v}"${v === (cur || 'America/Chicago') ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+// license, identifiers, services and hours kept on each pharmacy (edit-only: the add-pharmacy form stays short)
+const SF2 = [['license','State pharmacy license #'],['licenseExpires','License expires','date'],['npi','NPI (10 digits)'],['ncpdp','NCPDP ID (7 digits)'],['dea','DEA number'],['deaExpires','DEA expires','date']];
+const SVC_LABELS = {retail:'Retail dispensing', controlled:'Controlled substances (DEA)', nonsterile:'Nonsterile compounding', sterile:'Sterile compounding', hazardous:'Hazardous drug compounding',
+  immunizations:'Immunizations', delivery:'Delivery', ltc:'Long-term care', specialty:'Specialty', infusion:'Home infusion'};
+const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+// Additional closed days beyond the weekly hours: dated days the pharmacy adds (name, date, optional every year). Yearly-observance toggles removed; observances are entered by hand (Neo, 2026-11-17).
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+// Federal holidays the pharmacy is closed on: a dropdown on the Hours panel. Stored on the pharmacy (holClosed); until one is saved these defaults show.
+const FED_HOL = [['newyear', "New Year's Day"], ['mlk', 'Martin Luther King Jr. Day'], ['presidents', "Presidents' Day"], ['memorial', 'Memorial Day'], ['juneteenth', 'Juneteenth'], ['july4', 'Independence Day'], ['labor', 'Labor Day'], ['columbus', 'Columbus Day'], ['veterans', 'Veterans Day'], ['thanks', 'Thanksgiving Day'], ['xmas', 'Christmas Day']];
+const FED_DEFAULT = ['newyear', 'memorial', 'july4', 'labor', 'thanks', 'xmas'];
+const holOf = s => Array.isArray(s && s.holClosed) ? s.holClosed : FED_DEFAULT;
+const holLabel = n => n ? n + ' federal holiday' + (n === 1 ? '' : 's') + ' closed' : 'No federal holidays closed';
+const holOfCard = card => [...card.querySelectorAll('[data-hol]')].filter(i => i.checked).map(i => i.dataset.hol);
+const closuresOf = s => s && s.closures && Array.isArray(s.closures.days) ? { days: s.closures.days } : { days: [] };
+const closeDate = x => MONTHS[+x.d.slice(5, 7) - 1] + ' ' + (+x.d.slice(8, 10)) + (x.y ? ', every year' : ', ' + x.d.slice(0, 4));
+const closeRows = days => days.map((x, i) => `<div class="clrow"><span class="cld">${esc(closeDate(x))}</span><span class="cln">${esc(x.n)}</span><button type="button" class="edit" data-cldel="${i}" title="Remove this day">✕</button></div>`).join('');
+const closedState = card => { const el = card.querySelector('[data-cl]'); try{ return JSON.parse(el.dataset.cl); }catch(_){ return []; } };
+const closuresOfCard = card => ({ days: closedState(card) });
+const hoursOf = s => Array.isArray(s.hours) && s.hours.length === 7 ? s.hours : [null,{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},null];
+const field = (s, k, l, t, lock) => `<label><span>${l}</span>${k === 'timezone' ? tzSelect(`data-sf="timezone"`, s.timezone) : k === 'state' ? stateSelect(`data-sf="state"${lock ? ' disabled data-ident="1"' : ''}`, s.state) : `<input type="${t || 'text'}" data-sf="${k}" value="${esc(s[k] || '')}"${k === 'address' ? ' class="wide"' : ''}${lock ? ' readonly data-ident="1"' : ''}>`}</label>`;
+const roVal = v => `<div class="ro${v ? '' : ' empty'}">${v ? esc(v) : 'Not set'}</div>`;
+const roField = (s, k, l, t) => `<label><span>${l}</span>${roVal(s[k])}</label>`;
+// c.host: the card is being used by IronLedger (the host login). Everyone else sees license, identifiers, services and the Calendar switch but cannot change them.
+// Identity (name, address, license, NPI, DEA, NCPDP) is set by IronLedger and locked once on file; the Account Owner keeps phone, fax, time zone, hours and the two expiration dates.
+const IDENT = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp', 'clientId', 'entityLegalName', 'entityType', 'ein'], AM_EDIT = ['phone', 'fax', 'email', 'timezone', 'licenseExpires', 'deaExpires'];
+const cardField = (s, k, l, t, c) => IDENT.includes(k) ? (c.host ? field(s, k, l, t, !c.isNew && !!s[k] && !c.rep && !c.repView) : roField(s, k, l, t)) : (c.host || AM_EDIT.includes(k) ? field(s, k, l, t) : roField(s, k, l, t));
+const LOCKED = 'Set by IronLedger. Contact your IronLedger representative to change this.';
+const LOCKED_ID = 'Name, address, license and identifiers must match your license and billing, so IronLedger sets them. Phone, fax, email, time zone, hours and expiration dates are yours to keep current.';
+const deaStat = s => s.deaVerified ? 'Checked on the DEA site ' + esc((s.deaVerified.at || '').slice(0, 10)) + (s.deaVerified.by ? ' by ' + esc(s.deaVerified.by) : '') : 'Not checked yet.';
+// Licensed entity (the entity named on the license, DEA and NPI; the EIN is required) and the client (the bill-to account, IL- number).
+const ENT_TYPES = [['corporation', 'Corporation'], ['llc', 'LLC'], ['sole_prop', 'Sole proprietor'], ['partnership', 'Partnership'], ['other', 'Other']];
+const entTypeLabel = v => (ENT_TYPES.find(x => x[0] === v) || [0, ''])[1];
+const entTypeSelect = (attrs, cur) => `<select ${attrs}><option value=""></option>${ENT_TYPES.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
+const clientName = (c, id) => { const k = (c.clients || []).find(x => x.id === id); return k ? k.legalName + ' (' + id + ')' : id || ''; };
+const clientSelect = (c, cur, attrs) => `<select data-sf="clientId" ${attrs || ''}><option value=""></option>${(c.clients || []).map(k => `<option value="${esc(k.id)}"${k.id === cur ? ' selected' : ''}>${esc(k.legalName)} (${esc(k.id)})</option>`).join('')}</select>`;
+const entityHost = (s, c) => { const lk = !c.isNew && !!s.ein && !c.rep && !c.repView, lkn = !c.isNew && !!s.entityLegalName && !c.rep && !c.repView, lkt = !c.isNew && !!s.entityType && !c.rep && !c.repView;
+  return `<div class="entity"><b class="clh">Licensed entity</b> <span class="hint">the entity named on the license, DEA and NPI</span>
+    <div class="pfields"><label><span>Legal name (required)</span><input type="text" data-sf="entityLegalName" maxlength="120" value="${esc(s.entityLegalName || '')}"${lkn ? ' readonly data-ident="1"' : ''}></label>
+    <label><span>Entity type (required)</span>${entTypeSelect(`data-sf="entityType"${lkt ? ' disabled data-ident="1"' : ''}`, s.entityType)}</label>
+    <label><span>EIN (required)</span><input type="text" data-sf="ein" maxlength="11" placeholder="12-3456789" value="${esc(s.ein || '')}"${lk ? ' readonly data-ident="1"' : ''}></label></div>
+    ${(c.clients || []).length && !c.repView && (!s.ein || c.isNew) ? '<button type="button" class="btn2 small" data-entsame="1" title="Fills the legal name, type and EIN from the selected client">Same as client</button>' : ''}
+    ${!c.isNew && !s.ein ? '<div class="lockhint warn">EIN missing: required for every pharmacy.</div>' : ''}</div>`; };
+const entityRo = s => `<div class="entity"><b class="clh">Licensed entity</b><div class="pfields">${roField(s, 'entityLegalName', 'Legal name')}<label><span>Entity type</span>${roVal(entTypeLabel(s.entityType))}</label><label><span>EIN</span>${roVal(s.einMasked)}</label></div></div>`;
+const PHARM_BODY = {
+  id: (s, c) => c.isNew
+      ? `<div class="pidbox"><label class="pfields"><span>Pharmacy ID</span><input type="text" class="newid" data-newid="1" maxlength="20" autocapitalize="characters" spellcheck="false"></label>
+        <div class="hint">What people type when they sign in (2–20 letters, numbers or dashes, like NTX1). It can’t be changed later. Add the logo after the pharmacy is created.</div>
+        <label class="pfields"><span>Client (bill-to account, required)</span>${clientSelect(c, '')}</label></div>`
+      : `<div class="plogo">${c.logo ? `<img src="${esc(c.logo)}" alt="">` : '<span class="hint">No logo</span>'}
+        <label class="btn2 small">Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" data-logo="${esc(s.id)}" hidden></label>
+        ${c.logo ? `<button class="btn2 small" data-nologo="${esc(s.id)}">Remove</button>` : ''}</div>
+      <div class="pidbox"><div class="pid">Pharmacy ID: <b>${esc(s.id)}</b></div><div class="hint">(what people type when they sign in)</div>
+        <div class="pid">Primary account holder: <b>${esc(c.holder || 'Account Owner')}</b></div><div class="hint">(the Account Owner)</div>
+        ${c.host
+          ? `<label class="pfields"><span>Client (bill-to account)</span>${clientSelect(c, s.clientId, !!s.clientId && !c.rep && !c.repView ? 'disabled data-ident="1"' : '')}</label>${s.clientId ? '' : '<div class="lockhint warn">No client yet: pick one.</div>'}`
+          : `<div class="pid">Account number: <b>${s.clientId ? esc(s.clientId) : 'Not assigned yet'}</b></div><div class="hint">(generated once by IronLedger; never changes)</div>`}</div>`,
+  contact: (s, c) => `<div class="pfields">${SF.map(([k, l]) => cardField(s, k, l, undefined, c)).join('')}${c.host ? '' : `<div class="lockhint">${LOCKED_ID}</div>`}</div>`,
+  reg: (s, c) => c.rep ? ((h) => h.slice(0, h.indexOf('<div class="pid npirow">')) + '<div class="lockhint">A rep drafts changes and a supervisor reviews them. The NPI registry lookup and the DEA check are done by a supervisor.</div></div>')(PHARM_BODY.reg(s, { ...c, rep: false, repView: true }))
+    : c.host
+    ? `<div class="pfields">${SF2.map(([k, l, t]) => cardField(s, k, l, t, c)).join('')}</div>${entityHost(s, c)}<div class="pfields">
+        <div class="pid npirow"><button class="btn2 small" data-npilook="1" title="Checks the NPI against the public registry. Nothing changes until you save.">Look up NPI in the federal registry</button><div data-npires></div></div>
+        <div class="pid npirow"><a class="btn2 small" href="https://apps.deadiversion.usdoj.gov/webforms2/spring/validationLogin" target="_blank" rel="noopener noreferrer">Open the DEA registration check</a>${c.isNew ? '' : ' <button class="btn2 small" data-deaok="1" data-deastat title="' + deaStat(s) + '">I checked this DEA number there</button>'}</div></div>`
+    : `<div class="pfields">${SF2.map(([k, l, t]) => cardField(s, k, l, t, c)).join('')}
+        <div class="lockhint">License number, NPI, DEA and NCPDP are set by IronLedger. Expiration dates are yours to keep current.</div><div class="pid npirow hint">DEA check: ${deaStat(s)}</div></div>${entityRo(s)}`,
+  svc: (s, c) => c.host && !c.rep
+    ? `<div class="pfields"><div class="svcs">${Object.entries(SVC_LABELS).map(([k, l]) => `<label class="chk">${sw(`data-svc="${k}"`, (s.services || []).includes(k))} ${l}</label>`).join('')}</div>
+          ${field(s, 'servicesOther', 'Other services').replace('<label>', '<label class="oth">')}</div>`
+    : `<div class="pfields"><div class="chips">${(s.services || []).map(k => `<span class="chip">${esc(SVC_LABELS[k] || k)}</span>`).join('') || '<span class="hint">None set yet.</span>'}</div>
+          ${s.servicesOther ? `<div class="pid">Other: ${esc(s.servicesOther)}</div>` : ''}<div class="lockhint">${LOCKED}</div></div>`,
+  hrs: s => `<div class="pfields"><div class="hrs">${s.hours ? '' : '<div class="hint">Not set yet; these are suggestions until you save.</div>'}
+          ${hoursOf(s).map((h, i) => `<div class="hrow"><span>${DAYS[i]}</span><input type="time" data-ho="${i}" value="${h ? h.o : '09:00'}"><input type="time" data-hc="${i}" value="${h ? h.c : '18:00'}"><label class="chk">${sw(`data-hx="${i}"`, !h)} Closed</label></div>`).join('')}</div>
+          <details class="hdrop"><summary data-hsum>${holLabel(holOf(s).length)}</summary><div class="hdlist">${FED_HOL.map(([k, l]) => `<label class="chk">${sw(`data-hol="${k}"`, holOf(s).includes(k))} ${l}</label>`).join('')}</div></details>
+          <div class="closed" data-cl='${esc(JSON.stringify(closuresOf(s).days))}'><b class="clh">Additional closed days</b>
+            <div class="cllist" data-cllist>${closeRows(closuresOf(s).days)}</div>
+            <div class="cladd"><input type="date" data-cld title="Date"><input type="text" data-cln maxlength="60" placeholder="Name, e.g. Mardi Gras"><label class="chk">${sw('data-cly')} Every year</label> <button type="button" class="btn2 small" data-cladd="1">Add</button></div>
+          </div></div>`,
+  act: (s, c) => `<div class="pfields"><div class="calsw">${c.host && !c.rep
+        ? `<label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar switched on for this pharmacy</label> <span class="hint">(people also need the Calendar privilege)</span>`
+        : `Calendar: <b>${s.calendar ? 'On' : 'Off'}</b> <span class="hint">${LOCKED}</span>`}</div>
+        <div style="margin-top:10px;">${c.rep ? `<label class="reason"><span>Why (required, the supervisor reads this)</span><input type="text" data-draftnote maxlength="300"></label> <button class="btn small" data-draftstore="${esc(s.id)}">Submit for review</button>`
+          : c.isNew ? '<button class="btn small" data-createstore="1">Create pharmacy</button>' : `<button class="btn small" data-savestore="${esc(s.id)}">Save details</button>`}</div>
+        ${c.host && !c.isNew && !c.rep ? `<div class="identbar"><button class="btn2 small" data-unlockident="1">Change name, address, license or identifiers…</button>
+          <div class="hint">Locked on purpose: they must match the license and billing. A reason is required and every change is kept in the history.</div>
+          <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label>
+          <div style="margin-top:8px"><button class="btn2 small" data-hist="${esc(s.id)}">Change history</button><div data-histout></div></div></div>` : ''}</div>`
+};
+// the whole card, built by the layout engine
+function pharmCardHtml(s, c, L){ return layoutGridHtml(c.host ? PHARM_PAGE : PHARM_OWNER_PAGE, L, id => PHARM_BODY[id](s, c)); }
+
+// ---------------- behaviour shared by the Account Owner page and the host page ----------------
+// o = { base: '/owner' | '/host', stores: () => [store, …], say: text => …, after: async () => … }
+const normNm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+function pharmCardEvents(root, o){
+  root.addEventListener('change', e => { if(e.target.closest('[data-ho],[data-hc],[data-hx]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.hrTouched = '1'; }
+    if(e.target.closest('[data-hol]')){ const c = e.target.closest('.pcard'); if(c){ c.dataset.hcTouched = '1'; c.querySelector('[data-hsum]').textContent = holLabel(holOfCard(c).length); } } });
+  root.addEventListener('click', async e => {
+    const lk = e.target.closest('[data-npilook]'), us = e.target.closest('[data-npiuse]'), dk = e.target.closest('[data-deaok]');
+    const dsub = e.target.closest('[data-draftstore]');
+    const cla = e.target.closest('[data-cladd]'), cld = e.target.closest('[data-cldel]');
+    if(cla || cld){
+      const card = e.target.closest('.pcard'), box = card.querySelector('[data-cl]'), days = closedState(card);
+      if(cld) days.splice(+cld.dataset.cldel, 1);
+      else{
+        const d = card.querySelector('[data-cld]').value, n = card.querySelector('[data-cln]').value.trim(), y = card.querySelector('[data-cly]').checked;
+        if(!d){ alert('Pick the date.'); return; } if(!n){ alert('Give the day a name, for example “Day after Christmas”.'); return; }
+        if(days.some(x => x.d === d || (y && x.y && x.d.slice(5) === d.slice(5)))){ alert('That day is already listed.'); return; }
+        days.push({ d, n, y }); days.sort((a, b) => a.d.localeCompare(b.d));
+        card.querySelector('[data-cld]').value = ''; card.querySelector('[data-cln]').value = ''; card.querySelector('[data-cly]').checked = false;
+      }
+      box.dataset.cl = JSON.stringify(days); card.querySelector('[data-cllist]').innerHTML = closeRows(days); card.dataset.clTouched = '1';
+      return;
+    }
+    if(dsub){
+      const card = dsub.closest('.pcard'), cur = o.stores().find(x => x.id === dsub.dataset.draftstore) || {}, fields = {};
+      card.querySelectorAll('[data-sf]').forEach(i => { if(i.value.trim() !== String(cur[i.dataset.sf] || '')) fields[i.dataset.sf] = i.value.trim(); });
+      if(card.dataset.hrTouched) fields.hours = DAYS.map((_, i) => card.querySelector(`[data-hx="${i}"]`).checked ? null : {o: card.querySelector(`[data-ho="${i}"]`).value, c: card.querySelector(`[data-hc="${i}"]`).value});
+      if(card.dataset.clTouched) fields.closures = closuresOfCard(card);
+      if(card.dataset.hcTouched) fields.holClosed = holOfCard(card);
+      if(!Object.keys(fields).length){ alert('Change something first.'); return; }
+      busy(dsub, true);
+      try{ await api('POST', o.base + '/stores/' + encodeURIComponent(dsub.dataset.draftstore) + '/drafts', {fields, note: card.querySelector('[data-draftnote]').value.trim()}); o.say('Submitted for review.'); await o.after(); }
+      catch(err){ if(!err.auth) alert(err.message); } finally{ busy(dsub, false); }
+      return;
+    }
+    const sv = e.target.closest('[data-savestore],[data-createstore]'), ul = e.target.closest('[data-unlockident]'), hs = e.target.closest('[data-hist]');
+    const card = e.target.closest('.pcard'); if(!card) return;
+    const val = k => { const i = card.querySelector(`[data-sf=${k}]`); return i ? i.value.trim() : ''; };
+    const es = e.target.closest('[data-entsame]');
+    if(es){
+      const k = (o.clients ? o.clients() : []).find(x => x.id === (card.querySelector('[data-sf=clientId]') || {}).value);
+      if(!k){ alert('Pick the client first.'); return; }
+      const set = (n, v) => { const i = card.querySelector(`[data-sf=${n}]`); if(i && !i.readOnly && !i.disabled) i.value = v || ''; };
+      set('entityLegalName', k.legalName); set('entityType', k.entityType); set('ein', k.ein); return;
+    }
+    if(ul){
+      if(!confirm('The name, address, license and identifiers must match the license and billing. Unlock them to make a change? You will be asked for a reason.')) return;
+      card.querySelectorAll('[data-ident]').forEach(i => { i.removeAttribute('readonly'); i.removeAttribute('disabled'); });
+      card.dataset.unlocked = '1'; const r = card.querySelector('.reason'); r.hidden = false; r.querySelector('input').focus(); return;
+    }
+    if(hs){
+      const out = card.querySelector('[data-histout]'); out.innerHTML = '<div class="hint">Loading…</div>';
+      try{
+        const r = await api('GET', o.base + '/stores/' + encodeURIComponent(hs.dataset.hist) + '/history');
+        out.innerHTML = r.history.length ? r.history.map(h => `<div class="npibox"><b>${esc((h.at || '').slice(0, 16).replace('T', ' '))} UTC</b> · ${esc(h.by)}${h.reason ? ' · “' + esc(h.reason) + '”' : ''}<div class="hint">${Object.entries(h.changes).map(([k, v]) => esc(k) + ': ' + esc(Array.isArray(v[0]) ? v[0].join(', ') : v[0] == null ? '(blank)' : String(v[0])) + ' → ' + esc(Array.isArray(v[1]) ? v[1].join(', ') : String(v[1]))).join('<br>')}</div></div>`).join('') : '<div class="hint">No changes recorded yet.</div>';
+      }catch(err){ if(!err.auth) out.innerHTML = `<div class="npibox bad">${esc(err.message)}</div>`; }
+      return;
+    }
+    if(dk){
+      const dea = val('dea'); if(!dea){ alert('Type the DEA number first.'); return; }
+      if(!confirm('Confirm you looked up ' + dea.toUpperCase() + ' on the DEA registration check and the name, address and expiration match this pharmacy?')) return;
+      try{ await api('POST', o.base + '/stores/' + encodeURIComponent(card.dataset.store), {dea, deaVerified:true}); o.say('DEA check recorded.'); await o.after(); }catch(err){ if(!err.auth) alert(err.message); }
+      return;
+    }
+    if(lk){
+      const out = card.querySelector('[data-npires]'), npi = val('npi');
+      if(!/^\d{10}$/.test(npi)){ out.innerHTML = '<div class="npibox bad">Type the 10-digit NPI first.</div>'; return; }
+      out.innerHTML = '<div class="npibox hint">Looking up…</div>'; lk.disabled = true;
+      try{
+        const r = await api('GET', o.base + '/npi/' + encodeURIComponent(npi)); card._npi = r;
+        if(!r.found){ out.innerHTML = '<div class="npibox bad">No provider with that NPI is in the NPI Registry. Re-check the number.</div>'; return; }
+        const a = r.address, flags = [];
+        if(r.type !== 'organization') flags.push('This is an individual NPI. A pharmacy normally has an organization NPI.');
+        if(!r.active) flags.push('The registry shows this NPI as not active.');
+        if(r.type === 'organization' && !r.pharmacyTaxonomy) flags.push('No pharmacy taxonomy is listed for it.');
+        const cur = val('name'); if(cur && r.name && normNm(cur) !== normNm(r.name)) flags.push('The registry name differs from the pharmacy name above.');
+        const lic = r.taxonomies.filter(t => t.license).map(t => `${esc(t.license)}${t.state ? ' (' + esc(t.state) + ')' : ''}`).join(', ');
+        out.innerHTML = `<div class="npibox"><b>${esc(r.name || '(no name)')}</b> <span class="hint">${r.type === 'organization' ? 'Organization' : 'Individual'} · ${r.active ? 'Active' : 'Not active'}${r.lastUpdated ? ' · registry updated ' + esc(r.lastUpdated) : ''}</span>
+          <div>${esc([a.address, a.suite].filter(Boolean).join(', '))}${a.address ? ', ' : ''}${esc([a.city, a.state].filter(Boolean).join(', '))} ${esc(a.zip)}${a.phone ? ' · ' + esc(a.phone) : ''}${a.fax ? ' · fax ' + esc(a.fax) : ''}</div>
+          ${r.taxonomies.length ? `<div class="hint">${r.taxonomies.map(t => esc(t.desc || t.code)).join('; ')}${lic ? ' · license on file with registry: ' + lic : ''}</div>` : ''}
+          ${flags.map(f => `<div class="npiflag">⚠ ${esc(f)}</div>`).join('')}
+          <button class="btn2 small" data-npiuse="1" title="Fills name, address, phone and fax. The license number is never filled; type it from the state license.">Use these details</button></div>`;
+      }catch(err){ if(!err.auth) out.innerHTML = `<div class="npibox bad">${esc(err.message)}</div>`; }
+      finally{ lk.disabled = false; }
+      return;
+    }
+    if(us){
+      const r = card._npi; if(!r || !r.found) return;
+      if(card.querySelector('[data-ident]') && !card.dataset.unlocked){ alert('The name and address are locked. Press “Change name, address, license or identifiers…” first.'); return; }
+      const set = (k, v) => { const i = card.querySelector(`[data-sf=${k}]`); if(i && v) i.value = v; };
+      set('name', r.name); set('address', r.address.address); set('suite', r.address.suite); set('city', r.address.city); set('state', r.address.state); set('zip', r.address.zip); set('phone', r.address.phone); set('fax', r.address.fax);
+      o.say('Filled in from the registry. Press ' + (card.dataset.isNew ? 'Create pharmacy' : 'Save details') + ' to keep it.'); return;
+    }
+    if(sv){
+      const isNew = !!sv.dataset.createstore, id = isNew ? (card.querySelector('[data-newid]').value || '').trim().toUpperCase() : sv.dataset.savestore;
+      const body = {}; card.querySelectorAll('[data-sf]').forEach(i => body[i.dataset.sf] = i.value.trim());
+      const cal = card.querySelector('[data-sfcal]'); if(cal) body.calendar = cal.checked;
+      if(card.querySelector('[data-svc]')) body.services = [...card.querySelectorAll('[data-svc]')].filter(i => i.checked).map(i => i.dataset.svc);
+      const cur = o.stores().find(x => x.id === id);
+      if(card.dataset.hrTouched || (cur && cur.hours)) body.hours = DAYS.map((_, i) => card.querySelector(`[data-hx="${i}"]`).checked ? null : {o: card.querySelector(`[data-ho="${i}"]`).value, c: card.querySelector(`[data-hc="${i}"]`).value});
+      if(card.dataset.clTouched) body.closures = closuresOfCard(card);
+      if(card.dataset.hcTouched) body.holClosed = holOfCard(card);
+      const rs = card.querySelector('[data-reason]'); if(rs && rs.value.trim()) body.changeReason = rs.value.trim();
+      if(isNew){ if(!id || !body.name){ alert('Pharmacy ID and name are needed.'); return; } body.id = id; }
+      busy(sv, true);
+      try{ await api('POST', o.base + '/stores' + (isNew ? '' : '/' + encodeURIComponent(id)), body); o.say(isNew ? 'Pharmacy created: ' + id : 'Pharmacy details saved.'); await o.after(isNew); }
+      catch(err){ if(!err.auth) alert(err.message); } finally{ busy(sv, false); }
+    }
+  });
+}
+
+const PAGE = PHARM_OWNER_PAGE;
+
+const SAMPLE = {id:'NTX1', name:'NorTex Pharmacy - Haslet', address:'100 Main St', suite:'Suite 5', city:'Haslet', state:'TX', zip:'76052', phone:'817-555-0100', fax:'817-555-0101', email:'pharmacy@example.com',
+  timezone:'America/Chicago', clientId:'IL-000001', entityLegalName:'NorTex Haslet LLC', entityType:'llc', ein:'98-7654321', license:'12345', licenseExpires:'2027-06-30', npi:'1234567893', ncpdp:'1234567', dea:'AB1234563', deaExpires:'2028-03-31', services:['retail','controlled','sterile'],
+  hours:[null,{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},null], calendar:true, deaVerified:{at:'2026-11-16T12:00:00Z', by:'Pat Owner (owner)'}};
+const SAMPLE_NPI = '<div class="npibox"><b>NORTEX PHARMACY LLC</b> <span class="hint">Organization · Active · registry updated 2024-05-01</span><div>100 MAIN ST, STE 5, HASLET, TX 76252 · 817-555-0100 · fax 817-555-0101</div><div class="hint">Pharmacy - Community/Retail Pharmacy · license on file with registry: TX12345 (TX)</div><div class="npiflag">⚠ The registry name differs from the pharmacy name above.</div><button class="btn2 small">Use these details</button></div>';
+
+
+const COLS = LAYOUT_COLS, ROW = LAYOUT_ROW, MINH = 6, KEY = 'il_' + PAGE.id + '_layout_v2';
+const qs = s => document.querySelector(s);
+let L = null, hist = [], showSample = true, widthSel = 'full', pv = false;
+const clone = o => JSON.parse(JSON.stringify(o));
+try{ const saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if(saved && layoutOk(PAGE, saved)) L = saved; }catch(e){}
+if(!L) L = clone(PAGE.layout);
+const hit = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
+function resolve(P, id, pos){                    // place one panel, push the ones it lands on down, then slide everything up to close gaps
+  const Q = clone(P); Q[id] = [pos.x, pos.y, pos.w, pos.h];
+  const others = Object.keys(Q).filter(k => k !== id).sort((a, b) => Q[a][1] - Q[b][1] || Q[a][0] - Q[b][0]), placed = [id];
+  for(const k of others){ while(placed.some(q => hit(Q[k], Q[q]))) Q[k][1] = Math.max(Q[k][1] + 1, Q[placed.find(q => hit(Q[k], Q[q]))][1] + Q[placed.find(q => hit(Q[k], Q[q]))][3]); placed.push(k); }
+  const all = Object.keys(Q).sort((a, b) => Q[a][1] - Q[b][1] || Q[a][0] - Q[b][0]);
+  for(const k of all){ while(Q[k][1] > 1){ Q[k][1]--; if(all.some(q => q !== k && hit(Q[k], Q[q]))){ Q[k][1]++; break; } } }
+  return Q;
+}
+function stageWidth(){ const avail = innerWidth - 40; return widthSel === 'full' ? avail : +widthSel; }
+const stacked = () => qs('.pgrid').classList.contains('force-stack');
+function setStage(w){ const vp = qs('#vp'); vp.style.width = (w - 40 - 26) + 'px'; const g = qs('.pgrid'); if(g){ g.classList.toggle('force-stack', w < 1280); g.classList.toggle('force-grid', w >= 1280); } }
+function need(id){ const n = qs(`.pnl[data-pnl="${id}"]`); return Math.ceil((n.querySelector('.pt').offsetHeight + n.querySelector('.pb').offsetHeight + 24) / ROW); }   // rows the content needs (incl. the 12 px gap)
+function paint(){
+  const card = qs('#vp .pcard'); card.innerHTML = PAGE.render(SAMPLE, L.panels);
+  const g = card.querySelector('.pgrid'); if(!pv) g.classList.add('guides');
+  if(!pv) g.querySelectorAll('.pnl').forEach(n => { n.insertAdjacentHTML('beforeend', ['n','s','e','w','ne','nw','se','sw'].map(d => `<i class="rz" data-s="${d}"></i>`).join('')); });
+  if(showSample && !pv){ const r = g.querySelector('[data-npires]'); if(r) r.innerHTML = SAMPLE_NPI; }
+  setStage(stageWidth()); decorate(); if(!stacked()) fit(); code();
+}
+function fit(){ let ch = false; for(const [id] of PAGE.panels){ const nd = need(id), p = L.panels[id]; if(p[3] < nd){ L.panels = resolve(L.panels, id, { x: p[0], y: p[1], w: p[2], h: nd }); ch = true; decorate(); } } return ch; }
+function decorate(){ const g = qs('.pgrid'); let bottom = 0;
+  g.querySelectorAll('.pnl').forEach(n => { const p = L.panels[n.dataset.pnl]; n.style.setProperty('--x', p[0]); n.style.setProperty('--y', p[1]); n.style.setProperty('--w', p[2]); n.style.setProperty('--h', p[3]); bottom = Math.max(bottom, p[1] + p[3] - 1);
+    const t = n.querySelector('.pt'); let s = t.querySelector('small'); if(!s){ s = document.createElement('small'); t.appendChild(s); } s.textContent = p[2] + ' cols × ' + p[3] * ROW + ' px'; });
+  g.style.setProperty('--rows', bottom + 14); }
+function code(){ qs('#code').value = JSON.stringify({ v: 2, cols: COLS, panels: L.panels }); try{ localStorage.setItem(KEY, JSON.stringify(L)); }catch(e){} qs('#undo').disabled = !hist.length; }
+function say(t){ const m = qs('#msg'); m.textContent = t; clearTimeout(say.t); say.t = setTimeout(() => m.textContent = '', 4000); }
+function metrics(){
+  const g = qs('.pgrid'), cs = getComputedStyle(g), gap = parseFloat(cs.columnGap) || 12, rect = g.getBoundingClientRect(), W = g.clientWidth;
+  const colW = (W - gap * (COLS - 1)) / COLS, rows = cs.gridTemplateRows.split(' ').map(parseFloat).filter(n => !isNaN(n)), tops = []; let t = 0;
+  for(const h of rows){ tops.push(t); t += h; }
+  return { rect, gap, colW, rows, tops, rowEnd: t };
+}
+const colAt = (m, px) => Math.max(0, Math.min(COLS - 1, Math.floor((px - m.rect.left) / (m.colW + m.gap))));
+const rowAt = (m, py) => { const y = py - m.rect.top; let r = 0; for(let i = 0; i < m.tops.length; i++) if(m.tops[i] <= y) r = i; return r; };
+function overflowing(id){ const n = qs(`.pnl[data-pnl="${id}"]`), b = n && n.querySelector('.pb'); return !!b && b.scrollWidth > b.clientWidth + 1; }
+let act = null;
+document.addEventListener('pointerdown', e => {
+  if(stacked() || pv) return;
+  const rz = e.target.closest('.rz'), t = e.target.closest('.pt'), n = e.target.closest('.pnl'); if(!n || !(rz || t)) return;
+  e.preventDefault(); const id = n.dataset.pnl, p = L.panels[id], m = metrics();
+  act = { id, side: rz ? rz.dataset.s : '', start: clone(L.panels), good: clone(L.panels), gc: colAt(m, e.clientX) - (p[0] - 1), gr: rowAt(m, e.clientY) - (p[1] - 1) };
+  n.classList.add('drag'); n.setPointerCapture && n.setPointerCapture(e.pointerId);
+});
+document.addEventListener('pointermove', e => {
+  if(!act) return; const { id, side } = act, p = act.good[id], m = metrics(), c = colAt(m, e.clientX) + 1, r = rowAt(m, e.clientY) + 1;
+  let [x, y, w, h] = p;
+  if(!side){ x = Math.max(1, Math.min(COLS - w + 1, c - act.gc)); y = Math.max(1, r - act.gr); }
+  else{
+    let x2 = x + w - 1, y2 = y + h - 1;
+    if(side.includes('e')) x2 = Math.max(x + 1, Math.min(COLS, c));
+    if(side.includes('w')) x = Math.min(x2 - 1, Math.max(1, c));
+    if(side.includes('s')) y2 = Math.max(y + MINH - 1, r);
+    if(side.includes('n')) y = Math.min(y2 - MINH + 1, Math.max(1, r));
+    w = x2 - x + 1; h = y2 - y + 1;
+  }
+  let Q = resolve(act.good, id, { x, y, w, h }); if(JSON.stringify(Q) === JSON.stringify(L.panels)) return;
+  const before = L.panels; L.panels = Q; decorate();
+  if(side){
+    const nd = need(id);                                   // never shorter than the content
+    if(Q[id][3] < nd){ const bottom = Q[id][1] + Q[id][3] - 1, ny = side.includes('n') ? bottom - nd + 1 : Q[id][1]; L.panels = resolve(act.good, id, { x: Q[id][0], y: Math.max(1, ny), w: Q[id][2], h: nd }); decorate(); }
+    if(overflowing(id)){ L.panels = before; decorate(); say('Stopped: that would cut off text in ' + (PAGE.panels.find(q => q[0] === id) || [0, id])[1] + '.'); return; }
+  }
+  act.good = clone(L.panels);
+});
+document.addEventListener('pointerup', () => {
+  if(!act) return; qs('.pnl.drag') && qs('.pnl.drag').classList.remove('drag');
+  if(JSON.stringify(act.start) !== JSON.stringify(L.panels)){ hist.push(act.start); paint(); } act = null;
+});
+document.addEventListener('dblclick', e => {                // double-click a title bar: shrink or grow the box to exactly fit its content
+  const n = e.target.closest('.pnl'); if(!n || stacked() || pv) return; const r = n.querySelector('.pt').getBoundingClientRect(); if(e.clientY < r.top || e.clientY > r.bottom) return;   // the panel holds the pointer capture, so test the position
+  const id = n.dataset.pnl, p = L.panels[id], nd = need(id);
+  if(p[3] !== nd){ hist.push(clone(L.panels)); L.panels = resolve(L.panels, id, { x: p[0], y: p[1], w: p[2], h: nd }); paint(); say('Fitted to its content.'); }
+});
+const setPreview = on => { pv = on; document.body.classList.toggle('pv', on); paint(); scrollTo(0, 0); };
+qs('#preview').onclick = () => setPreview(true); qs('#back').onclick = () => setPreview(false);
+addEventListener('keydown', e => { if(e.key === 'Escape' && pv) setPreview(false); });
+qs('#undo').onclick = () => { if(hist.length){ L.panels = hist.pop(); paint(); } };
+qs('#reset').onclick = () => { hist.push(clone(L.panels)); L.panels = clone(PAGE.layout.panels); paint(); say('Back to the starting layout. Undo brings your layout back.'); };
+qs('#copy').onclick = () => { const t = qs('#code'); t.select(); try{ navigator.clipboard.writeText(t.value).then(() => say('Layout code copied.'), () => { document.execCommand('copy'); say('Layout code copied.'); }); }catch(e){ document.execCommand('copy'); say('Layout code copied.'); } };
+qs('#apply').onclick = () => { try{ const c = JSON.parse(qs('#code').value); if(!layoutOk(PAGE, c)) throw 0; hist.push(clone(L.panels)); L = c; paint(); say('Layout code applied.'); }catch(e){ say('That layout code is not valid (it must be a version 2 code).'); } };
+qs('#width').onchange = e => { widthSel = e.target.value; setStage(stageWidth()); if(!stacked() && fit()) code(); };
+qs('#sample').onchange = e => { showSample = e.target.checked; paint(); };
+addEventListener('resize', () => setStage(stageWidth()));
+qs('#check').onclick = () => {
+  const keep = stageWidth(), out = [];
+  for(const w of [1920, 1680, 1536, 1366, 1280]){ setStage(w); const bad = PAGE.panels.filter(([id]) => overflowing(id)).map(q => q[1]); const tall = PAGE.panels.filter(([id]) => need(id) > L.panels[id][3]).map(q => q[1]);
+    out.push(w + ' px wide: ' + (bad.length ? 'text cut off sideways in ' + bad.join(', ') : 'fits') + (tall.length ? ' (the page grows taller to fit: ' + tall.join(', ') + ')' : '')); }
+  setStage(keep); qs('#report').textContent = out.join('\n') + '\nBelow 1280 px wide the panels stack in one column in reading order (top row first, left to right).';
+};
+paint();
+
+</script></body></html>

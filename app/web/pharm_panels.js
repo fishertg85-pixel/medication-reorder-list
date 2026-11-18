@@ -3,8 +3,12 @@
 const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
 const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['act', 'Calendar And Save']];
 const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,35],"contact":[4,1,4,35],"hrs":[8,1,5,55],"reg":[1,36,7,37],"svc":[1,79,12,19],"act":[8,56,5,23]}};
-const PHARM_PAGE = { id: 'pharm', title: 'Pharmacy Setup Page (host)', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
+const PHARM_PAGE = { id: 'pharm', title: 'Host Pharmacy Setup Page', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
   render: (sample, panels) => pharmCardHtml(sample, { logo: '', holder: 'Pat Owner (owner)', host: true, clients: [{ id: 'IL-000001', legalName: 'NorTex Holdings LLC', entityType: 'llc', ein: '12-3456789' }] }, { panels }) };
+// The Account Owner's version of the same page has its own layout (Neo arranges it separately in the layout editor: page key pharm_owner).
+const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,35],"contact":[4,1,4,35],"hrs":[8,1,5,55],"reg":[1,36,7,37],"svc":[1,79,12,19],"act":[8,56,5,23]}};
+const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_PANELS, layout: PHARM_OWNER_LAYOUT,
+  render: (sample, panels) => pharmCardHtml(Object.assign({}, sample, { ein: '', einMasked: '••-•••4321' }), { logo: '', holder: 'Pat Owner (owner)' }, { panels }) };
 const pharmLayoutOk = L => layoutOk(PHARM_PAGE, L);
 const pharmLayout = () => pharmLayoutOk(PHARM_LAYOUT) ? PHARM_LAYOUT : null;
 const sw = (attrs, on, title) => `<label class="switch" title="${esc(title || '')}"><input type="checkbox" ${attrs}${on ? ' checked' : ''}><span></span></label>`;
@@ -99,7 +103,7 @@ const PHARM_BODY = {
           <div style="margin-top:8px"><button class="btn2 small" data-hist="${esc(s.id)}">Change history</button><div data-histout></div></div></div>` : ''}</div>`
 };
 // the whole card, built by the layout engine
-function pharmCardHtml(s, c, L){ return layoutGridHtml(PHARM_PAGE, L, id => PHARM_BODY[id](s, c)); }
+function pharmCardHtml(s, c, L){ return layoutGridHtml(c.host ? PHARM_PAGE : PHARM_OWNER_PAGE, L, id => PHARM_BODY[id](s, c)); }
 
 // ---------------- behaviour shared by the Account Owner page and the host page ----------------
 // o = { base: '/owner' | '/host', stores: () => [store, …], say: text => …, after: async () => … }
