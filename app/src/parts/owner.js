@@ -55,7 +55,7 @@ function effUser(u){
 }
 const PIN_LABEL = {none:'Not set', set:'Set', temp:'Temporary (they must choose their own)', locked:'Locked'};
 const canIssuePin = u => !!ME && u.login !== ME.login && (ME.host ? ME.hostRole !== 'rep' : (ME.owner && !u.owner && !u.host));
-const pinLine = u => `<span class="hint">Employee ID <b>${esc(u.empId || '-')}</b> · PIN: ${PIN_LABEL[u.pin || 'none']}</span> ${canIssuePin(u) ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="Makes a one-time temporary PIN for you to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}`;
+const pinLine = u => `<span class="hint">Employee ID <b>${esc(u.empId || '-')}</b>${ME && ME.pinRequired ? ` · PIN: ${PIN_LABEL[u.pin || 'none']}` : ''}</span> ${ME && ME.pinRequired && canIssuePin(u) ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="Makes a one-time temporary PIN for you to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}`;
 const stageBtns = sub => `<button class="btn small" data-upd="${esc(sub)}">Update</button> <button class="btn2 small" data-undo="${esc(sub)}">Undo</button>`;
 function peopleMsg(m){ $('ownPeopleMsg').textContent = m || ''; }
 const COPY_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';

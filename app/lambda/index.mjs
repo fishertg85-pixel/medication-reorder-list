@@ -602,6 +602,7 @@ async function pinKey(){
   return (_pinKey = r.SecretString);
 }
 const pinHash = async (sub, pin) => crypto.createHmac('sha256', await pinKey()).update(sub + ':' + pin).digest('hex');
+const PIN_REQUIRED = process.env.PIN_REQUIRED === '1';   // OFF for now (Neo 2026-11-18): sign-offs need initials only. Set PIN_REQUIRED=1 in template.yaml to turn the PIN back on.
 const PIN_MAX_FAILS = 5;
 const pinErr = (code, msg, status) => new HttpError(status || 409, msg, code);
 const pinState = p => !p.pin ? 'none' : p.pin.locked ? 'locked' : p.pin.temp ? 'temp' : 'set';
@@ -647,6 +648,7 @@ async function verifyPin(me, given, forChange){
 // sign an action: the person must have initials and a PIN; returns what is stored with the record
 async function signAs(me, body, meaning){
   if(!me.initials) throw bad('Your initials are not set yet. Ask the Account Owner to set them.');
+  if(!PIN_REQUIRED) return { ini: me.initials, emp: await ensureEmpId(me), meaning, at: now() };
   const p = await verifyPin(me, body.pin, false);
   return { ini: p.initials || me.initials, emp: await ensureEmpId(p), meaning, at: now() };
 }
@@ -1072,7 +1074,7 @@ async function route(method, path, q, body, me, claims){
   if(seg[0] === 'api') seg.shift();                    // works with or without an /api prefix
 
   if(method === 'GET' && seg[0] === 'me' && seg.length === 1)
-    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty(me), initials: me.initials || '', empId: await ensureEmpId(me), pin: pinState(me), perms: permsOf(me), stores: await storesFor(me) };
+    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty(me), initials: me.initials || '', empId: await ensureEmpId(me), pin: pinState(me), pinRequired: PIN_REQUIRED, perms: permsOf(me), stores: await storesFor(me) };
 
   if(method === 'POST' && seg[0] === 'me' && seg[1] === 'pin' && seg.length === 2) return await setMyPin(me, body);
 

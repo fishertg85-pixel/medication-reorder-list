@@ -234,8 +234,8 @@ function render(){
         <div class="upriv"><span class="plabel">Pharmacies</span><span class="pgroup">${pharm}</span></div>
         <div class="upriv"><span class="plabel">Privileges</span><span class="pgroup">${privs}</span></div>
         <div class="upriv"><span class="plabel">Signing</span><input type="text" data-uini maxlength="3" value="${esc(u.initials || '')}" style="width:70px;text-transform:uppercase;" aria-label="Initials" placeholder="Initials">
-          <span class="hint">Employee ID <b>${esc(u.empId || '-')}</b> · PIN: ${({none:'Not set', set:'Set', temp:'Temporary', locked:'Locked'})[u.pin || 'none']}</span>
-          ${!self && ME && ME.hostRole !== 'rep' ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="One-time temporary PIN to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}</div>
+          <span class="hint">Employee ID <b>${esc(u.empId || '-')}</b>${ME && ME.pinRequired ? ` · PIN: ${({none:'Not set', set:'Set', temp:'Temporary', locked:'Locked'})[u.pin || 'none']}` : ''}</span>
+          ${ME && ME.pinRequired && !self && ME.hostRole !== 'rep' ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="One-time temporary PIN to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}</div>
       </div>`;
     }).join('')}
   </div>`;
