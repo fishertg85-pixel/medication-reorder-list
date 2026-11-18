@@ -112,6 +112,7 @@ with sync_playwright() as pw:
     p.fill('#nSum', 'Rewrote storage section'); p.click('#nGo'); p.wait_for_timeout(1500); check("new version waits for approval, current stays", 'v2.0 Pending' in p.inner_text(f'tr[data-row="{d1}"]'), True)
     p.click(f'tr[data-row="{d1}"] td:nth-child(3)', button='right'); p.click('#dctx [data-dact=detail]'); p.wait_for_selector('.ddrawer'); dr = p.inner_text('.ddrawer')
     check("approver's drawer has versions, review history, activity and calendar link", all(x in dr.upper() for x in ('VERSIONS', 'REVIEW HISTORY', 'ACTIVITY', 'DOC-REVIEW|' + d1)), True)
+    import re as _r; tm = _r.findall(r'\d{4}-\d\d-\d\d \d\d:\d\d (CST|CDT)', dr); check("activity times show in pharmacy local time with zone name", len(tm) > 0, True)
     check("print stamp text shown for the current version", f'{d1}  |  v1.0' in dr.replace(' ', ' ') or f'{d1}' in dr, True); p.screenshot(path='screenshots/docs_drawer.png')
     p.click('.ddrawer [data-dact=reject]'); p.wait_for_selector('#tGo'); p.click('#tGo'); p.wait_for_timeout(300); check("reject needs a reason", p.locator('#tGo').count(), 1); p.fill('#tWhy', 'Wrong file'); p.click('#tGo'); p.wait_for_timeout(1200)
     check("rejected version is gone from pending", 'Pending' in p.inner_text(f'tr[data-row="{d1}"]'), False)

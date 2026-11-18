@@ -429,6 +429,14 @@ const DOC_TY = Object.fromEntries(DOC_TYPE_LIST.map(t => [t.c, t]));
 const DOC_FORMATS = ['Fillable PDF', 'Printable PDF'];
 const DOC_DUTY_LABELS = { owner: 'Owner', pic: 'Pharmacist-In-Charge', dp: 'Designated Person', ctech: 'Compliance Technician', staff: 'Staff' };
 const DOC_DUE_SOON = 30;
+// the log stores UTC; show it in the pharmacy's own time zone with the zone name (CST / CDT)
+function docsLocal(iso){
+  try{
+    const tz = typeof storeTZ === 'function' ? storeTZ() : 'America/Chicago', d = new Date(iso); if(isNaN(d)) return String(iso).slice(0, 16).replace('T', ' ');
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' }).formatToParts(d).map(x => [x.type, x.value]));
+    return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} ${p.timeZoneName}`;
+  }catch(e){ return String(iso).slice(0, 16).replace('T', ' ') + ' UTC'; }
+}
 const docSubFor = d => { const t = DOC_TY[d.type]; return t.sub === null || DOC_CMPA.includes(t.sub[0]) ? DOC_AF[d.area] : (d.sub || t.sub[0]); };
 const docFileName = (d, v) => `${d.id}_v${v}_${d.title.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '')}.pdf`;
 const docPathOf = (d, v) => `${DOC_TY[d.type].f}/${docSubFor(d)}/${docFileName(d, v)}`;
@@ -624,7 +632,7 @@ function docsDrawer(id){
   const dis = (ok, why) => ok ? '' : ` disabled title="${esc(why)}"`;
   const vrows = d.versions.slice().reverse().map(v => `<tr><td class="num">v${esc(v.v)}</td><td>${v.state === 'current' ? docPill('ok', 'Current') : v.state === 'pending' ? docPill('warn', 'Pending Approval') : docPill('gray', 'Superseded')}</td><td class="num">${v.effective || '-'}</td><td>${esc(v.by || '-')}</td><td>${esc(v.approvedBy || '-')}${v.selfApproved ? ' ' + docPill('warn', 'Self-approved') : ''}</td><td title="${esc(v.summary)}">${esc(v.summary)}</td><td><button class="btn2 small" data-dact="openv" data-id="${id}" data-v="${esc(v.v)}"${v.hasFile ? '' : ' disabled'}>Open</button></td></tr>`).join('');
   const rrows = (d.reviews || []).slice().reverse().map(r => `<tr><td class="num">${r.at}</td><td>${esc(r.by)}</td><td>${esc(r.outcome)}</td><td title="${esc(r.comment)}">${esc(r.comment)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No review recorded yet.</td></tr>';
-  const act = (m.log || []).filter(l => l.docId === id).slice(0, 8).map(l => `<tr><td class="num">${esc(l.at.slice(0, 16).replace('T', ' '))}</td><td>${esc(l.by)}</td><td>${esc(l.action)}${l.flag ? ' ' + docPill('warn', l.flag) : ''}</td><td title="${esc(l.detail)}">${esc(l.detail)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No activity yet.</td></tr>';
+  const act = (m.log || []).filter(l => l.docId === id).slice(0, 8).map(l => `<tr><td class="num">${esc(docsLocal(l.at))}</td><td>${esc(l.by)}</td><td>${esc(l.action)}${l.flag ? ' ' + docPill('warn', l.flag) : ''}</td><td title="${esc(l.detail)}">${esc(l.detail)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No activity yet.</td></tr>';
   const stampTxt = i.cur ? `${d.id}  |  v${i.cur.v}  |  Effective ${i.cur.effective}  |  Printed from IronLedger` : '';
   $('docsDrawer').innerHTML = `<div class="dov dright" data-ddov><aside class="ddrawer" role="dialog" aria-modal="true" aria-label="Document details">
    <div class="ddh"><div class="drow"><span class="num hint">${d.id}</span><span class="dsp"></span><button class="btn2 small" data-dact="closedrawer">Close</button></div>
