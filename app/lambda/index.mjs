@@ -552,7 +552,7 @@ async function listPeople(){
   do { const r = await idp.send(new ListUsersCommand({ UserPoolId: POOL, PaginationToken, Limit: 60 }));
     for(const u of r.Users || []){ const sub = (u.Attributes || []).find(a => a.Name === 'sub'); if(sub) status[sub.Value] = { status: u.UserStatus, enabled: u.Enabled, created: u.UserCreateDate }; }
     PaginationToken = r.PaginationToken; } while(PaginationToken);
-  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host, hostRole: p.host ? (p.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: p.host ? (p.repStores || {}) : {}, acctType: p.acctType || '', docDuty: DOC_DUTIES.includes(p.docDuty) ? p.docDuty : '',
+  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host, hostRole: p.host ? (p.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: p.host ? (p.repStores || {}) : {}, acctType: p.acctType || '', docDuty: DOC_DUTIES.includes(p.docDuty) ? p.docDuty : '', initials: p.initials || '',
     stores: p.stores || {}, perms: permsOf(p), disabled: status[p.sk] ? !status[p.sk].enabled : !!p.disabled,
     status: (status[p.sk] || {}).status || 'UNKNOWN', ...pendingOf(p, status[p.sk]) }))
     // Account Owner, host, then people still waiting to sign in for the first time, then everyone else
@@ -587,6 +587,12 @@ async function createLogin(b){
 }
 // An IronLedger rep may send password resets and change a privilege, only on an existing, active person (ID live, as in the people list) who has an account type.
 // Nothing else about a person (type, pharmacies, name, phone, switching off, deleting) and never the Calendar privilege, which belongs to a service line.
+// initials (2 to 3 letters) stamp printed copies; unique across all logins so two people never share them
+const cleanInitials = v => { const t = String(v == null ? '' : v).trim().toUpperCase(); if(t === '') return ''; if(!/^[A-Z]{2,3}$/.test(t)) throw bad('Initials are 2 or 3 letters.'); return t; };
+async function initialsTaken(ini, exceptSub){
+  const all = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'USERS' } });
+  return all.some(p => !p.deleted && p.sk !== exceptSub && (p.initials || '') === ini);
+}
 async function repGuard(p, seg3, body){
   if(p.host) throw forbidden('Host logins are managed by an IronLedger supervisor.');
   if(seg3 === 'reset-password') return;
@@ -641,6 +647,7 @@ async function updatePerson(me, sub, seg3, body){
   const upd = {};
   if(body.acctType !== undefined){ if(p.owner || p.host) throw bad('The Account Owner and host logins have their own account type.'); upd.acctType = cleanType(body.acctType); }
   if(body.docDuty !== undefined){ if(p.owner || p.host) throw bad('The Account Owner and host logins have their own document duty.'); const dd = String(body.docDuty || ''); if(dd !== '' && !DOC_DUTIES.includes(dd)) throw bad('Pick the document duty from the list.'); upd.docDuty = dd; }
+  if(body.initials !== undefined){ const ini = cleanInitials(body.initials); if(ini && await initialsTaken(ini, sub)) throw bad('Those initials are already used by someone else.'); upd.initials = ini; }
   if(body.repStores !== undefined){ if(!isSupervisor(me)) throw forbidden('A supervisor assigns reps to pharmacies.'); if(!(p.host && p.hostRole === 'rep')) throw bad('Only rep logins have assigned pharmacies.'); upd.repStores = Object.assign({}, p.repStores || {}, await cleanStoreToggles(body.repStores)); }
   if(body.stores !== undefined) upd.stores = Object.assign({}, p.stores || {}, await cleanStoreToggles(body.stores));
   if(body.perms !== undefined) upd.perms = Object.assign({}, p.perms || {}, cleanPerms(body.perms));
@@ -907,8 +914,15 @@ async function docsRoute(method, store, seg, q, body, me, storeItem){
     if(!m && (st === 'Draft' || st === 'Retired')) throw new HttpError(404, 'No such document.');
     if(!v || !v.file) throw new HttpError(404, 'That version has no file.');
     if(!m && v.state !== 'current') throw forbidden();
-    const fn = (v.file.name || 'document.pdf').replace(/[^\w.\- ]/g, '_');
-    return { url: presignS3({ method: 'GET', bucket: DOCS_BUCKET, key: v.file.key, query: { 'response-content-type': 'application/pdf', 'response-content-disposition': `inline; filename="${fn}"` } }), name: v.file.name, seconds: DOC_LINK_SECONDS, id: d.id, v: v.v };
+    const fn = `${d.id}_v${v.v}_${String(d.title || 'Document').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '')}.pdf`.slice(0, 160);
+    let print = null;
+    if(q.print === '1'){                                                   // a stamped print copy: needs the person's initials; the time is the server's
+      if(v.state !== 'current') throw bad('Only the current version can be printed with a stamp.');
+      if(!me.initials) throw bad('Your initials are not set yet. Ask the Account Owner to set them.');
+      print = { printedAt: now(), initials: me.initials };
+      await docLog(store, me, 'Print Copy', d.id, 'v' + v.v + ' printed as ' + me.initials);
+    }
+    return { ...(print || {}), url: presignS3({ method: 'GET', bucket: DOCS_BUCKET, key: v.file.key, query: { 'response-content-type': 'application/pdf', 'response-content-disposition': `inline; filename="${fn}"` } }), name: v.file.name, seconds: DOC_LINK_SECONDS, id: d.id, v: v.v };
   }
   if(method !== 'POST') throw new HttpError(404, 'Not found');
   const d = await docGetOne(store, id), st = docStatus(d), pend = docPend(d), cur = docCur(d);
@@ -973,7 +987,7 @@ async function route(method, path, q, body, me, claims){
   if(seg[0] === 'api') seg.shift();                    // works with or without an /api prefix
 
   if(method === 'GET' && seg[0] === 'me' && seg.length === 1)
-    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty(me), perms: permsOf(me), stores: await storesFor(me) };
+    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty(me), initials: me.initials || '', perms: permsOf(me), stores: await storesFor(me) };
 
   if(seg[0] === 'stores' && seg[1]){
     const store = seg[1];
@@ -1053,10 +1067,11 @@ async function route(method, path, q, body, me, claims){
     if(method === 'POST' && seg[1] === 'users' && !seg[2]){
       const stores = await cleanStoreToggles(body.stores), perms = Object.assign({}, DEFAULT_PERMS, cleanPerms(body.perms));
       if(body.smsConsent !== true) throw bad('Have the person sign the SMS consent form first, then tick the box.');
+      const ini = cleanInitials(body.initials); if(ini && await initialsTaken(ini, '')) throw bad('Those initials are already used by someone else.');
       const u = await createLogin(body);
       try{
         await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'USERS', sk: u.sub, login: u.login, name: u.name, phone: u.phone,
-          stores, perms, acctType: cleanType(body.acctType), owner: false, createdAt: now(), createdBy: who(me), tempIssuedAt: now(), smsConsentAt: now(), smsConsentRecordedBy: who(me) } }));
+          stores, perms, acctType: cleanType(body.acctType), initials: ini, owner: false, createdAt: now(), createdBy: who(me), tempIssuedAt: now(), smsConsentAt: now(), smsConsentRecordedBy: who(me) } }));
       }catch(e){ await idp.send(new AdminDeleteUserCommand({ UserPoolId: POOL, Username: u.login })).catch(() => {}); throw e; }
       return { ok: true, user: { sub: u.sub, login: u.login, name: u.name, phone: u.phone, stores, perms }, tempPassword: u.tempPassword };
     }

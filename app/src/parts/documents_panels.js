@@ -199,7 +199,8 @@ async function docsDo(path, body, done){                         // one action o
 async function docsOpen(id, v, stamp){
   const w = window.open('', '_blank');                           // opened now, while the click is still fresh, so the browser doesn't block it
   try{
-    const r = await api('GET', docsPath() + '/' + encodeURIComponent(id) + '/file' + (v ? '?v=' + encodeURIComponent(v) : ''));
+    const qs = [v ? 'v=' + encodeURIComponent(v) : '', stamp ? 'print=1' : ''].filter(Boolean).join('&');
+    const r = await api('GET', docsPath() + '/' + encodeURIComponent(id) + '/file' + (qs ? '?' + qs : ''));
     if(!w){ docsToast('Allow pop-ups for this site to open documents.'); return; }
     if(stamp) await docsStampOpen(w, r, id); else w.location = r.url;
   }catch(e){ if(w) w.close(); docsErr(e); }
@@ -210,9 +211,10 @@ async function docsStampOpen(w, r, id){                           // "Print Copy
   if(!v || v.state !== 'current'){ w.location = r.url; docsToast('Only the current version is stamped. Opening it without a stamp.'); return; }
   await docsAsset('pdf-lib.min.js');
   const bytes = await (await fetch(r.url)).arrayBuffer(), pdf = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: false }), font = await pdf.embedFont(PDFLib.StandardFonts.Courier);
-  const text = `${d.id}  |  v${v.v}  |  Effective ${v.effective}  |  Printed from IronLedger`;
-  for(const pg of pdf.getPages()){ const { width } = pg.getSize(); pg.drawLine({ start: { x: 36, y: 26 }, end: { x: width - 36, y: 26 }, thickness: 0.5, color: PDFLib.rgb(0.55, 0.55, 0.55) });
-    pg.drawText(text, { x: 36, y: 15, size: 7.5, font, color: PDFLib.rgb(0.25, 0.25, 0.25) }); }
+  const text = `${d.id}  |  v${v.v}  |  Effective ${v.effective}  |  Printed ${docsLocal(r.printedAt)} by ${r.initials}`;   // time = the server's, shown in the pharmacy's time zone
+  for(const pg of pdf.getPages()){ const { width } = pg.getSize(), size = Math.min(7.5, (width - 72) / font.widthOfTextAtSize(text, 1));
+    pg.drawLine({ start: { x: 36, y: 26 }, end: { x: width - 36, y: 26 }, thickness: 0.5, color: PDFLib.rgb(0.55, 0.55, 0.55) });
+    pg.drawText(text, { x: 36, y: 15, size, font, color: PDFLib.rgb(0.25, 0.25, 0.25) }); }
   w.location = URL.createObjectURL(new Blob([await pdf.save()], { type: 'application/pdf' }));
 }
 /* ---- the detail drawer ---- */
@@ -224,7 +226,7 @@ function docsDrawer(id){
   const vrows = d.versions.slice().reverse().map(v => `<tr><td class="num">v${esc(v.v)}</td><td>${v.state === 'current' ? docPill('ok', 'Current') : v.state === 'pending' ? docPill('warn', 'Pending Approval') : docPill('gray', 'Superseded')}</td><td class="num">${v.effective || '-'}</td><td>${esc(v.by || '-')}</td><td>${esc(v.approvedBy || '-')}${v.selfApproved ? ' ' + docPill('warn', 'Self-approved') : ''}</td><td title="${esc(v.summary)}">${esc(v.summary)}</td><td><button class="btn2 small" data-dact="openv" data-id="${id}" data-v="${esc(v.v)}"${v.hasFile ? '' : ' disabled'}>Open</button></td></tr>`).join('');
   const rrows = (d.reviews || []).slice().reverse().map(r => `<tr><td class="num">${r.at}</td><td>${esc(r.by)}</td><td>${esc(r.outcome)}</td><td title="${esc(r.comment)}">${esc(r.comment)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No review recorded yet.</td></tr>';
   const act = (m.log || []).filter(l => l.docId === id).slice(0, 8).map(l => `<tr><td class="num">${esc(docsLocal(l.at))}</td><td>${esc(l.by)}</td><td>${esc(l.action)}${l.flag ? ' ' + docPill('warn', l.flag) : ''}</td><td title="${esc(l.detail)}">${esc(l.detail)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No activity yet.</td></tr>';
-  const stampTxt = i.cur ? `${d.id}  |  v${i.cur.v}  |  Effective ${i.cur.effective}  |  Printed from IronLedger` : '';
+  const stampTxt = i.cur ? `${d.id}  |  v${i.cur.v}  |  Effective ${i.cur.effective}  |  Printed [date and time] by [initials]` : '';
   $('docsDrawer').innerHTML = `<div class="dov dright" data-ddov><aside class="ddrawer" role="dialog" aria-modal="true" aria-label="Document details">
    <div class="ddh"><div class="drow"><span class="num hint">${d.id}</span><span class="dsp"></span><button class="btn2 small" data-dact="closedrawer">Close</button></div>
     <h2>${esc(d.title)}</h2><div class="drow">${man ? docStatusPill(i.status) : ''}${appr && i.r !== 'n/a' ? docReviewPill(i.r) : ''}${docFormatPill(d.format)}${docPill('gray', DOC_TY[d.type].n)}${i.pend && man ? docPill('warn', 'v' + i.pend.v + ' Awaiting Approval') : ''}</div>

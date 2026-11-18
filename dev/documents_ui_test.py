@@ -31,12 +31,12 @@ h = tokens("neo", "hosttemp12a", "hostpass999"); H = h["IdToken"]; api(H, "POST"
 api(H, "POST", "/host/stores/NTX1", {"documents": True, "changeReason": "test change reason"})
 PDF = open("/tmp/real.pdf", "rb").read()
 open('/tmp/dui_new.pdf', 'wb').write(PDF); open('/tmp/dui_new2.pdf', 'wb').write(PDF + b"% v2\n")
-def mk(l, perms, ph, acct="", duty=None):
-    s, r = api(O, "POST", "/owner/users", {"login": l, "name": l.upper(), "phone": ph, "smsConsent": True, "stores": {"NTX1": True}, "acctType": acct, "perms": perms}); assert s == 200, r
+def mk(l, perms, ph, acct="", duty=None, ini=""):
+    s, r = api(O, "POST", "/owner/users", {"initials": ini, "login": l, "name": l.upper(), "phone": ph, "smsConsent": True, "stores": {"NTX1": True}, "acctType": acct, "perms": perms}); assert s == 200, r
     if duty: assert api(O, "POST", "/owner/users/" + r["user"]["sub"], {"docDuty": duty})[0] == 200
     return r["tempPassword"]
 P = {"documents": True}
-tST = mk("stf", P, "(817) 555-0201"); tCT = mk("ctk", P, "(817) 555-0202", "tech", "ctech"); tDP = mk("dpe", P, "(817) 555-0203", "pharmacist", "dp"); tNO = mk("nop", {}, "(817) 555-0204")
+tST = mk("stf", P, "(817) 555-0201", ini="SF"); tCT = mk("ctk", P, "(817) 555-0202", "tech", "ctech"); tDP = mk("dpe", P, "(817) 555-0203", "pharmacist", "dp"); tNO = mk("nop", {}, "(817) 555-0204")
 D = "/stores/NTX1/documents"
 def seed(tok, title, typ, area, **kw):
     s, up = api(tok, "POST", D + "/upload-url", {"name": "x.pdf", "size": len(PDF)}); raw("PUT", up["url"], PDF, {"content-type": "application/pdf"})
@@ -75,8 +75,9 @@ with sync_playwright() as pw:
     pop = pg.value; pop.on('download', lambda d: dl.append(d)); p.wait_for_timeout(3000)   # a PDF opens in the viewer in a real browser; the headless one downloads it instead
     stamped = False
     if dl:
-        import pypdf; rd = pypdf.PdfReader(dl[0].path()); stamped = len(rd.pages) == 2 and all(d1 + '  |  v1.0  |  Effective 2026-11-01  |  Printed from IronLedger' in pg_.extract_text() for pg_ in rd.pages)
-    check("Print Copy builds a stamped PDF in the browser (Doc ID, version, effective date on every page)", stamped, True); pop.close()
+        import pypdf; rd = pypdf.PdfReader(dl[0].path()); import re as _r2; stamped = len(rd.pages) == 2 and all(_r2.search(_r2.escape(d1) + r'\s+\|\s+v1\.0\s+\|\s+Effective 2026-11-01\s+\|\s+Printed \d{4}-\d\d-\d\d \d\d:\d\d (CST|CDT) by SF', pg_.extract_text()) for pg_ in rd.pages)
+    check("Print Copy builds a stamped PDF in the browser (Doc ID, version, effective date, printed date and time, initials on every page)", stamped, True); pop.close()
+    lg = api(O, "GET", D)[1]["log"]; check("the print is in the activity log with the initials", any(l["action"] == "Print Copy" and "SF" in l["detail"] and l["docId"] == d1 for l in lg), True)
     p.click(f'tr[data-row="{d1}"] .dmore'); p.wait_for_selector('#dctx'); ctx = p.inner_text('#dctx')
     check("menu shows quick facts for staff (no Update Due)", ('Uploaded' in ctx, 'Version' in ctx, 'File Type' in ctx, 'Update Due' in ctx), (True, True, True, False))
     check("menu: no approve or new version for staff", (p.locator('#dctx [data-dact=newver]').count(), p.locator('#dctx [data-dact=approve]').count()), (0, 0)); p.keyboard.press('Escape')
@@ -85,6 +86,8 @@ with sync_playwright() as pw:
     check("Esc closes the drawer", p.locator('.ddrawer').count(), 0); p.close()
     # ---- compliance technician: manage, not approve
     p = newpage(); signin(p, "NTX1", "ctk", tCT, "ctkpass12345"); opendocs(p)
+    tkC = tok2("ctk", "ctkpass12345"); check("no initials: stamped print refused", api(tkC, "GET", D + "/" + d1 + "/file?print=1")[0], 400); check("no initials: plain open still works", api(tkC, "GET", D + "/" + d1 + "/file")[0], 200)
+    check("download file name follows the standard", "FRM" in api(tkC, "GET", D + "/" + d2 + "/file")[1]["url"] and "FRM-IMM-001_v1.0_Vaccine_Consent.pdf" in api(tkC, "GET", D + "/" + d2 + "/file")[1]["url"], True)
     check("technician sees drafts too", sorted(rows(p)), sorted([d1, d2, d3])); check("technician sees Status and Add, but no tiles / Review column", (p.locator('#docsRoot th:has-text("Status")').count() > 0, p.locator('[data-dact=add]').count(), p.locator('.dtile').count(), p.locator('#docsRoot th:has-text("Review")').count()), (True, 1, 0, 0))
     p.click(f'tr[data-row="{d1}"] .dmore'); p.wait_for_selector('#dctx'); check("technician menu: new version yes, approve/review no", (p.locator('#dctx [data-dact=newver]').count(), p.locator('#dctx [data-dact=approve]').count(), p.locator('#dctx [data-dact=review]').count()), (1, 0, 0)); p.keyboard.press('Escape')
     # add a document through the screen (file chooser, detection, path preview)
@@ -129,6 +132,10 @@ with sync_playwright() as pw:
     p = newpage(); signin(p, "NTX1", "owner", "ownerpass99"); opendocs(p); check("Account Owner sees the Documents tab and tiles", (tabvis(p), p.locator('.dtile').count()), (True, 5))
     p.click('#tabs [data-tab=owner]'); p.wait_for_timeout(500)
     p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_selector('#ownBody:visible'); p.wait_for_selector('#ownPeople [data-sub]', timeout=8000)
+    check("initials field on each person; duplicate initials refused", (p.locator('#ownPeople [data-uini]').count() >= 4, api(O, "POST", "/owner/users/" + [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "ctk"][0]["sub"], {"initials": "sf"})[0], api(O, "POST", "/owner/users/" + [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "ctk"][0]["sub"], {"initials": "CT"})[0], api(O, "POST", "/owner/users/" + [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "ctk"][0]["sub"], {"initials": "C1"})[0]), (True, 400, 200, 400))
+    row = p.locator('#ownPeople [data-sub]:has-text("MAMARE"), #ownPeople [data-sub]:has-text("NOP")').first
+    row.locator('[data-uini]').fill('np'); p.keyboard.press('Tab'); p.wait_for_timeout(400); p.locator('#ownPeople [data-upd]').first.click(); p.wait_for_timeout(1500)
+    check("initials saved from the people list (stored in capitals)", [u["initials"] for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "nop"], ["NP"])
     check("Documents is one of the privileges", p.locator('#ownPeople [data-uperm=documents]').count() > 0, True)
     check("document duty select shows only for people with the privilege", (p.locator('#ownPeople [data-sub]:has([data-uperm=documents]:checked) [data-udoc]').count(), p.locator('#ownPeople [data-sub]:not(:has([data-uperm=documents]:checked)) [data-udoc]').count()), (3, 0))
     p.close()

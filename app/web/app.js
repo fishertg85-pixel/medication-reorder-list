@@ -1500,7 +1500,7 @@ const TEMPS = {};
 const STAGED = {};
 function effUser(u){
   const s = STAGED[u.sub]; if(!s) return u;
-  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}), acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty,
+  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}), acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty, initials:s.initials !== undefined ? s.initials : u.initials,
     disabled:s.disabled !== undefined ? s.disabled : u.disabled});
 }
 const stageBtns = sub => `<button class="btn small" data-upd="${esc(sub)}">Update</button> <button class="btn2 small" data-undo="${esc(sub)}">Undo</button>`;
@@ -1552,7 +1552,7 @@ function renderOwnPeople(){
   const st = OWN.stores, P = Object.keys(PERM_LABELS);
   const priv = (sw_, label, title) => `<span class="priv" title="${esc(title || label)}">${sw_}<span>${esc(label)}</span></span>`;
   const head = u => `
-      <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${u.owner ? '<span class="urole">Account Owner</span>' : u.host ? '<span class="urole">Host (IronLedger)</span>' : ''}</div>
+      <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${u.initials ? ` <span class="hint" title="Initials on printed copies">(${esc(u.initials)})</span>` : ''}${u.owner ? '<span class="urole">Account Owner</span>' : u.host ? '<span class="urole">Host (IronLedger)</span>' : ''}</div>
       <div class="ucell mono" data-l="Username">${esc(u.login)}</div>
       <div class="ucell" data-l="Mobile">${esc(u.phone)}${u.owner ? ' <span class="hint" title="Sign-in codes are texted here, so only IronLedger changes it. Contact IronLedger.">🔒</span>' : u.host ? '' : ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>`}</div>
       <div class="ucell" data-l="Status">${statusBadge(u)}</div>`;
@@ -1577,6 +1577,7 @@ function renderOwnPeople(){
          <div class="upriv"><span class="plabel">Account type</span>
            <select data-utype><option value="">Not set</option>${Object.entries(ACCT_LABELS).map(([k, l]) => `<option value="${k}"${u.acctType === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
            <span class="hint">Choosing a type sets Submit, Archive, Remove and Backup. Calendar and Documents are set separately.</span></div>
+         <div class="upriv"><span class="plabel">Initials</span><input type="text" data-uini maxlength="3" value="${esc(u.initials || '')}" style="width:70px;text-transform:uppercase;" aria-label="Initials"> <span class="hint">2 to 3 letters, stamped on printed documents. Each person needs their own.</span></div>
          ${u.perms.documents ? `<div class="upriv"><span class="plabel">Document duty</span>${u.acctType === 'pic' ? '<span class="hint">Pharmacist-In-Charge: manages and approves documents</span>' : `<select data-udoc>${Object.entries(DOC_DUTY_PICK).map(([k, l]) => `<option value="${k}"${(u.docDuty || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select> <span class="hint">Designated Person approves; Compliance Technician uploads drafts.</span>`}</div>` : ''}
          <div class="upriv"><span class="plabel">Pharmacies</span>
            <span class="pgroup">${st.map(s => priv(sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('')}</span></div>
@@ -1598,7 +1599,7 @@ $('npAdd').onclick = async () => {
   const stores = {}; document.querySelectorAll('[data-npst]').forEach(c => stores[c.dataset.npst] = c.checked);
   const perms = {}; document.querySelectorAll('[data-npperm]').forEach(c => perms[c.dataset.npperm] = c.checked);
   const acctType = $('npType').value;
-  const body = {name:$('npName').value.trim(), login:$('npLogin').value.trim().toLowerCase(), phone:$('npPhone').value.trim(), tempPassword:$('npPass').value.trim() || undefined, stores, perms, acctType, smsConsent:$('npConsent').checked};
+  const body = {name:$('npName').value.trim(), initials:$('npIni').value.trim().toUpperCase(), login:$('npLogin').value.trim().toLowerCase(), phone:$('npPhone').value.trim(), tempPassword:$('npPass').value.trim() || undefined, stores, perms, acctType, smsConsent:$('npConsent').checked};
   const say = (m, ok) => { $('npMsg').textContent = m; $('npMsg').className = 'npmsg' + (ok ? ' ok' : ''); };
   say('');
   if(!body.name || !body.login || !body.phone) return say('Name, Login ID and mobile number are all needed.');
@@ -1611,7 +1612,7 @@ $('npAdd').onclick = async () => {
     showPassBox(`<b>${esc(body.name)} can sign in now.</b> Give them:<br>Pharmacy ID: <b class="mono">${esc(ids.join(' or ') || '(switch one on first)')}</b><br>
       Login ID: <b class="mono">${esc(r.user.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b><br>
       <span class="hint">They choose their own password the first time they sign in. The temporary password works for 3 days and isn’t shown again.</span>`);
-    ['npName','npLogin','npPhone'].forEach(k => $(k).value = ''); $('npPass').value = genTemp(); $('npConsent').checked = false;
+    ['npName','npIni','npLogin','npPhone'].forEach(k => $(k).value = ''); $('npPass').value = genTemp(); $('npConsent').checked = false;
     say(`Added ${body.name}. They are at the top of the list as Pending until they sign in for the first time. The form is clear for the next user.`, true);
     paintNewPerson(); $('npName').focus({preventScroll: true});      // pharmacies and permissions back to their defaults too, straight away
     await loadOwner();
@@ -1627,6 +1628,14 @@ $('ownPeople').addEventListener('change', async e => {
     if(ty.value === (u.acctType || '')) delete stg.acctType; else stg.acctType = ty.value;
     const pre = ACCT_PRESETS[ty.value];
     if(pre){ stg.perms = stg.perms || {}; for(const k in pre){ if(pre[k] === !!(u.perms || {})[k]) delete stg.perms[k]; else stg.perms[k] = pre[k]; } if(!Object.keys(stg.perms).length) delete stg.perms; }
+    if(!Object.keys(stg).length) delete STAGED[sub];
+    peopleMsg(''); renderOwnPeople(); return;
+  }
+  const ini = e.target.closest('input[data-uini]');
+  if(ini){                                                        // initials: staged like the switches
+    const sub = ini.closest('[data-sub]').dataset.sub, u = OWN.users.find(x => x.sub === sub); if(!u) return;
+    const v = ini.value.trim().toUpperCase(), stg = STAGED[sub] || (STAGED[sub] = {});
+    if(v === (u.initials || '')) delete stg.initials; else stg.initials = v;
     if(!Object.keys(stg).length) delete STAGED[sub];
     peopleMsg(''); renderOwnPeople(); return;
   }
@@ -2031,7 +2040,8 @@ async function docsDo(path, body, done){                         // one action o
 async function docsOpen(id, v, stamp){
   const w = window.open('', '_blank');                           // opened now, while the click is still fresh, so the browser doesn't block it
   try{
-    const r = await api('GET', docsPath() + '/' + encodeURIComponent(id) + '/file' + (v ? '?v=' + encodeURIComponent(v) : ''));
+    const qs = [v ? 'v=' + encodeURIComponent(v) : '', stamp ? 'print=1' : ''].filter(Boolean).join('&');
+    const r = await api('GET', docsPath() + '/' + encodeURIComponent(id) + '/file' + (qs ? '?' + qs : ''));
     if(!w){ docsToast('Allow pop-ups for this site to open documents.'); return; }
     if(stamp) await docsStampOpen(w, r, id); else w.location = r.url;
   }catch(e){ if(w) w.close(); docsErr(e); }
@@ -2042,9 +2052,10 @@ async function docsStampOpen(w, r, id){                           // "Print Copy
   if(!v || v.state !== 'current'){ w.location = r.url; docsToast('Only the current version is stamped. Opening it without a stamp.'); return; }
   await docsAsset('pdf-lib.min.js');
   const bytes = await (await fetch(r.url)).arrayBuffer(), pdf = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: false }), font = await pdf.embedFont(PDFLib.StandardFonts.Courier);
-  const text = `${d.id}  |  v${v.v}  |  Effective ${v.effective}  |  Printed from IronLedger`;
-  for(const pg of pdf.getPages()){ const { width } = pg.getSize(); pg.drawLine({ start: { x: 36, y: 26 }, end: { x: width - 36, y: 26 }, thickness: 0.5, color: PDFLib.rgb(0.55, 0.55, 0.55) });
-    pg.drawText(text, { x: 36, y: 15, size: 7.5, font, color: PDFLib.rgb(0.25, 0.25, 0.25) }); }
+  const text = `${d.id}  |  v${v.v}  |  Effective ${v.effective}  |  Printed ${docsLocal(r.printedAt)} by ${r.initials}`;   // time = the server's, shown in the pharmacy's time zone
+  for(const pg of pdf.getPages()){ const { width } = pg.getSize(), size = Math.min(7.5, (width - 72) / font.widthOfTextAtSize(text, 1));
+    pg.drawLine({ start: { x: 36, y: 26 }, end: { x: width - 36, y: 26 }, thickness: 0.5, color: PDFLib.rgb(0.55, 0.55, 0.55) });
+    pg.drawText(text, { x: 36, y: 15, size, font, color: PDFLib.rgb(0.25, 0.25, 0.25) }); }
   w.location = URL.createObjectURL(new Blob([await pdf.save()], { type: 'application/pdf' }));
 }
 /* ---- the detail drawer ---- */
@@ -2056,7 +2067,7 @@ function docsDrawer(id){
   const vrows = d.versions.slice().reverse().map(v => `<tr><td class="num">v${esc(v.v)}</td><td>${v.state === 'current' ? docPill('ok', 'Current') : v.state === 'pending' ? docPill('warn', 'Pending Approval') : docPill('gray', 'Superseded')}</td><td class="num">${v.effective || '-'}</td><td>${esc(v.by || '-')}</td><td>${esc(v.approvedBy || '-')}${v.selfApproved ? ' ' + docPill('warn', 'Self-approved') : ''}</td><td title="${esc(v.summary)}">${esc(v.summary)}</td><td><button class="btn2 small" data-dact="openv" data-id="${id}" data-v="${esc(v.v)}"${v.hasFile ? '' : ' disabled'}>Open</button></td></tr>`).join('');
   const rrows = (d.reviews || []).slice().reverse().map(r => `<tr><td class="num">${r.at}</td><td>${esc(r.by)}</td><td>${esc(r.outcome)}</td><td title="${esc(r.comment)}">${esc(r.comment)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No review recorded yet.</td></tr>';
   const act = (m.log || []).filter(l => l.docId === id).slice(0, 8).map(l => `<tr><td class="num">${esc(docsLocal(l.at))}</td><td>${esc(l.by)}</td><td>${esc(l.action)}${l.flag ? ' ' + docPill('warn', l.flag) : ''}</td><td title="${esc(l.detail)}">${esc(l.detail)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No activity yet.</td></tr>';
-  const stampTxt = i.cur ? `${d.id}  |  v${i.cur.v}  |  Effective ${i.cur.effective}  |  Printed from IronLedger` : '';
+  const stampTxt = i.cur ? `${d.id}  |  v${i.cur.v}  |  Effective ${i.cur.effective}  |  Printed [date and time] by [initials]` : '';
   $('docsDrawer').innerHTML = `<div class="dov dright" data-ddov><aside class="ddrawer" role="dialog" aria-modal="true" aria-label="Document details">
    <div class="ddh"><div class="drow"><span class="num hint">${d.id}</span><span class="dsp"></span><button class="btn2 small" data-dact="closedrawer">Close</button></div>
     <h2>${esc(d.title)}</h2><div class="drow">${man ? docStatusPill(i.status) : ''}${appr && i.r !== 'n/a' ? docReviewPill(i.r) : ''}${docFormatPill(d.format)}${docPill('gray', DOC_TY[d.type].n)}${i.pend && man ? docPill('warn', 'v' + i.pend.v + ' Awaiting Approval') : ''}</div>
