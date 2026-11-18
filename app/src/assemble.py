@@ -195,12 +195,13 @@ cut('<header>', '<nav id="tabs">', '''<div id="login">
 </header>
 
 ''')
-rep('''  <button data-tab="setup">Setup</button>
-</nav>''', '''  <button data-tab="setup">Setup</button>
+cut('<nav id="tabs">', '</nav>', '''<nav id="tabs">
   <button data-tab="calendar" style="display:none;">Calendar</button>
   <button data-tab="documents" style="display:none;">Documents</button>
-  <button data-tab="owner" style="display:none;">Account Owner</button>
-</nav>''')
+  <button data-tab="list" class="active">Reorder List</button>
+  <button data-tab="archive" class="tabx">Archive</button>
+  <button data-tab="owner" class="tabx">Account</button>
+''')
 cut('  <div id="wipeBanner"', '  <!-- ======================= REORDER LIST', '''  <div id="offlineBanner" class="banner warn" style="display:none;">No connection to the server right now. Changes can’t be saved until the connection is back.</div>
 
 ''')
@@ -212,9 +213,10 @@ rep('''      <div class="search-wrap">
           <input type="text" id="search" placeholder="Search drug name or NDC, e.g. “ateno 25” or 00093075201" autocomplete="off" spellcheck="false" enterkeyhint="search">
           <div id="results" class="results"></div>
         </div>
+        <button class="btn2" id="archOpen" style="display:none;" title="Past orders">Archive</button>
       </div>''')
 rep('''        <button class="btn" id="submitBtn">Submit order</button>''', '''        <span class="hint" id="submitOff" style="display:none;">Submitting is switched off for your login.</span>
-        <button class="btn" id="submitBtn">Submit order</button>''')
+        <button class="btn" id="submitBtn">Archive</button>''')
 rep('''      <table>
         <thead><tr><th>Added</th>''', '''      <table id="listTable">
         <thead><tr><th>Added</th>''')
@@ -227,31 +229,6 @@ rep('''        <tbody id="archBody"></tbody>
       <div class="toolbar" style="margin-top:10px;"><button class="btn2" id="archMore" style="display:none;">Load older orders</button></div>''')
 
 cut('  <!-- ======================= SETUP ======================= -->', '</main>', '''  <!-- ======================= SETUP ======================= -->
-  <section id="panel-setup" class="panel">
-    <div class="card">
-      <h2>Pharmacy Details</h2>
-      <div id="storeInfo"></div>
-    </div>
-    <div class="card">
-      <h2>Drug Search</h2>
-      <div id="dmStatus" class="banner info">Not tested on this device yet.</div>
-      <div class="hint">Drug names, strengths and NDCs come from the National Library of Medicine (RxTerms and RxNav), with the FDA NDC Directory as a backup. Needs internet. “DailyMed” links open each product’s label.</div>
-      <div class="toolbar" style="margin-top:10px;"><button class="btn2" id="dmTest">Test drug search</button></div>
-    </div>
-    <div class="card" id="exportCard" style="display:none;">
-      <h2>Download A Backup</h2>
-      <div class="hint">Everything for this pharmacy (open list, full archive, remembered distributors and package sizes) as one file. The cloud copy also keeps 35 days of automatic restore points.</div>
-      <div class="toolbar" style="margin-top:10px;"><button class="btn2" id="exportBtn">Download backup file</button></div>
-    </div>
-    <div class="card">
-      <h2>Use It On A Phone Or Tablet</h2>
-      <ol class="steps">
-        <li><b>iPhone / iPad (Safari):</b> open this page, tap the Share button, then <b>Add to Home Screen</b>.</li>
-        <li><b>Android (Chrome):</b> open this page, tap the ⋮ menu, then <b>Add to Home screen</b> or <b>Install app</b>.</li>
-        <li><b>Computer (Chrome / Edge):</b> click the install icon at the right of the address bar, or just bookmark the page.</li>
-      </ol>
-      <div class="hint">Barcode scanning is for computers with a USB barcode scanner: click in the search box and scan the bottle or box.</div>
-    </div>
   </section>
 
   <!-- ======================= CALENDAR ======================= -->
@@ -269,8 +246,8 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
   <!-- ======================= ACCOUNT OWNER ======================= -->
   <section id="panel-owner" class="panel">
     <div class="card" id="ownLock" style="max-width:420px;">
-      <h2>🔒 Account Owner</h2>
-      <div class="hint">Re-enter your password to open this tab. It locks again after 5 minutes without activity here.</div>
+      <h2>🔒 Account</h2>
+      <div class="hint">Re-enter your password to open your account. It locks again after 5 minutes without activity here.</div>
       <div class="toolbar" style="margin-top:10px;"><input type="password" id="ownPw" autocomplete="current-password" style="flex:1;min-width:180px;"><button class="btn" id="ownUnlock">Unlock</button></div>
       <div class="li-msg" id="ownLockMsg"></div>
     </div>
@@ -308,6 +285,31 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
       <div class="hint">Brings in the old <b>nortex_reorder_data.json</b>: archive, open list and remembered distributors. Only adds; anything already here is left as it is, so it’s safe to run twice.</div>
       <div class="toolbar" style="margin-top:10px;"><select id="impStore" class="btn2"></select><input type="file" id="impFile" accept=".json"><button class="btn" id="impGo">Import</button></div>
       <div class="hint" id="impMsg"></div>
+    </div>
+    <div style="margin:22px 0 8px;font-weight:600;color:var(--muted);text-transform:uppercase;font-size:12px;letter-spacing:.06em;">Tools</div>
+    <div class="card" style="display:none;">
+      <h2>Pharmacy Details</h2>
+      <div id="storeInfo"></div>
+    </div>
+    <div class="card">
+      <h2>Drug Search</h2>
+      <div id="dmStatus" class="banner info">Not tested on this device yet.</div>
+      <div class="hint">Drug names, strengths and NDCs come from the National Library of Medicine (RxTerms and RxNav), with the FDA NDC Directory as a backup. Needs internet. “DailyMed” links open each product’s label.</div>
+      <div class="toolbar" style="margin-top:10px;"><button class="btn2" id="dmTest">Test drug search</button></div>
+    </div>
+    <div class="card" id="exportCard" style="display:none;">
+      <h2>Download A Backup</h2>
+      <div class="hint">Everything for this pharmacy (open list, full archive, remembered distributors and package sizes) as one file. The cloud copy also keeps 35 days of automatic restore points.</div>
+      <div class="toolbar" style="margin-top:10px;"><button class="btn2" id="exportBtn">Download backup file</button></div>
+    </div>
+    <div class="card">
+      <h2>Use It On A Phone Or Tablet</h2>
+      <ol class="steps">
+        <li><b>iPhone / iPad (Safari):</b> open this page, tap the Share button, then <b>Add to Home Screen</b>.</li>
+        <li><b>Android (Chrome):</b> open this page, tap the ⋮ menu, then <b>Add to Home screen</b> or <b>Install app</b>.</li>
+        <li><b>Computer (Chrome / Edge):</b> click the install icon at the right of the address bar, or just bookmark the page.</li>
+      </ol>
+      <div class="hint">Barcode scanning is for computers with a USB barcode scanner: click in the search box and scan the bottle or box.</div>
     </div>
     </div><!-- #ownBody -->
   </section>
@@ -370,7 +372,7 @@ rep('''  ${ok || BRIDGE ? '' : '<br>Send Claude a screenshot of this box.'}`;'''
 
 # submit: confirm text mentions pharmacy
 rep('''  if(!confirm(`Submit ${n} line${n === 1 ? '' : 's'}? They move to the Archive.` +''',
-    '''  if(!confirm(`Submit ${n} line${n === 1 ? '' : 's'} for ${STORE.id}? They move to the Archive.` +''')
+    '''  if(!confirm(`Archive ${n} line${n === 1 ? '' : 's'} for ${STORE.id}? They move to the Archive.` +''')
 
 
 # ---------- review fixes: escape everything that came from the server
@@ -399,27 +401,11 @@ rep("new Date(r.orderedAt).toLocaleString([], {month:'numeric', day:'numeric', h
 
 
 
+rep('        <h2 style="margin:0;">Archive</h2>', '        <button class="btn2" id="archBack">← Reorder List</button>\n        <h2 style="margin:0;">Archive</h2>')
 # ---------- IronLedger look: same palette and type as the IronLedger compliance app (cloud version only)
-IL_LIGHT = """--bg:#ccdee4;--panel:#e8f1f5;--text:#02182e;--muted:#49637a;--line:#abc6d4;
-    --head:#02182e;--head-text:#e8f1f5;--head-sub:#85c4e4;--nav:#022f56;
-    --accent:#022f56;--accent-hover:#02182e;--on-accent:#ffffff;--ok:#2f6b4e;--link:#0b4f86;--danger:#8e3d2b;
-    --input-bg:#ffffff;--input-line:#abc6d4;--row-alt:#dcebf1;--hover:#d3e5ee;
-    --sect:#dcebf1;--sect-text:#022f56;--sect-fda:#d5e6dc;--sect-fda-text:#2f6b4e;
-    --warn-bg:#f2ded9;--warn-line:#e2b8ad;--warn-text:#8e3d2b;--info-bg:#dcebf1;--info-line:#abc6d4;--info-text:#022f56;
-    --new-bg:#f3e7d8;--shadow:0 1px 2px rgba(13,20,38,.06),0 8px 24px rgba(13,20,38,.10);"""
-IL_DARK = """--bg:#02182e;--panel:#022f56;--text:#ccdee4;--muted:#86a7bd;--line:#0b3f6d;
-    --head:#010f1e;--head-text:#ccdee4;--head-sub:#85c4e4;--nav:#011426;
-    --accent:#85c4e4;--accent-hover:#a9d6ee;--on-accent:#02182e;--ok:#86c7a7;--link:#85c4e4;--danger:#f0ab92;
-    --input-bg:#02182e;--input-line:#0b3f6d;--row-alt:#03284a;--hover:#043a68;
-    --sect:#043a68;--sect-text:#a9d6ee;--sect-fda:#123f2c;--sect-fda-text:#86c7a7;
-    --warn-bg:#5e2a1c;--warn-line:#8e3d2b;--warn-text:#f0ab92;--info-bg:#0a3a63;--info-line:#0b3f6d;--info-text:#a9d6ee;
-    --new-bg:#4a3519;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);"""
 rep('</style>\n</head>', """</style>
 <link rel="stylesheet" href="fonts.css">
 <style id="ironledger-theme">
-  :root{""" + IL_LIGHT + """}
-  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){""" + IL_DARK + """} }
-  :root[data-theme="dark"]{""" + IL_DARK + """}
   body{font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;}
   .mono,.ndc-txt,td input.ndcin,td.ndc,#liCodeIn,#liFCode{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
   .btn{color:var(--on-accent);} .btn:hover{color:var(--on-accent);}
@@ -431,8 +417,11 @@ rep('</style>\n</head>', """</style>
   .li-il img{width:26px;height:26px;border-radius:6px;}
   .brandfoot img{height:20px;width:20px;border-radius:5px;}
 </style>
+<link rel="stylesheet" href="suite.css">
 </head>""")
-rep('<meta name="theme-color" content="#1f3864">', '<meta name="theme-color" content="#02182e">')
+rep('  <img id="storeLogo" alt="" style="display:none;">\n', '  <img class="ilmark" src="mark.svg" alt="" width="30" height="30"><span class="ilword">Iron<b>Ledger</b></span>\n  <img id="storeLogo" alt="" style="display:none;">\n')
+rep('  <div class="spacer"></div>\n  <select class="hsel" id="storeSel"', '  <button class="hbtn" id="acctBtn" style="display:none;" title="Pharmacy account details, people and backup">Account</button>\n  <div class="spacer"></div>\n  <select class="hsel" id="storeSel"')
+rep('<meta name="theme-color" content="#1f3864">', '<meta name="theme-color" content="#ffffff">')
 rep('<meta name="apple-mobile-web-app-title" content="Reorder">', '<meta name="apple-mobile-web-app-title" content="IronLedger Reorder">')
 rep('<link rel="icon" href="icon-192.png">', '<link rel="icon" href="mark.svg" type="image/svg+xml">\n<link rel="alternate icon" href="icon-192.png">')
 rep("""  <div class="li-card">
@@ -444,6 +433,7 @@ rep('<img id="ilLogo" src="ironledger-logo.png" alt="" hidden>', '<img id="ilLog
 PCSS = open(os.path.join(HERE, 'parts', 'pharm_panels.css')).read()
 s = s.replace('/*PHARM_CSS*/', PCSS + open(os.path.join(HERE, 'parts', 'documents.css')).read(), 1)
 open(OUT.replace('index.html', 'pharm_panels.css'), 'w').write(PCSS)
+open(OUT.replace('index.html', 'suite.css'), 'w').write(open(P + 'suite.css').read())
 open(OUT.replace('index.html', 'layout_engine.js'), 'w').write(open(P + 'layout_engine.js').read())
 open(OUT.replace('index.html', 'pharm_panels.js'), 'w').write(open(P + 'pharm_panels.js').read())
 open(OUT.replace('index.html', 'documents_panels.js'), 'w').write(open(P + 'documents_panels.js').read())
@@ -460,10 +450,10 @@ HOOK = ("window.IL_BLANK=true;\n"
         "document.addEventListener('click',function(e){ var a=e.target&&e.target.closest&&e.target.closest('a[href]'); if(a&&/^https?:/i.test(a.getAttribute('href'))){ a.target='_blank'; a.rel='noopener noreferrer'; } },true);\n"
         "['keydown','pointerdown','wheel','input','touchstart'].forEach(function(t){ document.addEventListener(t,function(){ try{ window.parent.markUse(); }catch(e){} },{capture:true,passive:true}); });\n")
 assert cal.count('window.IL_BLANK=true;\n') == 1
-CAL_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'"
+CAL_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'"
 cal = cal.replace('window.IL_BLANK=true;\n', HOOK, 1)
 assert cal.startswith('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">')
-cal = cal.replace('<meta charset="utf-8">', '<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="%s">' % CAL_CSP, 1)
+cal = cal.replace('<meta charset="utf-8">', '<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="%s"><link rel="stylesheet" href="fonts.css">' % CAL_CSP, 1)
 open(OUT.replace('index.html', 'calendar.html'), 'w', encoding='utf-8').write(cal)
 s = s[:m.start()] + '<script src="app.js"></script>' + s[m.end():]
 th = re.search(r'<script>([\s\S]*?)</script>', s).group(1)

@@ -1,6 +1,7 @@
 /* ---------------- tabs, render, start ---------------- */
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('active', x === b));
+  document.querySelectorAll('#tabs button').forEach(x => { x.classList.toggle('active', x === b); x.classList.toggle('sub', b.dataset.tab === 'archive' && x.dataset.tab === 'list'); });
+  $('acctBtn').classList.toggle('on', b.dataset.tab === 'owner');
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + b.dataset.tab));
   document.body.classList.toggle('wideTab', b.dataset.tab === 'owner' || b.dataset.tab === 'documents');
   if(b.dataset.tab === 'owner') openOwnerTab();
@@ -8,6 +9,9 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   if(b.dataset.tab === 'calendar') calShow();
   if(b.dataset.tab === 'documents') docsShow();
 });
+$('acctBtn').onclick = () => document.querySelector('#tabs [data-tab="owner"]').click();                 // Account: by the pharmacy name, not a tab
+$('archOpen').onclick = () => document.querySelector('#tabs [data-tab="archive"]').click();             // Archive: from the Reorder List page
+$('archBack').onclick = () => document.querySelector('#tabs [data-tab="list"]').click();
 function renderAll(){ renderList(); renderArchive(); }
 
 /* ---- computers sign out by themselves after a while without use (shared front-counter computers) ----

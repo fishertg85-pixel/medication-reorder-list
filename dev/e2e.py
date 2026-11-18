@@ -113,12 +113,12 @@ with sync_playwright() as pw:
     row.locator('select[data-f=dist]').select_option('Anda Inc'); p.wait_for_timeout(700)
     row.locator('input[data-f=ordered]').check(); p.wait_for_timeout(700)
     # Account Owner tab: pharmacy details + logo + new pharmacy + person
-    p.click('#tabs [data-tab=owner]'); p.wait_for_timeout(500)
+    p.click('#acctBtn'); p.wait_for_timeout(500)
     print('L1 owner tab locked at first:', p.is_visible('#ownLock'), '| body hidden:', not p.is_visible('#ownBody'))
     p.fill('#ownPw', 'wrongpass99'); p.click('#ownUnlock'); p.wait_for_timeout(700); print('L2 wrong password:', p.inner_text('#ownLockMsg'))
     p.fill('#ownPw', REALPW['owner']); p.click('#ownUnlock'); p.wait_for_timeout(1200)
     print('L3 unlocked:', p.is_visible('#ownBody'), '| people rows:', p.locator('.ulist .urow').count())
-    p.click('#tabs [data-tab=list]'); p.wait_for_timeout(200); p.click('#tabs [data-tab=owner]'); p.wait_for_timeout(600)
+    p.click('#tabs [data-tab=list]'); p.wait_for_timeout(200); p.click('#acctBtn'); p.wait_for_timeout(600)
     print('L4 back within 5 min, still open:', p.is_visible('#ownBody'))
     card = p.locator('.pcard').first
     for k, v in {"address": "102 Main St, Haslet TX 76052", "phone": "817-555-0100", "fax": "817-555-0101", "email": "haslet@example.com", "license": "TX-31234"}.items():
@@ -135,14 +135,14 @@ with sync_playwright() as pw:
     temp = re.search(r'Temporary password: (\S+)', box).group(1)
     p.screenshot(path=OUT + 'owner_tab.png', full_page=True)
     # Setup tab: pharmacy details
-    p.click('#tabs [data-tab=setup]'); p.wait_for_timeout(300); print('6 setup details:', p.inner_text('#storeInfo').replace('\n', ' | ')[:160])
+    p.click('#acctBtn'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_selector('#ownBody:visible'); p.wait_for_timeout(300); print('6 setup details:', p.inner_text('#storeInfo').replace('\n', ' | ')[:160])
     p.click('#tabs [data-tab=list]'); p.wait_for_timeout(300); p.screenshot(path=OUT + 'list_desktop.png')
 
     import boto3
     ddb = boto3.client('dynamodb', endpoint_url='http://localhost:5005', region_name='us-east-1', aws_access_key_id='x', aws_secret_access_key='x')
     for it in ddb.query(TableName='nortex-reorder-main', KeyConditionExpression='pk=:p', ExpressionAttributeValues={':p':{'S':'USERS'}})['Items']:
         if it.get('owner', {}).get('BOOL'): ddb.update_item(TableName='nortex-reorder-main', Key={'pk':it['pk'],'sk':it['sk']}, UpdateExpression='SET unlockUntil = :z', ExpressionAttributeValues={':z':{'N':'1'}})
-    p.click('#tabs [data-tab=list]'); p.wait_for_timeout(200); p.click('#tabs [data-tab=owner]'); p.wait_for_timeout(1200)
+    p.click('#tabs [data-tab=list]'); p.wait_for_timeout(200); p.click('#acctBtn'); p.wait_for_timeout(1200)
     print('L5 server says 5 min passed -> lock shown, nothing loaded:', p.is_visible('#ownLock'), not p.is_visible('#ownBody'), '|', p.inner_text('#ownLockMsg'))
     tok = p.evaluate("SESSION.id")
     import urllib.request
@@ -172,7 +172,7 @@ with sync_playwright() as pw:
     search_add(p, 'ateno 50'); m.wait_for_timeout(9000)
     print('10 after owner adds, maria sees:', items(m))
     # owner switches off maria's "remove" permission → her × disappears after refresh
-    p.click('#tabs [data-tab=owner]'); p.wait_for_timeout(900)
+    p.click('#acctBtn'); p.wait_for_timeout(900)
     if p.is_visible('#ownLock'): p.fill('#ownPw', REALPW['owner']); p.click('#ownUnlock'); p.wait_for_timeout(1200)
     p.locator('[data-sub] [data-uperm=remove]').locator('xpath=..').click(); p.wait_for_timeout(300)
     p.locator('[data-sub] [data-upd]').first.click(); p.wait_for_timeout(1200); print('11a update message:', p.inner_text('#ownPeopleMsg'))
@@ -180,7 +180,7 @@ with sync_playwright() as pw:
     # maria submits
     m.click('#submitBtn'); m.wait_for_timeout(1500)
     print('12 after submit list:', items(m))
-    m.click('#tabs [data-tab=archive]'); m.wait_for_timeout(1200)
+    m.click('#archOpen'); m.wait_for_timeout(1200)
     print('13 archive (maria):', m.inner_text('#archCount'), '|', m.locator('#archBody tr.order').first.inner_text().replace('\n', ' ')[:140])
     m.locator('#archBody tr.order').first.click(); m.wait_for_timeout(300); m.screenshot(path=OUT + 'archive_phone.png', full_page=True)
     # owner switches off maria's access to NTX1 → she's told on next /me check; on reload she can't get in
@@ -196,7 +196,7 @@ with sync_playwright() as pw:
     print('15 import:', p.inner_text('#impMsg'))
     p.select_option('#storeSel', 'NTX2'); p.wait_for_timeout(1500); p.click('#tabs [data-tab=list]'); p.wait_for_timeout(200)
     print('16 NTX2 list after import:', items(p), '| header:', p.inner_text('#storeName'))
-    p.click('#tabs [data-tab=archive]'); p.wait_for_timeout(1200); print('17 NTX2 archive:', p.inner_text('#archCount'))
+    p.click('#archOpen'); p.wait_for_timeout(1200); print('17 NTX2 archive:', p.inner_text('#archCount'))
     # sign out → sign-in screen
     p.click('#signOutBtn'); p.wait_for_timeout(500); print('18 signed out shows login:', p.is_visible('#login'))
     print('ERRORS:', ERR or 'none'); b.close()

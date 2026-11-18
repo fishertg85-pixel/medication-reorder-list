@@ -13,7 +13,7 @@ with sync_playwright() as pw:
     c.respond_to_auth_challenge(ClientId=ids["client"], ChallengeName="NEW_PASSWORD_REQUIRED", Session=r["Session"], ChallengeResponses={"USERNAME": "owner", "NEW_PASSWORD": "ownerpass99"})
     p.goto(BASE); p.wait_for_selector('#login', state='visible'); p.fill('#liPharm', 'NTX1'); p.wait_for_timeout(700)
     p.fill('#liUser', 'owner'); p.fill('#liPass', 'ownerpass99'); p.click('#liGo'); p.wait_for_selector('#tabs', state='visible', timeout=8000); p.wait_for_timeout(800)
-    p.click('#tabs [data-tab=owner]'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock')
+    p.click('#acctBtn'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock')
     p.wait_for_selector('.pgrid', timeout=8000)
     for w in widths:
         p.set_viewport_size({'width': w, 'height': 1000}); p.wait_for_timeout(400)

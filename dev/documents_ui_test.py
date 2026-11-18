@@ -149,7 +149,7 @@ with sync_playwright() as pw:
     check("no page errors so far", errs, []); p.close()
     # ---- Account Owner: people list
     p = newpage(); signin(p, "NTX1", "owner", "ownerpass99"); opendocs(p); check("Account Owner sees the Documents tab and tiles", (tabvis(p), p.locator('.dtile').count()), (True, 5))
-    p.click('#tabs [data-tab=owner]'); p.wait_for_timeout(500)
+    p.click('#acctBtn'); p.wait_for_timeout(500)
     p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_selector('#ownBody:visible'); p.wait_for_selector('#ownPeople [data-sub]', timeout=8000)
     check("initials field on each person; duplicate initials refused", (p.locator('#ownPeople [data-uini]').count() >= 4, api(O, "POST", "/owner/users/" + [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "ctk"][0]["sub"], {"initials": "sf"})[0], api(O, "POST", "/owner/users/" + [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "ctk"][0]["sub"], {"initials": "CT"})[0], api(O, "POST", "/owner/users/" + [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "ctk"][0]["sub"], {"initials": "C1"})[0]), (True, 400, 200, 400))
     row = p.locator('#ownPeople [data-sub]:has-text("MAMARE"), #ownPeople [data-sub]:has-text("NOP")').first

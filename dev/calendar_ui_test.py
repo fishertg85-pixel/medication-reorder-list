@@ -65,7 +65,7 @@ with sync_playwright() as pw:
     check("audit log names the signed-in login", [l["by"] for l in g["log"]][:1], ["Pat Owner"])
     p.screenshot(path='screenshots/calendar_tab.png')
     # Account Owner tab: account type for a person, identifiers on the pharmacy
-    p.click('#tabs [data-tab=owner]'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_selector('select[data-utype]', timeout=8000)
+    p.click('#acctBtn'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_selector('select[data-utype]', timeout=8000)
     row = p.locator('.urow[data-sub]').filter(has_text='CALA'); row.locator('select[data-utype]').select_option('pharmacist'); p.wait_for_timeout(300)
     row = p.locator('.urow[data-sub]').filter(has_text='CALA'); row.locator('[data-upd]').click(); p.wait_for_timeout(1500)
     cu = {u["login"]: u for u in api(O, "GET", "/owner/users")[1]["users"]}["cala"]

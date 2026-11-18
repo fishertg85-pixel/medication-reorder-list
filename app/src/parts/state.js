@@ -198,6 +198,7 @@ async function loadLogo(id, fresh){
   if(LOGOS[id] === undefined || fresh){ try{ const p = await fetchPublic(id); LOGOS[id] = p.logo || ''; }catch(e){ LOGOS[id] = ''; } }
   if(STORE && STORE.id === id) paintStore();
 }
+let LANDED = false;
 function paintStore(){
   $('storeName').textContent = STORE ? STORE.name : 'Reorder List';
   document.title = (STORE ? STORE.name + ' · ' : '') + 'Reorder List';
@@ -215,6 +216,11 @@ function paintStore(){
   $('exportCard').style.display = PERM('export') ? '' : 'none';
   renderStoreInfo();
   calPaint(); docsPaintTab();
+  $('archOpen').style.display = PERM('archive') ? '' : 'none';
+  $('acctBtn').style.display = ME && ME.owner ? '' : 'none';
+  if(!LANDED && ME && STORE){ LANDED = true;                  // first screen after sign-in = the first tab the person has (Calendar, Documents, Reorder List)
+    const first = [...document.querySelectorAll('#tabs button')].find(b => !b.classList.contains('tabx') && b.style.display !== 'none');
+    if(first && first.dataset.tab !== 'list') first.click(); }
 }
 const SVC_NAMES = {retail:'Retail dispensing', controlled:'Controlled substances', nonsterile:'Nonsterile compounding', sterile:'Sterile compounding', hazardous:'Hazardous drug compounding', immunizations:'Immunizations', delivery:'Delivery', ltc:'Long-term care', specialty:'Specialty', infusion:'Home infusion'};
 function hoursText(h){

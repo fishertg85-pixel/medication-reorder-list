@@ -236,6 +236,7 @@ async function loadLogo(id, fresh){
   if(LOGOS[id] === undefined || fresh){ try{ const p = await fetchPublic(id); LOGOS[id] = p.logo || ''; }catch(e){ LOGOS[id] = ''; } }
   if(STORE && STORE.id === id) paintStore();
 }
+let LANDED = false;
 function paintStore(){
   $('storeName').textContent = STORE ? STORE.name : 'Reorder List';
   document.title = (STORE ? STORE.name + ' · ' : '') + 'Reorder List';
@@ -253,6 +254,11 @@ function paintStore(){
   $('exportCard').style.display = PERM('export') ? '' : 'none';
   renderStoreInfo();
   calPaint(); docsPaintTab();
+  $('archOpen').style.display = PERM('archive') ? '' : 'none';
+  $('acctBtn').style.display = ME && ME.owner ? '' : 'none';
+  if(!LANDED && ME && STORE){ LANDED = true;                  // first screen after sign-in = the first tab the person has (Calendar, Documents, Reorder List)
+    const first = [...document.querySelectorAll('#tabs button')].find(b => !b.classList.contains('tabx') && b.style.display !== 'none');
+    if(first && first.dataset.tab !== 'list') first.click(); }
 }
 const SVC_NAMES = {retail:'Retail dispensing', controlled:'Controlled substances', nonsterile:'Nonsterile compounding', sterile:'Sterile compounding', hazardous:'Hazardous drug compounding', immunizations:'Immunizations', delivery:'Delivery', ltc:'Long-term care', specialty:'Specialty', infusion:'Home infusion'};
 function hoursText(h){
@@ -399,6 +405,7 @@ async function enterApp(pharm){
 }
 document.addEventListener('visibilitychange', () => { if(!document.hidden && STORE) refreshLines().catch(() => {}); });
 async function signOut(quiet){
+  LANDED = false;
   if(ME && ME.owner && OWN_UNTIL > 0){ OWN_UNTIL = 0; await api('POST', '/owner-lock', {}).catch(() => {}); }
   if(SESSION && SESSION.refresh) cog('RevokeToken', {ClientId:CFG.clientId, Token:SESSION.refresh}).catch(() => {});
   SESSION = null; saveSession();
@@ -1123,7 +1130,7 @@ $('submitBtn').onclick = async () => {
   const n = STATE.reorder.length;
   if(!n) return;
   const missing = STATE.reorder.filter(r => !r.dist).length, unticked = STATE.reorder.filter(r => !r.ordered).length;
-  if(!confirm(`Submit ${n} line${n === 1 ? '' : 's'} for ${STORE.id}? They move to the Archive.` +
+  if(!confirm(`Archive ${n} line${n === 1 ? '' : 's'} for ${STORE.id}? They move to the Archive.` +
      (unticked ? `\n\n${unticked} line${unticked === 1 ? ' is' : 's are'} not ticked as ordered yet.` : '') +
      (missing ? `\n\n${missing} line${missing === 1 ? ' has' : 's have'} no distributor chosen.` : ''))) return;
   let done = 0;
@@ -2316,7 +2323,8 @@ function docsInit(){                                             // once, when t
 
 /* ---------------- tabs, render, start ---------------- */
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('active', x === b));
+  document.querySelectorAll('#tabs button').forEach(x => { x.classList.toggle('active', x === b); x.classList.toggle('sub', b.dataset.tab === 'archive' && x.dataset.tab === 'list'); });
+  $('acctBtn').classList.toggle('on', b.dataset.tab === 'owner');
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + b.dataset.tab));
   document.body.classList.toggle('wideTab', b.dataset.tab === 'owner' || b.dataset.tab === 'documents');
   if(b.dataset.tab === 'owner') openOwnerTab();
@@ -2324,6 +2332,9 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   if(b.dataset.tab === 'calendar') calShow();
   if(b.dataset.tab === 'documents') docsShow();
 });
+$('acctBtn').onclick = () => document.querySelector('#tabs [data-tab="owner"]').click();                 // Account: by the pharmacy name, not a tab
+$('archOpen').onclick = () => document.querySelector('#tabs [data-tab="archive"]').click();             // Archive: from the Reorder List page
+$('archBack').onclick = () => document.querySelector('#tabs [data-tab="list"]').click();
 function renderAll(){ renderList(); renderArchive(); }
 
 /* ---- computers sign out by themselves after a while without use (shared front-counter computers) ----

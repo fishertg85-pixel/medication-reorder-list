@@ -30,7 +30,7 @@ with sync_playwright() as pw:
     am.on('dialog', lambda d: d.accept(PROMPT[0]) if d.type == 'prompt' else d.accept())
     am.route('**/clinicaltables.nlm.nih.gov/**', lambda r, q: r.fulfill(status=200, body='[0,[],{},[]]', headers={'Access-Control-Allow-Origin': '*'}))
     sign_in(am, 'NTX1', 'owner', 'temp12345a', 'ownerpass99')
-    am.click('#tabs [data-tab=owner]'); am.fill('#ownPw', 'ownerpass99'); am.click('#ownUnlock'); am.wait_for_selector('#ownBody:visible')
+    am.click('#acctBtn'); am.fill('#ownPw', 'ownerpass99'); am.click('#ownUnlock'); am.wait_for_selector('#ownBody:visible')
     am.wait_for_selector('.ulist .urow')
 
     # 1. missing consent: a message that stays on screen next to the button
@@ -70,7 +70,7 @@ with sync_playwright() as pw:
     st = b.new_context(viewport={'width': 390, 'height': 844}).new_page()
     sign_in(st, 'NTX1', 'dtech', temp, 'danapass123')
     check('new person signs in and changes the temporary password', st.is_visible('#tabs'))
-    am.click('#tabs [data-tab=list]'); am.click('#tabs [data-tab=owner]'); am.wait_for_timeout(1200)
+    am.click('#tabs [data-tab=list]'); am.click('#acctBtn'); am.wait_for_timeout(1200)
     row = am.locator('.ulist .urow:has-text("dtech")')
     check('after first sign-in the person shows Active', 'Active' in row.inner_text() and 'Pending' not in row.inner_text())
     check('active row offers Delete', row.locator('[data-del]').inner_text() == 'Delete')
@@ -79,7 +79,7 @@ with sync_playwright() as pw:
     sw.click(); am.wait_for_timeout(300)
     row = am.locator('.ulist .urow:has-text("dtech")')
     check('changing a switch shows Update and Undo on that row', row.locator('[data-upd]').count() == 1 and row.locator('[data-undo]').count() == 1 and 'dirty' in (row.get_attribute('class') or ''))
-    am.click('#tabs [data-tab=list]'); am.click('#tabs [data-tab=owner]'); am.wait_for_timeout(1200)
+    am.click('#tabs [data-tab=list]'); am.click('#acctBtn'); am.wait_for_timeout(1200)
     st.reload(); st.wait_for_selector('#tabs:visible'); st.wait_for_timeout(1200)
     check('nothing is saved before Update', st.locator('#listBody [data-del]').count() >= 0 and am.locator('.ulist .urow:has-text("dtech") [data-uperm=remove]').is_checked() is False)
     row = am.locator('.ulist .urow:has-text("dtech")')

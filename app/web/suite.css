@@ -1,0 +1,61 @@
+/* IronLedger suite look: the compliance calendar's design (light, ledger-style: near-white page, white panels, thin borders, one steel-blue
+   accent, light header with underlined tabs) in IBM Plex Sans, with the IronLedger mark. Loaded by the app and the host page only;
+   the public SMS pages keep brand.css. Defines both token vocabularies (the app's and brand.css's) so every panel follows it. */
+:root{
+  --bg:#f2f4f6;--panel:#fff;--panel-2:#eef2f5;--text:#17212b;--ink:#17212b;--ink-2:#2b3a48;--muted:#586878;--line:#d6dde3;--line-soft:#e9edf1;
+  --head:#fff;--head-text:#17212b;--head-sub:#586878;--nav:#fff;--topbar-bg:#fff;--topbar-ink:#17212b;--topbar-dim:#586878;
+  --accent:#2b5c84;--accent-hover:#234d6f;--accent-soft:#e3eef7;--on-accent:#fff;--link:#2b5c84;
+  --ok:#1a6a39;--ok-soft:#e1f3e8;--warn:#8a5200;--warn-soft:#fff0cc;--bad:#a8211a;--bad-soft:#fde9e7;--danger:#a8211a;
+  --input-bg:#fff;--input-line:#c9d2da;--row-alt:#f7f9fb;--hover:#e9edf1;
+  --sect:#e9edf1;--sect-text:#2b5c84;--sect-fda:#e1f3e8;--sect-fda-text:#1a6a39;
+  --warn-bg:#fff0cc;--warn-line:#e8c872;--warn-text:#8a5200;--info-bg:#e3eef7;--info-line:#b9d3e8;--info-text:#2b5c84;--new-bg:#fff0cc;
+  --radius:8px;--shadow:none;color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#10161c;--panel:#18212a;--panel-2:#212d38;--text:#e5eaef;--ink:#e5eaef;--ink-2:#c3ced8;--muted:#9aa9b8;--line:#2a3845;--line-soft:#212d38;
+  --head:#18212a;--head-text:#e5eaef;--head-sub:#9aa9b8;--nav:#18212a;--topbar-bg:#18212a;--topbar-ink:#e5eaef;--topbar-dim:#9aa9b8;
+  --accent:#74aedb;--accent-hover:#93c2e5;--accent-soft:#1d3447;--on-accent:#0c141b;--link:#74aedb;
+  --ok:#7fd3a0;--ok-soft:#15301f;--warn:#f2c46b;--warn-soft:#3a2d0f;--bad:#ff9a92;--bad-soft:#3b1a18;--danger:#ff9a92;
+  --input-bg:#10161c;--input-line:#2a3845;--row-alt:#1b252f;--hover:#25313c;
+  --sect:#212d38;--sect-text:#9cc6e6;--sect-fda:#15301f;--sect-fda-text:#7fd3a0;
+  --warn-bg:#3a2d0f;--warn-line:#7a5a14;--warn-text:#f2c46b;--info-bg:#1d3447;--info-line:#2a4a66;--info-text:#9cc6e6;--new-bg:#3a2d0f;
+  --shadow:none;color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#10161c;--panel:#18212a;--panel-2:#212d38;--text:#e5eaef;--ink:#e5eaef;--ink-2:#c3ced8;--muted:#9aa9b8;--line:#2a3845;--line-soft:#212d38;
+  --head:#18212a;--head-text:#e5eaef;--head-sub:#9aa9b8;--nav:#18212a;--topbar-bg:#18212a;--topbar-ink:#e5eaef;--topbar-dim:#9aa9b8;
+  --accent:#74aedb;--accent-hover:#93c2e5;--accent-soft:#1d3447;--on-accent:#0c141b;--link:#74aedb;
+  --ok:#7fd3a0;--ok-soft:#15301f;--warn:#f2c46b;--warn-soft:#3a2d0f;--bad:#ff9a92;--bad-soft:#3b1a18;--danger:#ff9a92;
+  --input-bg:#10161c;--input-line:#2a3845;--row-alt:#1b252f;--hover:#25313c;
+  --sect:#212d38;--sect-text:#9cc6e6;--sect-fda:#15301f;--sect-fda-text:#7fd3a0;
+  --warn-bg:#3a2d0f;--warn-line:#7a5a14;--warn-text:#f2c46b;--info-bg:#1d3447;--info-line:#2a4a66;--info-text:#9cc6e6;--new-bg:#3a2d0f;
+  --shadow:none;color-scheme:dark;}
+body{font:14px/1.45 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;}
+/* header: light bar, mark + IronLedger wordmark, then the pharmacy */
+header{background:var(--head);color:var(--head-text);border-bottom:1px solid var(--line);padding:10px 20px;}
+header h1{font-size:15px;font-weight:600;}
+header .sub{color:var(--head-sub);}
+header img#storeLogo{border-radius:7px;}
+.ilword{font-weight:700;font-size:18px;letter-spacing:.2px;white-space:nowrap;padding-right:14px;border-right:1px solid var(--line);}
+.ilword b{color:var(--accent);font-weight:700;}
+.hbtn{background:var(--panel);color:var(--text);border:1px solid var(--line);} .hbtn:hover{background:var(--hover);}
+.hsel{background:var(--panel);color:var(--text);border:1px solid var(--line);}
+.who{color:var(--muted);}
+nav{background:var(--nav);border-bottom:1px solid var(--line);padding:0 20px;gap:2px;}
+nav button{color:var(--muted);font-weight:500;font-size:14px;padding:11px 16px;}
+nav button:hover{color:var(--text);}
+nav button.active{color:var(--text);border-bottom-color:var(--accent);}
+/* host page top bar */
+.topbar{background:var(--head);color:var(--head-text);border-bottom:1px solid var(--line);}
+.topbar a.brand{color:var(--text);}
+.topbar .tag{color:var(--muted);}
+.brand .wm{font-size:18px;}
+.card,.li-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:none;}
+th{color:var(--muted);}
+.tabs button.on{border-bottom-color:var(--accent);}
+
+.tabx{display:none !important;}
+.ilmark{width:30px;height:30px;border-radius:7px;flex:none;}
+.ilword{padding-right:12px;}
+nav button.sub{color:var(--text);border-bottom-color:var(--accent);}
+#acctBtn{margin-left:2px;} #acctBtn.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);}
+.addrow{display:flex;gap:10px;align-items:flex-start;} .addrow .search-wrap{flex:1;min-width:0;} .addrow #archOpen{min-height:42px;white-space:nowrap;}
