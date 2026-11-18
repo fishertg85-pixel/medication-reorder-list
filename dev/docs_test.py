@@ -1,5 +1,5 @@
 # Documents: access rules, duties, upload, versions, approval, review, retire, file links, pins. Run ./reset.sh first.
-import json, subprocess, urllib.request, urllib.error, boto3, sys
+import re, json, subprocess, urllib.request, urllib.error, boto3, sys
 ids = json.load(open('moto_ids.json'))
 c = boto3.client("cognito-idp", endpoint_url="http://localhost:5005", region_name="us-east-1", aws_access_key_id="x", aws_secret_access_key="x")
 fails = []
@@ -30,6 +30,16 @@ def mk(login_, perms, acct="", duty=None, stores=True):
     return login(login_, r["tempPassword"], login_ + "pass12345")["IdToken"]
 P = {"documents": True}
 PIC = mk("pic1", P, "pic"); DP = mk("dp1", P, "pharmacist", "dp"); CT = mk("ctech1", P, "tech", "ctech"); ST = mk("staff1", P, "staff"); NOP = mk("noperm1", {})
+# initials and PINs: approvers sign with a personal PIN (the tests below send it automatically on signing calls)
+USERS = lambda: api(O, "GET", "/owner/users")[1]["users"]
+subof = lambda l: [u for u in USERS() if u["login"] == l][0]["sub"]
+for l, ini in (("owner", "PO"), ("pic1", "PC"), ("dp1", "DP"), ("ctech1", "CT")): assert api(O, "POST", "/owner/users/" + subof(l), {"initials": ini})[0] == 200
+PINS = {O: "2847", PIC: "3951", DP: "7264"}
+for t, pn in PINS.items(): assert api(t, "POST", "/me/pin", {"pin": pn})[0] == 200
+_api0 = api
+def api(tok, method, path, body=None):
+    if method == "POST" and tok in PINS and isinstance(body, dict) and "pin" not in body and path.rsplit("/", 1)[-1] in ("approve", "reject", "review", "retire", "restore"): body = dict(body, pin=PINS[tok])
+    return _api0(tok, method, path, body)
 D = "/stores/NTX1/documents"
 check("Documents switched off: everyone is refused", (api(O, "GET", D)[0], api(PIC, "GET", D)[0]), (403, 403))
 check("host switches Documents on", api(H, "POST", "/host/stores/NTX1", {"documents": True, "changeReason": "test change reason"})[0], 200)
@@ -128,6 +138,39 @@ check("pins kept per person; unseen/invalid ones dropped", (view(ST)["pins"], vi
 # ---- the log
 ev = view(PIC)["log"]; check("events recorded", sorted(set(e["action"] for e in ev)), sorted(["Document Added", "Version Approved", "Version Submitted", "Version Rejected", "Reviewed", "Details Edited", "Retired", "Restored"]))
 check("events name the person and duty", [(e["by"], e["duty"]) for e in ev if e["action"] == "Retired"], [("DP1", "dp")])
+# ---- employee IDs and PINs
+us = {u["login"]: u for u in USERS()}
+check("employee IDs: assigned, 4 digits, all different", (all(re.fullmatch(r"\d{4}", u["empId"]) for u in us.values()), len({u["empId"] for u in us.values()}) == len(us)), (True, True))
+check("PIN states listed", (us["pic1"]["pin"], us["staff1"]["pin"]), ("set", "none"))
+check("approver without a PIN is asked to set one", (api(ST, "POST", "/me/pin", {"pin": "1234"})[0], api(ST, "POST", "/me/pin", {"pin": "1111"})[0], api(ST, "POST", "/me/pin", {"pin": "12a4"})[0]), (400, 400, 400))
+s_, r_ = _api0(O, "POST", D + "/SOP-OPS-001/review", {"outcome": "ok", "date": today}); check("signing without a PIN is refused with a code", (s_, r_.get("pin")), (400, None))
+ps_, ups = upload(CT); s_, rr = _api0(CT, "POST", D, body(ups, title="PIN Probe")); pid = rr["id"]
+DP2 = mk("dp2", P, "pharmacist", "dp"); assert api(O, "POST", "/owner/users/" + subof("dp2"), {"initials": "DQ"})[0] == 200
+check("an approver with no PIN yet gets a pin-not-set answer", (lambda x: (x[0], x[1].get("pin")))(_api0(DP2, "POST", D + "/" + pid + "/approve", {"effective": "2026-11-01", "pin": "4826"})), (409, "pin-not-set"))
+DP3 = mk("dp3", P, "pharmacist", "dp"); assert _api0(DP3, "POST", "/me/pin", {"pin": "4826"})[0] == 200
+check("no initials: signing refused before the PIN is even tried", (lambda x: (x[0], "initials" in x[1]["error"]))(_api0(DP3, "POST", D + "/" + pid + "/approve", {"effective": "2026-11-01", "pin": "4826"})), (400, True))
+check("wrong PIN counts and says how many tries are left", (lambda x: (x[0], "4 tries" in x[1]["error"]))(_api0(PIC, "POST", D + "/" + pid + "/approve", {"effective": "2026-11-01", "pin": "1111"})), (400, True))
+check("right PIN still works after a wrong try (counter resets)", _api0(PIC, "POST", D + "/" + pid + "/approve", {"effective": "2026-11-01", "pin": "3951"})[0], 200)
+# lockout on a fresh draft: five wrong tries lock, even the right PIN is then refused
+ps_, ups = upload(CT); s_, rr = _api0(CT, "POST", D, body(ups, title="Lock Probe")); lid = rr["id"]
+res = [_api0(DP, "POST", D + "/" + lid + "/approve", {"effective": "2026-11-01", "pin": "0001"}) for _ in range(5)]
+check("five wrong tries: last one reports the lock", (res[0][0], res[4][0], res[4][1].get("pin")), (400, 403, "pin-locked"))
+check("locked: the right PIN is refused too", (lambda x: (x[0], x[1].get("pin")))(_api0(DP, "POST", D + "/" + lid + "/approve", {"effective": "2026-11-01", "pin": "7264"})), (403, "pin-locked"))
+check("locked: listed as locked", [u["pin"] for u in USERS() if u["login"] == "dp1"], ["locked"])
+check("cannot change a locked PIN by knowing it", _api0(DP, "POST", "/me/pin", {"current": "7264", "pin": "5918"})[0], 403)
+check("a person cannot issue their own temporary PIN", _api0(DP, "POST", "/owner/users/" + subof("dp1") + "/pin-reset", {})[0], 403)
+check("another approver (PIC) cannot issue one either", _api0(PIC, "POST", "/owner/users/" + subof("dp1") + "/pin-reset", {})[0], 403)
+s_, tp = _api0(O, "POST", "/owner/users/" + subof("dp1") + "/pin-reset", {}); check("Account Owner issues a temporary PIN", (s_, bool(re.fullmatch(r"\d{4}", tp.get("tempPin", "")))), (200, True))
+check("temporary PIN cannot sign: must be replaced first", (lambda x: (x[0], x[1].get("pin")))(_api0(DP, "POST", D + "/" + lid + "/approve", {"effective": "2026-11-01", "pin": tp["tempPin"]})), (409, "pin-temp"))
+check("replacing it needs the temporary one", _api0(DP, "POST", "/me/pin", {"current": "0000", "pin": "5918"})[0], 400)
+check("must differ from the temporary PIN", _api0(DP, "POST", "/me/pin", {"current": tp["tempPin"], "pin": tp["tempPin"]})[0] in (400,), True)
+check("new PIN set with the temporary one", _api0(DP, "POST", "/me/pin", {"current": tp["tempPin"], "pin": "5918"})[0], 200); PINS[DP] = "5918"
+check("signing works again with the new PIN", _api0(DP, "POST", D + "/" + lid + "/approve", {"effective": "2026-11-01", "pin": "5918"})[0], 200)
+check("changing needs the current PIN", (_api0(DP, "POST", "/me/pin", {"current": "9999", "pin": "6482"})[0], _api0(DP, "POST", "/me/pin", {"current": "5918", "pin": "6482"})[0]), (400, 200)); PINS[DP] = "6482"
+check("the Account Owner's own PIN is reset only by the host", (_api0(PIC, "POST", "/owner/users/" + subof("owner") + "/pin-reset", {})[0], _api0(H, "POST", "/host/users/" + subof("owner") + "/pin-reset", {})[0]), (403, 200)); del PINS[O]
+log_ = view(O)["log"]; check("signed entries carry initials and employee ID", [(e["ini"], bool(e["emp"])) for e in log_ if e["action"] == "Version Approved"][0], ("DP", True))
+check("review history shows the signer's initials", [r["ini"] for d in view(O)["docs"] if d["id"] == "SOP-OPS-001" for r in d["reviews"] if r["outcome"].startswith("Reviewed")][:1], ["DP"])
+check("the PIN is not exposed by the people list", "pin\": {" not in json.dumps(api(O, "GET", "/owner/users")[1]) and "h\":" not in json.dumps(api(O, "GET", "/owner/users")[1]), True)
 # ---- reps and privileges
 node({"makeHost": {"login": "rep1", "name": "Rep One", "phone": "8175559998", "tempPassword": "reptemp12ab", "role": "rep"}})
 ra = login("rep1", "reptemp12ab", "reppass9999"); R = ra["IdToken"]; api(R, "POST", "/host-unlock", {"password": "reppass9999", "accessToken": ra["AccessToken"]})

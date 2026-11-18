@@ -7,7 +7,7 @@ process.env.AWS_ENDPOINT_URL = 'http://localhost:5005';
 process.env.AWS_REGION = 'us-east-1'; process.env.AWS_ACCESS_KEY_ID = 'x'; process.env.AWS_SECRET_ACCESS_KEY = 'x';
 const ids = JSON.parse(fs.readFileSync(new URL('./moto_ids.json', import.meta.url)));
 process.env.NPI_API = 'http://localhost:8790/npi-mock/';
-process.env.DOCS_BUCKET = 'nortex-docs-dev'; process.env.DOCS_S3_ENDPOINT = 'http://localhost:8790/s3';
+process.env.PIN_SECRET = 'dev-only-pin-secret-not-for-aws'; process.env.DOCS_BUCKET = 'nortex-docs-dev'; process.env.DOCS_S3_ENDPOINT = 'http://localhost:8790/s3';
 process.env.MAIN_TABLE = 'nortex-reorder-main'; process.env.ARCHIVE_TABLE = 'nortex-reorder-archive'; process.env.USER_POOL_ID = ids.pool;
 const { handler } = await import('../app/lambda/index.mjs');
 const WEB = path.resolve(process.argv[3] || new URL('../app/web', import.meta.url).pathname);

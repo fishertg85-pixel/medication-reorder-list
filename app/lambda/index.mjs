@@ -34,7 +34,7 @@ function fixDates(o){
   return o;
 }
 
-class HttpError extends Error { constructor(code, msg){ super(msg); this.code = code; } }
+class HttpError extends Error { constructor(code, msg, pin){ super(msg); this.code = code; if(pin) this.pin = pin; } }
 const bad = m => new HttpError(400, m), forbidden = m => new HttpError(403, m || 'You do not have access to that.');
 const json = (code, body) => ({ statusCode: code, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }, body: JSON.stringify(body) });
 const now = () => new Date().toISOString();
@@ -552,7 +552,8 @@ async function listPeople(){
   do { const r = await idp.send(new ListUsersCommand({ UserPoolId: POOL, PaginationToken, Limit: 60 }));
     for(const u of r.Users || []){ const sub = (u.Attributes || []).find(a => a.Name === 'sub'); if(sub) status[sub.Value] = { status: u.UserStatus, enabled: u.Enabled, created: u.UserCreateDate }; }
     PaginationToken = r.PaginationToken; } while(PaginationToken);
-  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host, hostRole: p.host ? (p.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: p.host ? (p.repStores || {}) : {}, acctType: p.acctType || '', docDuty: DOC_DUTIES.includes(p.docDuty) ? p.docDuty : '', initials: p.initials || '',
+  for(const p of profiles) if(!p.deleted && !p.empId) await ensureEmpId(p);
+  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host, hostRole: p.host ? (p.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: p.host ? (p.repStores || {}) : {}, acctType: p.acctType || '', docDuty: DOC_DUTIES.includes(p.docDuty) ? p.docDuty : '', initials: p.initials || '', empId: p.empId || '', pin: pinState(p),
     stores: p.stores || {}, perms: permsOf(p), disabled: status[p.sk] ? !status[p.sk].enabled : !!p.disabled,
     status: (status[p.sk] || {}).status || 'UNKNOWN', ...pendingOf(p, status[p.sk]) }))
     // Account Owner, host, then people still waiting to sign in for the first time, then everyone else
@@ -587,6 +588,87 @@ async function createLogin(b){
 }
 // An IronLedger rep may send password resets and change a privilege, only on an existing, active person (ID live, as in the people list) who has an account type.
 // Nothing else about a person (type, pharmacies, name, phone, switching off, deleting) and never the Calendar privilege, which belongs to a service line.
+// ---------- employee ID and personal PIN (signs approvals and reviews)
+// The PIN is 4 digits known only to the person. It never signs anyone in; it confirms who is at the keyboard while already signed in.
+// 10,000 codes is small, so: 5 wrong tries lock it, it is stored only as a keyed hash (HMAC with a secret kept outside the database),
+// and only the Account Owner or a host supervisor can issue a temporary one. Every try, lockout and reset is written to PINLOG.
+let _pinKey = null;
+async function pinKey(){
+  if(_pinKey) return _pinKey;
+  if(process.env.PIN_SECRET) return (_pinKey = process.env.PIN_SECRET);
+  if(!process.env.PIN_SECRET_ARN) throw new HttpError(500, 'PIN signing is not set up on the server.');
+  const { SecretsManagerClient, GetSecretValueCommand } = await import('@aws-sdk/client-secrets-manager');
+  const r = await new SecretsManagerClient({}).send(new GetSecretValueCommand({ SecretId: process.env.PIN_SECRET_ARN }));
+  return (_pinKey = r.SecretString);
+}
+const pinHash = async (sub, pin) => crypto.createHmac('sha256', await pinKey()).update(sub + ':' + pin).digest('hex');
+const PIN_MAX_FAILS = 5;
+const pinErr = (code, msg, status) => new HttpError(status || 409, msg, code);
+const pinState = p => !p.pin ? 'none' : p.pin.locked ? 'locked' : p.pin.temp ? 'temp' : 'set';
+const weakPin = t => /^(\d)\1{3}$/.test(t) || '0123456789'.includes(t) || '9876543210'.includes(t);
+const cleanNewPin = v => { const t = String(v == null ? '' : v).trim(); if(!/^\d{4}$/.test(t)) throw bad('The PIN is 4 digits.'); if(weakPin(t)) throw bad('Too easy to guess (like 1234 or 1111). Choose another.'); return t; };
+async function pinLog(p, action, by){
+  const at = now();
+  await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'PINLOG', sk: `${at}#${crypto.randomBytes(3).toString('hex')}`, j: JSON.stringify({ at, sub: p.sk, login: p.login || '', name: p.name || '', action, by: by || '' }) } })).catch(e => console.error('pinlog', e));
+}
+async function nextEmpNo(){
+  const r = await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'COUNTER', sk: 'EMP' }, UpdateExpression: 'ADD n :one', ExpressionAttributeValues: { ':one': 1 }, ReturnValues: 'UPDATED_NEW' }));
+  return String(1000 + r.Attributes.n);
+}
+async function ensureEmpId(p){                           // assigned once, never changes; existing logins get theirs the first time they are needed
+  if(p.empId) return p.empId;
+  const e = await nextEmpNo();
+  try{ await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: p.sk }, UpdateExpression: 'SET empId = :e', ConditionExpression: 'attribute_not_exists(empId)', ExpressionAttributeValues: { ':e': e } })); p.empId = e; return e; }
+  catch(err){ if(!isCond(err)) throw err; const q = await profileOf(p.sk); p.empId = q.empId; return q.empId; }
+}
+// check the person's current PIN. Counts the try BEFORE comparing (atomically) so parallel guesses cannot exceed the limit.
+async function verifyPin(me, given, forChange){
+  const p = await profileOf(me.sk); if(!p) throw forbidden();
+  const st = pinState(p);
+  if(st === 'none'){ if(forChange) return p; throw pinErr('pin-not-set', 'You have not set your PIN yet. Choose one now.'); }
+  if(st === 'locked') throw pinErr('pin-locked', 'Your PIN is locked after too many wrong tries. Ask the Account Owner for a temporary PIN.', 403);
+  if(st === 'temp' && !forChange) throw pinErr('pin-temp', 'Your PIN is temporary. Choose your own PIN now.');
+  const t = String(given == null ? '' : given).trim(); if(!/^\d{4}$/.test(t)) throw bad('Enter your 4-digit PIN.');
+  const r = await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: p.sk }, UpdateExpression: 'SET pin.fails = if_not_exists(pin.fails, :z) + :one',
+    ConditionExpression: 'attribute_exists(pin) AND pin.locked = :f', ExpressionAttributeValues: { ':z': 0, ':one': 1, ':f': false }, ReturnValues: 'UPDATED_NEW' })).catch(e => { if(isCond(e)) throw pinErr('pin-locked', 'Your PIN is locked. Ask the Account Owner for a temporary PIN.', 403); throw e; });
+  const fails = r.Attributes.pin.fails, a = Buffer.from(await pinHash(p.sk, t)), b = Buffer.from(p.pin.h);
+  if(a.length === b.length && crypto.timingSafeEqual(a, b) && fails <= PIN_MAX_FAILS){
+    await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: p.sk }, UpdateExpression: 'SET pin.fails = :z', ExpressionAttributeValues: { ':z': 0 } }));
+    return p;
+  }
+  await pinLog(p, 'Wrong PIN (' + fails + ' of ' + PIN_MAX_FAILS + ')', who(p));
+  if(fails >= PIN_MAX_FAILS){
+    await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: p.sk }, UpdateExpression: 'SET pin.locked = :t', ExpressionAttributeValues: { ':t': true } }));
+    await pinLog(p, 'PIN Locked', who(p));
+    throw pinErr('pin-locked', 'Your PIN is now locked after 5 wrong tries. Ask the Account Owner for a temporary PIN.', 403);
+  }
+  throw bad(`Wrong PIN. ${PIN_MAX_FAILS - fails} ${PIN_MAX_FAILS - fails === 1 ? 'try' : 'tries'} left before it locks.`);
+}
+// sign an action: the person must have initials and a PIN; returns what is stored with the record
+async function signAs(me, body, meaning){
+  if(!me.initials) throw bad('Your initials are not set yet. Ask the Account Owner to set them.');
+  const p = await verifyPin(me, body.pin, false);
+  return { ini: p.initials || me.initials, emp: await ensureEmpId(p), meaning, at: now() };
+}
+async function setMyPin(me, body){
+  const p = await verifyPin(me, body.current, true), st = pinState(p), np = cleanNewPin(body.pin);
+  if(st === 'temp' && String(body.current).trim() === np) throw bad('Choose a PIN different from the temporary one.');
+  await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: p.sk }, UpdateExpression: 'SET pin = :v',
+    ExpressionAttributeValues: { ':v': { h: await pinHash(p.sk, np), temp: false, locked: false, fails: 0, setAt: now() } } }));
+  await pinLog(p, st === 'none' ? 'PIN Set' : 'PIN Changed', who(p));
+  return { ok: true, pin: 'set', empId: await ensureEmpId(p) };
+}
+async function resetPin(me, p){                          // a temporary PIN, handed to the person by the Account Owner or a host supervisor
+  if(p.sk === me.sk) throw forbidden('Ask the Account Owner (or IronLedger) for a temporary PIN; you can change your own PIN if you know it.');
+  if(me.host ? !isSupervisor(me) : !me.owner) throw forbidden('Only the Account Owner or an IronLedger supervisor can issue a temporary PIN.');
+  if((p.owner || p.host) && !me.host) throw forbidden('IronLedger issues the temporary PIN for the Account Owner and host logins.');
+  if(p.host && !isSupervisor(me)) throw forbidden();
+  let t; do { t = String(crypto.randomInt(0, 10000)).padStart(4, '0'); } while(weakPin(t));
+  await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: p.sk }, UpdateExpression: 'SET pin = :v',
+    ExpressionAttributeValues: { ':v': { h: await pinHash(p.sk, t), temp: true, locked: false, fails: 0, setAt: now(), issuedBy: who(me) } } }));
+  await ensureEmpId(p); await pinLog(p, 'Temporary PIN Issued', who(me));
+  return { ok: true, tempPin: t };
+}
 // initials (2 to 3 letters) stamp printed copies; unique across all logins so two people never share them
 const cleanInitials = v => { const t = String(v == null ? '' : v).trim().toUpperCase(); if(t === '') return ''; if(!/^[A-Z]{2,3}$/.test(t)) throw bad('Initials are 2 or 3 letters.'); return t; };
 async function initialsTaken(ini, exceptSub){
@@ -629,6 +711,7 @@ async function updatePerson(me, sub, seg3, body){
     return { ok: true };
   }
   if(p.deleted) throw new HttpError(404, 'No such person.');
+  if(seg3 === 'pin-reset') return await resetPin(me, p);
   if(seg3 === 'reset-password'){
     const pw = body.tempPassword ? String(body.tempPassword) : tempPassword();
     if(pw.length < 10 || !/[a-z]/.test(pw) || !/\d/.test(pw)) throw bad('Temporary password: at least 10 characters with a lowercase letter and a number.');
@@ -831,8 +914,8 @@ async function docPut(store, d, isNew){
     ConditionExpression: isNew ? 'attribute_not_exists(pk)' : 'rev = :r', ...(isNew ? {} : { ExpressionAttributeValues: { ':r': rev || 0 } }) })); }
   catch(e){ if(isCond(e)) throw new HttpError(409, 'Someone else just changed this document. Reload and try again.'); throw e; }
 }
-async function docLog(store, me, action, docId, detail, flag){
-  const at = now(), j = JSON.stringify({ at, by: who(me), login: me.login || '', duty: docDuty(me), action, docId: docId || '', detail: String(detail || '').slice(0, 500), flag: flag || '' });
+async function docLog(store, me, action, docId, detail, flag, sig){
+  const at = now(), j = JSON.stringify({ at, by: who(me), login: me.login || '', duty: docDuty(me), action, docId: docId || '', detail: String(detail || '').slice(0, 500), flag: flag || '', ...(sig ? { ini: sig.ini, emp: sig.emp } : {}) });
   await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: docPk(store), sk: `DOCLOG#${at}#${crypto.randomBytes(3).toString('hex')}`, j } }));
 }
 const docCur = d => (d.versions || []).find(v => v.state === 'current'), docPend = d => (d.versions || []).find(v => v.state === 'pending');
@@ -845,8 +928,8 @@ function docView(d, duty){                                            // what ea
     return { id: d.id, title: d.title, type: d.type, area: d.area, sub: d.sub || '', format: d.format, versions: [{ v: c.v, state: 'current', effective: c.effective, at: c.at, hasFile: !!c.file }], retired: false, underReview: false, cycle: 0, lastReviewed: '', reviews: [], basis: '', notes: '', rev: d.rev };
   }
   const o = { id: d.id, title: d.title, type: d.type, area: d.area, sub: d.sub || '', format: d.format, cycle: d.cycle || 0, basis: d.basis || '', notes: d.notes || '', underReview: !!d.underReview, retired: !!d.retired, rev: d.rev,
-    versions: (d.versions || []).map(v => ({ v: v.v, state: v.state, effective: v.effective || '', at: v.at || '', summary: v.summary || '', by: v.by || '', approvedBy: v.approvedBy || '', selfApproved: !!v.selfApproved, fileName: v.file ? v.file.name : '', hasFile: !!v.file })) };
-  if(a){ o.lastReviewed = d.lastReviewed || ''; o.reviews = d.reviews || []; } else { o.lastReviewed = ''; o.reviews = []; }
+    versions: (d.versions || []).map(v => ({ v: v.v, state: v.state, effective: v.effective || '', at: v.at || '', summary: v.summary || '', by: v.by || '', approvedBy: v.approvedBy || '', approvedIni: v.approvedIni || '', selfApproved: !!v.selfApproved, fileName: v.file ? v.file.name : '', hasFile: !!v.file })) };
+  if(a){ o.lastReviewed = d.lastReviewed || ''; o.reviews = (d.reviews || []).map(r => ({ at: r.at, by: r.by, ini: r.ini || '', outcome: r.outcome, comment: r.comment })); } else { o.lastReviewed = ''; o.reviews = []; }
   return o;
 }
 function cleanVersion(v){ v = String(v == null ? '' : v).trim(); if(!/^\d{1,3}\.\d{1,3}$/.test(v)) throw bad('Version must look like 1.0.'); return v; }
@@ -943,31 +1026,33 @@ async function docsRoute(method, store, seg, q, body, me, storeItem){
   if(act === 'approve'){
     needA('approve versions'); if(!pend) throw bad('Nothing is waiting for approval.');
     const eff = cleanDocDate(body.effective, 'Effective date', { max: addMonthsIso(today, 12) }, today), self = (pend.byLogin || '') === (me.login || '') && !!pend.byLogin;
+    const sig = await signAs(me, body, 'Approved');
     if(cur) cur.state = 'superseded';
-    pend.state = 'current'; pend.effective = eff; pend.approvedBy = who(me); pend.approvedByLogin = me.login || ''; if(self) pend.selfApproved = true;
+    pend.state = 'current'; pend.effective = eff; pend.approvedBy = who(me); pend.approvedByLogin = me.login || ''; pend.approvedIni = sig.ini; pend.sig = sig; if(self) pend.selfApproved = true;
     d.underReview = false; d.retired = false; d.lastReviewed = eff <= today ? eff : today;
-    d.reviews = (d.reviews || []).concat([{ at: d.lastReviewed, by: who(me), outcome: 'Revised And Approved', comment: ('v' + pend.v + ': ' + (pend.summary || '')).slice(0, 300) }]);
-    await docPut(store, d); await docLog(store, me, 'Version Approved', id, 'v' + pend.v + ' effective ' + eff, self ? 'Self-Approved' : '');
+    d.reviews = (d.reviews || []).concat([{ at: d.lastReviewed, by: who(me), ini: sig.ini, outcome: 'Revised And Approved', comment: ('v' + pend.v + ': ' + (pend.summary || '')).slice(0, 300) }]);
+    await docPut(store, d); await docLog(store, me, 'Version Approved', id, 'v' + pend.v + ' effective ' + eff, self ? 'Self-Approved' : '', sig);
     return { ok: true };
   }
   if(act === 'reject'){
-    needA('reject versions'); if(!pend) throw bad('Nothing is waiting for approval.'); const w = reason();
+    needA('reject versions'); if(!pend) throw bad('Nothing is waiting for approval.'); const w = reason(); const sig = await signAs(me, body, 'Rejected');
     d.versions = d.versions.filter(x => x !== pend);
     if(!d.versions.length) await ddb.send(new DeleteCommand({ TableName: MAIN, Key: { pk: docPk(store), sk: 'DOC#' + id } })); else await docPut(store, d);
-    await docLog(store, me, 'Version Rejected', id, 'v' + pend.v + '. ' + w);
+    await docLog(store, me, 'Version Rejected', id, 'v' + pend.v + '. ' + w, '', sig);
     return { ok: true, removed: !d.versions.length };
   }
   if(act === 'review'){
     needA('mark documents reviewed'); if(st !== 'Active' && st !== 'Under Review') throw bad('Only Active documents can be reviewed.');
     const out = body.outcome === 'chg' ? 'chg' : 'ok', date = cleanDocDate(body.date, 'Review date', { notFuture: true }, today), com = String(body.comment || '').trim().slice(0, 500);
     if(out === 'chg' && !com) throw bad('Say what needs to change.');
-    d.lastReviewed = date; d.reviews = (d.reviews || []).concat([{ at: date, by: who(me), outcome: out === 'ok' ? 'Reviewed, No Changes' : 'Reviewed, Changes Needed', comment: com }]);
+    const sig = await signAs(me, body, 'Reviewed');
+    d.lastReviewed = date; d.reviews = (d.reviews || []).concat([{ at: date, by: who(me), ini: sig.ini, sig, outcome: out === 'ok' ? 'Reviewed, No Changes' : 'Reviewed, Changes Needed', comment: com }]);
     if(out === 'chg') d.underReview = true;
-    await docPut(store, d); await docLog(store, me, 'Reviewed', id, out === 'ok' ? 'Reviewed, No Changes' : 'Reviewed, Changes Needed. ' + com);
+    await docPut(store, d); await docLog(store, me, 'Reviewed', id, out === 'ok' ? 'Reviewed, No Changes' : 'Reviewed, Changes Needed. ' + com, '', sig);
     return { ok: true };
   }
-  if(act === 'retire'){ needA('retire documents'); if(!cur) throw bad('A draft cannot be retired. Reject it instead.'); const w = reason(); d.retired = true; await docPut(store, d); await docLog(store, me, 'Retired', id, w); return { ok: true }; }
-  if(act === 'restore'){ needA('restore documents'); if(!d.retired) throw bad('That document is not retired.'); d.retired = false; await docPut(store, d); await docLog(store, me, 'Restored', id, ''); return { ok: true }; }
+  if(act === 'retire'){ needA('retire documents'); if(!cur) throw bad('A draft cannot be retired. Reject it instead.'); const w = reason(); const sig = await signAs(me, body, 'Retired'); d.retired = true; await docPut(store, d); await docLog(store, me, 'Retired', id, w, '', sig); return { ok: true }; }
+  if(act === 'restore'){ needA('restore documents'); if(!d.retired) throw bad('That document is not retired.'); const sig = await signAs(me, body, 'Restored'); d.retired = false; await docPut(store, d); await docLog(store, me, 'Restored', id, '', '', sig); return { ok: true }; }
   if(act === 'edit'){
     needM('edit details');
     const t = String(body.title === undefined ? d.title : body.title).trim().slice(0, 200); if(!t) throw bad('Title is required.');
@@ -987,7 +1072,9 @@ async function route(method, path, q, body, me, claims){
   if(seg[0] === 'api') seg.shift();                    // works with or without an /api prefix
 
   if(method === 'GET' && seg[0] === 'me' && seg.length === 1)
-    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty(me), initials: me.initials || '', perms: permsOf(me), stores: await storesFor(me) };
+    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty(me), initials: me.initials || '', empId: await ensureEmpId(me), pin: pinState(me), perms: permsOf(me), stores: await storesFor(me) };
+
+  if(method === 'POST' && seg[0] === 'me' && seg[1] === 'pin' && seg.length === 2) return await setMyPin(me, body);
 
   if(seg[0] === 'stores' && seg[1]){
     const store = seg[1];
@@ -1071,7 +1158,7 @@ async function route(method, path, q, body, me, claims){
       const u = await createLogin(body);
       try{
         await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'USERS', sk: u.sub, login: u.login, name: u.name, phone: u.phone,
-          stores, perms, acctType: cleanType(body.acctType), initials: ini, owner: false, createdAt: now(), createdBy: who(me), tempIssuedAt: now(), smsConsentAt: now(), smsConsentRecordedBy: who(me) } }));
+          stores, perms, acctType: cleanType(body.acctType), initials: ini, empId: await nextEmpNo(), owner: false, createdAt: now(), createdBy: who(me), tempIssuedAt: now(), smsConsentAt: now(), smsConsentRecordedBy: who(me) } }));
       }catch(e){ await idp.send(new AdminDeleteUserCommand({ UserPoolId: POOL, Username: u.login })).catch(() => {}); throw e; }
       return { ok: true, user: { sub: u.sub, login: u.login, name: u.name, phone: u.phone, stores, perms }, tempPassword: u.tempPassword };
     }
@@ -1152,7 +1239,7 @@ export const handler = async (event) => {
     if(e instanceof HttpError){
       // refusals are logged (what was asked and why, never the request body) so a "it didn't work" can be traced
       if(e.code !== 423) console.log(JSON.stringify({ refused: e.code, method: (event.requestContext && event.requestContext.http || {}).method, path: event.rawPath, why: e.message }));
-      return json(e.code, { error: e.message, ...(e.locked ? { locked: true } : {}) });
+      return json(e.code, { error: e.message, ...(e.locked ? { locked: true } : {}), ...(e.pin ? { pin: e.pin } : {}) });
     }
     console.error(e);
     return json(500, { error: 'Something went wrong on the server. Try again; if it keeps happening tell the Account Owner.' });

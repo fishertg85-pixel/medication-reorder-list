@@ -53,6 +53,9 @@ function effUser(u){
   return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}), acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty, initials:s.initials !== undefined ? s.initials : u.initials,
     disabled:s.disabled !== undefined ? s.disabled : u.disabled});
 }
+const PIN_LABEL = {none:'Not set', set:'Set', temp:'Temporary (they must choose their own)', locked:'Locked'};
+const canIssuePin = u => !!ME && u.login !== ME.login && (ME.host ? ME.hostRole !== 'rep' : (ME.owner && !u.owner && !u.host));
+const pinLine = u => `<span class="hint">Employee ID <b>${esc(u.empId || '-')}</b> · PIN: ${PIN_LABEL[u.pin || 'none']}</span> ${canIssuePin(u) ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="Makes a one-time temporary PIN for you to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}`;
 const stageBtns = sub => `<button class="btn small" data-upd="${esc(sub)}">Update</button> <button class="btn2 small" data-undo="${esc(sub)}">Undo</button>`;
 function peopleMsg(m){ $('ownPeopleMsg').textContent = m || ''; }
 const COPY_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
@@ -115,7 +118,8 @@ function renderOwnPeople(){
       ? `<div class="urow"><div class="ucols">${head(u)}<div class="ucell acts"></div><div class="ucell copycell"></div></div>
          <div class="upriv"><span class="plabel">Account type</span><span class="hint">Account Owner · primary account holder</span></div>
          <div class="upriv"><span class="plabel">Pharmacies</span><span class="hint">All pharmacies</span></div>
-         <div class="upriv"><span class="plabel">Privileges</span><span class="hint">Full access</span></div></div>`
+         <div class="upriv"><span class="plabel">Privileges</span><span class="hint">Full access</span></div>
+         <div class="upriv"><span class="plabel">Signing</span>${pinLine(u)}</div></div>`
       : u.host
       ? `<div class="${rowCls(u)}" data-sub="${esc(u.sub)}"><div class="ucols">${head(u)}<div class="ucell acts">${STAGED[u.sub] ? stageBtns(u.sub) : ''}</div><div class="ucell copycell"></div></div>
          <div class="upriv"><span class="plabel">Pharmacies</span>
@@ -128,6 +132,7 @@ function renderOwnPeople(){
            <select data-utype><option value="">Not set</option>${Object.entries(ACCT_LABELS).map(([k, l]) => `<option value="${k}"${u.acctType === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
            <span class="hint">Choosing a type sets Submit, Archive, Remove and Backup. Calendar and Documents are set separately.</span></div>
          <div class="upriv"><span class="plabel">Initials</span><input type="text" data-uini maxlength="3" value="${esc(u.initials || '')}" style="width:70px;text-transform:uppercase;" aria-label="Initials"> <span class="hint">2 to 3 letters, stamped on printed documents. Each person needs their own.</span></div>
+         <div class="upriv"><span class="plabel">Signing</span>${pinLine(u)}</div>
          ${u.perms.documents ? `<div class="upriv"><span class="plabel">Document duty</span>${u.acctType === 'pic' ? '<span class="hint">Pharmacist-In-Charge: manages and approves documents</span>' : `<select data-udoc>${Object.entries(DOC_DUTY_PICK).map(([k, l]) => `<option value="${k}"${(u.docDuty || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select> <span class="hint">Designated Person approves; Compliance Technician uploads drafts.</span>`}</div>` : ''}
          <div class="upriv"><span class="plabel">Pharmacies</span>
            <span class="pgroup">${st.map(s => priv(sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('')}</span></div>
@@ -213,6 +218,17 @@ function stageChange(staged, u, c){
 $('ownPeople').addEventListener('click', async e => {
   const r = e.target.closest('[data-reset]'), ph = e.target.closest('[data-phone]'), dl = e.target.closest('[data-del]'), cp = e.target.closest('[data-copy]');
   const up = e.target.closest('[data-upd]'), un = e.target.closest('[data-undo]');
+  const pr = e.target.closest('[data-pinreset]');
+  if(pr){
+    const u = OWN.users.find(x => x.sub === pr.dataset.pinreset); if(!u) return;
+    if(!confirm(`Issue a temporary PIN for ${u.name || u.login}?\n\nTheir current PIN stops working. They enter the temporary one and choose their own the next time they sign something. Give it to them in person.`)) return;
+    busy(pr, true);
+    try{ const r = await api('POST', '/owner/users/' + encodeURIComponent(u.sub) + '/pin-reset', {});
+      showPassBox(`<b>Temporary PIN for ${esc(u.name || u.login)}:</b> <span class="mono" style="font-size:20px;letter-spacing:.2em;">${esc(r.tempPin)}</span><br><span class="hint">Shown once. Give it to them in person; they choose their own PIN when they next sign something.</span>`);
+      await loadOwner();
+    }catch(err){ busy(pr, false); if(!err.auth) alert(err.message); }
+    return;
+  }
   if(un){ delete STAGED[un.dataset.undo]; peopleMsg(''); renderOwnPeople(); return; }
   if(up){
     const u = OWN.users.find(x => x.sub === up.dataset.upd), body = STAGED[up.dataset.upd]; if(!u || !body) return;

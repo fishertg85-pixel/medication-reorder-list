@@ -122,6 +122,7 @@ const DOCS_BODY = {
       ${docsApprove(m) ? `<select data-dfr aria-label="Review status"><option value="">Review: Any</option>${['Overdue', 'Due Soon', 'Current', 'No Date'].map(v => `<option${v === m.freview ? ' selected' : ''}>${v}</option>`).join('')}</select>` : ''}
       ${docsManage(m) ? `<label class="chk"><input type="checkbox" data-dret${m.showRetired ? ' checked' : ''}> Show Retired</label>` : ''}
       <span class="dsp"></span>
+      ${docsApprove(m) ? '<button class="btn2 small" data-dact="mypin" title="Change your signing PIN">My PIN</button>' : ''}
       ${docsApprove(m) ? '<button class="btn2 small" data-dact="csv" title="Copies the register in the order of Document_Register.xlsx">Copy Register As CSV</button>' : ''}
       ${docsManage(m) ? '<button class="btn small" data-dact="add">Add Document</button>' : ''}</div>
     <div data-dz="chips">${docsChipsHtml(m)}</div><div data-dz="tbl">${docsTableHtml(m)}</div><div class="hint dcount" data-dz="count">${docsCount(m)}</div>`
@@ -192,8 +193,33 @@ function docsModal(html, wide){ const o = $('docsOv'); o.innerHTML = `<div class
 const docsCloseModal = () => { const o = $('docsOv'); if(o) o.innerHTML = ''; };
 const docsCloseCtx = () => { const c = document.getElementById('dctx'); if(c) c.remove(); };
 const docsErr = e => { if(!e.auth) docsToast(e.message); };
-async function docsDo(path, body, done){                         // one action on a document; the page reloads from the server afterwards so everyone sees the same thing
-  try{ const r = await api('POST', docsPath() + path, body || {}); docsCloseModal(); await docsLoad(); if(done) docsToast(done); return r; }catch(e){ docsErr(e); return null; }
+async function docsDo(path, body, done, redo){                   // one action on a document; the page reloads from the server afterwards so everyone sees the same thing
+  try{ const r = await api('POST', docsPath() + path, body || {}); docsCloseModal(); await docsLoad(); if(done) docsToast(done); return r; }
+  catch(e){
+    if(e.pin === 'pin-not-set' || e.pin === 'pin-temp'){ docsPinModal(e.pin === 'pin-temp' ? 'temp' : 'set', redo); return null; }
+    docsErr(e); return null;
+  }
+}
+/* ---- signing: approve, review, reject, retire and restore need the person's own 4-digit PIN. The server checks it, stamps the initials and
+   employee ID, and locks the PIN after 5 wrong tries. ---- */
+const docsSignField = what => `<div class="dfld"><label for="sPin">Your PIN</label><input type="password" id="sPin" inputmode="numeric" autocomplete="off" maxlength="4" style="max-width:110px;letter-spacing:.3em;"><div class="hint">${ME && ME.initials ? `Signs this as ${esc(ME.initials)} (${esc(what)}).` : 'Your initials are not set yet. Ask the Account Owner.'}</div></div>`;
+const docsPinVal = () => { const v = ($('sPin') || {}).value || ''; if(!/^\d{4}$/.test(v)){ docsToast('Enter your 4-digit PIN.'); return null; } return v; };
+function docsPinModal(mode, redo){                               // mode: set (first time), temp (replace the temporary one), change (know the current one)
+  const cur = mode !== 'set';
+  docsModal(`<h3>${mode === 'change' ? 'Change Your PIN' : 'Choose Your PIN'}</h3><div class="dmb">
+    <div class="hint">${mode === 'temp' ? 'Enter the temporary PIN you were given, then choose your own.' : mode === 'change' ? 'Enter your current PIN, then the new one.' : 'A 4-digit code only you know. It signs your approvals and reviews. Not 1234 or 1111.'} Never share it.</div>
+    ${cur ? `<div class="dfld"><label for="pCur">${mode === 'temp' ? 'Temporary PIN' : 'Current PIN'}</label><input type="password" id="pCur" inputmode="numeric" autocomplete="off" maxlength="4" style="max-width:110px;letter-spacing:.3em;"></div>` : ''}
+    <div class="dg2"><div class="dfld"><label for="pNew">New PIN</label><input type="password" id="pNew" inputmode="numeric" autocomplete="off" maxlength="4" style="letter-spacing:.3em;"></div>
+    <div class="dfld"><label for="pNew2">Repeat New PIN</label><input type="password" id="pNew2" inputmode="numeric" autocomplete="off" maxlength="4" style="letter-spacing:.3em;"></div></div></div>
+   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="pSave">Save PIN</button></div>`);
+  $('pSave').addEventListener('click', async () => {
+    const n = $('pNew').value, n2 = $('pNew2').value, c = cur ? $('pCur').value : '';
+    if(cur && !/^\d{4}$/.test(c)) return docsToast('Enter the ' + (mode === 'temp' ? 'temporary' : 'current') + ' PIN.');
+    if(!/^\d{4}$/.test(n)) return docsToast('The new PIN is 4 digits.'); if(n !== n2) return docsToast('The two new PINs do not match.');
+    busy($('pSave'), true);
+    try{ await api('POST', '/me/pin', { pin: n, current: c }); if(ME) ME.pin = 'set'; docsCloseModal(); docsToast('PIN saved.'); if(redo) redo(); }
+    catch(e){ busy($('pSave'), false); docsErr(e); }
+  });
 }
 /* ---- opening and printing the PDF. The link is short-lived and comes from the server; the stored file is never public. ---- */
 async function docsOpen(id, v, stamp){
@@ -223,9 +249,9 @@ function docsDrawer(id){
   const d = docOf(id); if(!d){ docsCloseDrawer(); return; }
   DOCS.open = id; const m = DOCS, i = docInfo(d, m), man = docsManage(m), appr = docsApprove(m), pn = m.pins.includes(id), area = DOC_AREA_LIST.find(x => x.code === d.area);
   const dis = (ok, why) => ok ? '' : ` disabled title="${esc(why)}"`;
-  const vrows = d.versions.slice().reverse().map(v => `<tr><td class="num">v${esc(v.v)}</td><td>${v.state === 'current' ? docPill('ok', 'Current') : v.state === 'pending' ? docPill('warn', 'Pending Approval') : docPill('gray', 'Superseded')}</td><td class="num">${v.effective || '-'}</td><td>${esc(v.by || '-')}</td><td>${esc(v.approvedBy || '-')}${v.selfApproved ? ' ' + docPill('warn', 'Self-approved') : ''}</td><td title="${esc(v.summary)}">${esc(v.summary)}</td><td><button class="btn2 small" data-dact="openv" data-id="${id}" data-v="${esc(v.v)}"${v.hasFile ? '' : ' disabled'}>Open</button></td></tr>`).join('');
-  const rrows = (d.reviews || []).slice().reverse().map(r => `<tr><td class="num">${r.at}</td><td>${esc(r.by)}</td><td>${esc(r.outcome)}</td><td title="${esc(r.comment)}">${esc(r.comment)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No review recorded yet.</td></tr>';
-  const act = (m.log || []).filter(l => l.docId === id).slice(0, 8).map(l => `<tr><td class="num">${esc(docsLocal(l.at))}</td><td>${esc(l.by)}</td><td>${esc(l.action)}${l.flag ? ' ' + docPill('warn', l.flag) : ''}</td><td title="${esc(l.detail)}">${esc(l.detail)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No activity yet.</td></tr>';
+  const vrows = d.versions.slice().reverse().map(v => `<tr><td class="num">v${esc(v.v)}</td><td>${v.state === 'current' ? docPill('ok', 'Current') : v.state === 'pending' ? docPill('warn', 'Pending Approval') : docPill('gray', 'Superseded')}</td><td class="num">${v.effective || '-'}</td><td>${esc(v.by || '-')}</td><td>${esc(v.approvedBy || '-')}${v.approvedIni ? ' (' + esc(v.approvedIni) + ')' : ''}${v.selfApproved ? ' ' + docPill('warn', 'Self-approved') : ''}</td><td title="${esc(v.summary)}">${esc(v.summary)}</td><td><button class="btn2 small" data-dact="openv" data-id="${id}" data-v="${esc(v.v)}"${v.hasFile ? '' : ' disabled'}>Open</button></td></tr>`).join('');
+  const rrows = (d.reviews || []).slice().reverse().map(r => `<tr><td class="num">${r.at}</td><td>${esc(r.by)}${r.ini ? ' (' + esc(r.ini) + ')' : ''}</td><td>${esc(r.outcome)}</td><td title="${esc(r.comment)}">${esc(r.comment)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No review recorded yet.</td></tr>';
+  const act = (m.log || []).filter(l => l.docId === id).slice(0, 8).map(l => `<tr><td class="num">${esc(docsLocal(l.at))}</td><td>${esc(l.by)}${l.ini ? ' (' + esc(l.ini) + (l.emp ? ' ' + esc(l.emp) : '') + ')' : ''}</td><td>${esc(l.action)}${l.flag ? ' ' + docPill('warn', l.flag) : ''}</td><td title="${esc(l.detail)}">${esc(l.detail)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No activity yet.</td></tr>';
   const stampTxt = i.cur ? `${d.id}  |  v${i.cur.v}  |  Effective ${i.cur.effective}  |  Printed [date and time] by [initials]` : '';
   $('docsDrawer').innerHTML = `<div class="dov dright" data-ddov><aside class="ddrawer" role="dialog" aria-modal="true" aria-label="Document details">
    <div class="ddh"><div class="drow"><span class="num hint">${d.id}</span><span class="dsp"></span><button class="btn2 small" data-dact="closedrawer">Close</button></div>
@@ -323,12 +349,12 @@ function docsReviewModal(id){
    <div class="dfld"><label>Outcome</label><div class="dradios"><label><input type="radio" name="out" value="ok" checked> Reviewed, No Changes Needed<br><span class="hint">Resets the review clock. The version does not change.</span></label>
    <label><input type="radio" name="out" value="chg"> Reviewed, Changes Needed<br><span class="hint">Sets the status to Under Review. Upload a new version to finish.</span></label></div></div>
    <div class="dg2"><div class="dfld"><label for="rDate">Review Date</label><input type="date" id="rDate" value="${DOCS.today}" max="${DOCS.today}"></div><div class="dfld"><label>Reviewed By</label><div class="dro">${esc(ME.name || ME.login)}</div></div></div>
-   <div class="dfld"><label for="rCom">Comments</label><textarea id="rCom" maxlength="500"></textarea><div class="hint" id="rHint">Optional.</div></div></div>
-   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="rGo">Save Review</button></div>`);
+   <div class="dfld"><label for="rCom">Comments</label><textarea id="rCom" maxlength="500"></textarea><div class="hint" id="rHint">Optional.</div></div>${docsSignField('Reviewed')}</div>
+   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="rGo">Sign And Save Review</button></div>`);
   document.querySelectorAll('[name=out]').forEach(r => r.addEventListener('change', () => { $('rHint').textContent = document.querySelector('[name=out]:checked').value === 'chg' ? 'Required: say what needs to change.' : 'Optional.'; }));
   $('rGo').addEventListener('click', () => { const out = document.querySelector('[name=out]:checked').value, com = $('rCom').value.trim();
-    if(out === 'chg' && !com) return docsToast('Say what needs to change.'); busy($('rGo'), true);
-    docsDo('/' + id + '/review', { outcome: out, date: $('rDate').value, comment: com }, 'Review recorded for ' + id).then(r => { if(!r) busy($('rGo'), false); }); });
+    if(out === 'chg' && !com) return docsToast('Say what needs to change.'); const pin = docsPinVal(); if(!pin) return; busy($('rGo'), true);
+    docsDo('/' + id + '/review', { outcome: out, date: $('rDate').value, comment: com, pin }, 'Review recorded for ' + id, () => docsReviewModal(id)).then(r => { if(!r) busy($('rGo'), false); }); });
 }
 function docsNewVerModal(id){
   const d = docOf(id), i = docInfo(d, DOCS);
@@ -353,17 +379,23 @@ function docsApproveModal(id){
    <div class="dinfo"><b>Change Summary:</b> ${esc(p.summary)}</div>
    ${self ? '<div class="dwarn">You submitted this version. Approving your own submission is allowed but is flagged in the activity log.</div>' : ''}
    <div class="dg2"><div class="dfld"><label for="pDate">Effective Date</label><input type="date" id="pDate" value="${DOCS.today}"></div><div class="dfld"><label>Approved By</label><div class="dro">${esc(ME.name || ME.login)}</div></div></div>
-   <div class="hint">${i.cur ? `v${esc(i.cur.v)} becomes Superseded. Approval also counts as a review and resets the review clock.` : 'This makes the document Active and starts its review clock.'}</div></div>
+   <div class="hint">${i.cur ? `v${esc(i.cur.v)} becomes Superseded. Approval also counts as a review and resets the review clock.` : 'This makes the document Active and starts its review clock.'}</div>${docsSignField('Approved')}</div>
    <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="pGo">Approve And Publish</button></div>`);
-  $('pGo').addEventListener('click', () => { if(!$('pDate').value) return docsToast('Enter an effective date.'); busy($('pGo'), true); docsDo('/' + id + '/approve', { effective: $('pDate').value }, 'v' + p.v + ' is now current.').then(r => { if(!r) busy($('pGo'), false); }); });
+  $('pGo').addEventListener('click', () => { if(!$('pDate').value) return docsToast('Enter an effective date.'); const pin = docsPinVal(); if(!pin) return; busy($('pGo'), true); docsDo('/' + id + '/approve', { effective: $('pDate').value, pin }, 'v' + p.v + ' is now current.', () => docsApproveModal(id)).then(r => { if(!r) busy($('pGo'), false); }); });
 }
 function docsReasonModal(id, kind){                              // reject, retire
   const d = docOf(id), p = docInfo(d, DOCS).pend, rej = kind === 'reject';
   docsModal(`<h3>${rej ? `Reject v${esc(p.v)}` : 'Retire'}: ${d.id}</h3><div class="dmb">${rej ? '' : `<div class="hint">${esc(d.title)} leaves the active library. Its files are kept and it can be restored.</div>`}
-   <div class="dfld"><label for="tWhy">Reason</label><textarea id="tWhy" maxlength="500"></textarea><div class="hint">Required.${rej ? ' The submitter sees this in the activity log.' : ' Name the replacement document if there is one.'}</div></div></div>
+   <div class="dfld"><label for="tWhy">Reason</label><textarea id="tWhy" maxlength="500"></textarea><div class="hint">Required.${rej ? ' The submitter sees this in the activity log.' : ' Name the replacement document if there is one.'}</div></div>${docsSignField(rej ? 'Rejected' : 'Retired')}</div>
    <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn danger" id="tGo">${rej ? 'Reject Version' : 'Retire Document'}</button></div>`);
-  $('tGo').addEventListener('click', () => { const w = $('tWhy').value.trim(); if(!w) return docsToast('Enter a reason.'); busy($('tGo'), true);
-    docsDo('/' + id + '/' + (rej ? 'reject' : 'retire'), { reason: w }, rej ? 'Version rejected.' : id + ' retired.').then(r => { if(!r) busy($('tGo'), false); }); });
+  $('tGo').addEventListener('click', () => { const w = $('tWhy').value.trim(); if(!w) return docsToast('Enter a reason.'); const pin = docsPinVal(); if(!pin) return; busy($('tGo'), true);
+    docsDo('/' + id + '/' + (rej ? 'reject' : 'retire'), { reason: w, pin }, rej ? 'Version rejected.' : id + ' retired.', () => docsReasonModal(id, kind)).then(r => { if(!r) busy($('tGo'), false); }); });
+}
+function docsRestoreModal(id){
+  const d = docOf(id);
+  docsModal(`<h3>Restore: ${d.id}</h3><div class="dmb"><div class="hint">${esc(d.title)} returns to the active library.</div>${docsSignField('Restored')}</div>
+   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="sGo">Sign And Restore</button></div>`);
+  $('sGo').addEventListener('click', () => { const pin = docsPinVal(); if(!pin) return; busy($('sGo'), true); docsDo('/' + id + '/restore', { pin }, id + ' restored.', () => docsRestoreModal(id)).then(r => { if(!r) busy($('sGo'), false); }); });
 }
 function docsEditModal(id){
   const d = docOf(id);
@@ -400,7 +432,7 @@ const DOCS_ACT = {
   open: id => docsOpen(id), openv: (id, t) => docsOpen(id, t.dataset.v || ''), printv: id => docsOpen(id, '', true), detail: id => docsDrawer(id),
   menu: (id, t) => { const r = t.getBoundingClientRect(); DOCS.sel = id; docsMenu(id, r.left - 300, r.bottom + 2); },
   pin: id => docsPin(id), add: () => docsAddModal(), review: id => docsReviewModal(id), newver: id => docsNewVerModal(id), approve: id => docsApproveModal(id),
-  reject: id => docsReasonModal(id, 'reject'), retire: id => docsReasonModal(id, 'retire'), edit: id => docsEditModal(id), restore: id => docsDo('/' + id + '/restore', {}, id + ' restored.'),
+  reject: id => docsReasonModal(id, 'reject'), retire: id => docsReasonModal(id, 'retire'), edit: id => docsEditModal(id), restore: id => docsRestoreModal(id), mypin: () => docsPinModal('change'),
   closemodal: () => docsCloseModal(), closedrawer: () => docsCloseDrawer(), csv: () => docsCopy(docsCsv(), 'Register')
 };
 function docsInit(){                                             // once, when the page loads

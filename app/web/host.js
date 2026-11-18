@@ -180,7 +180,7 @@ const STAGED = {};
 function effUser(u){
   const s = STAGED[u.sub]; if(!s) return u;
   return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}),
-    disabled:s.disabled !== undefined ? s.disabled : u.disabled});
+    disabled:s.disabled !== undefined ? s.disabled : u.disabled, initials:s.initials !== undefined ? s.initials : u.initials});
 }
 function stageChange(u, c){
   const s = STAGED[u.sub] || (STAGED[u.sub] = {});
@@ -233,6 +233,9 @@ function render(){
         </div>
         <div class="upriv"><span class="plabel">Pharmacies</span><span class="pgroup">${pharm}</span></div>
         <div class="upriv"><span class="plabel">Privileges</span><span class="pgroup">${privs}</span></div>
+        <div class="upriv"><span class="plabel">Signing</span><input type="text" data-uini maxlength="3" value="${esc(u.initials || '')}" style="width:70px;text-transform:uppercase;" aria-label="Initials" placeholder="Initials">
+          <span class="hint">Employee ID <b>${esc(u.empId || '-')}</b> · PIN: ${({none:'Not set', set:'Set', temp:'Temporary', locked:'Locked'})[u.pin || 'none']}</span>
+          ${!self && ME && ME.hostRole !== 'rep' ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="One-time temporary PIN to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}</div>
       </div>`;
     }).join('')}
   </div>`;
@@ -298,6 +301,14 @@ function showPass(html){ $('passBox').innerHTML = html; $('passBox').style.displ
 const nameOf = sub => { const u = DATA.users.find(x => x.sub === sub); return u ? (u.name || u.login) : ''; };
 
 $('people').addEventListener('change', async e => {
+  const ini = e.target.closest('input[data-uini]');
+  if(ini){
+    const sub = ini.closest('[data-sub]').dataset.sub, u = DATA.users.find(x => x.sub === sub); if(!u) return;
+    const v = ini.value.trim().toUpperCase(), stg = STAGED[sub] || (STAGED[sub] = {});
+    if(v === (u.initials || '')) delete stg.initials; else stg.initials = v;
+    if(!Object.keys(stg).length) delete STAGED[sub];
+    $('peopleMsg').textContent = ''; render(); return;
+  }
   const c = e.target.closest('input[type=checkbox]'); if(!c) return;
   const sub = c.closest('[data-sub]').dataset.sub, u = DATA.users.find(x => x.sub === sub); if(!u) return;
   stageChange(u, c); $('peopleMsg').textContent = ''; render();      // saved only when Update is pressed
@@ -305,6 +316,15 @@ $('people').addEventListener('change', async e => {
 $('people').addEventListener('click', async e => {
   const ph = e.target.closest('[data-phone]'), rs = e.target.closest('[data-reset]'), dl = e.target.closest('[data-del]'), cp = e.target.closest('[data-copy]');
   const up = e.target.closest('[data-upd]'), un = e.target.closest('[data-undo]');
+  const pr = e.target.closest('[data-pinreset]');
+  if(pr){
+    const u = DATA.users.find(x => x.sub === pr.dataset.pinreset); if(!u) return;
+    if(!confirm(`Issue a temporary PIN for ${u.name || u.login}? Their current PIN stops working. Give it to them in person.`)) return;
+    try{ const r = await api('POST', '/host/users/' + encodeURIComponent(u.sub) + '/pin-reset', {}); await load();
+      showPass(`<b>Temporary PIN for ${esc(u.name || u.login)}:</b> <span class="mono" style="font-size:20px;letter-spacing:.2em;">${esc(r.tempPin)}</span><br><span class="hint">Shown once. They choose their own PIN when they next sign something.</span>`); }
+    catch(err){ if(!err.auth) alert(err.message); }
+    return;
+  }
   if(un){ delete STAGED[un.dataset.undo]; $('peopleMsg').textContent = ''; render(); return; }
   if(up){
     const u = DATA.users.find(x => x.sub === up.dataset.upd), body = STAGED[up.dataset.upd]; if(!u || !body) return;

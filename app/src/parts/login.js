@@ -33,7 +33,7 @@ async function checkPharm(){
   if(p && p.found && p.logo) LOGOS[p.id] = p.logo;
 }
 $('liPharm').addEventListener('input', () => { clearTimeout(pharmTimer); pharmTimer = setTimeout(checkPharm, 350); });
-function busy(btn, on){ btn.disabled = on; btn.dataset.t = btn.dataset.t || btn.textContent; btn.textContent = on ? 'Please wait…' : btn.dataset.t; }
+function busy(btn, on){ if(!btn) return; btn.disabled = on; btn.dataset.t = btn.dataset.t || btn.textContent; btn.textContent = on ? 'Please wait…' : btn.dataset.t; }
 async function afterAuth(res){
   // Cognito answers with either tokens or the next question (new password, text code)
   if(res.AuthenticationResult){ setTokens(res.AuthenticationResult, LOGIN.user); return enterApp(LOGIN.pharm); }

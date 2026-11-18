@@ -164,6 +164,10 @@ Resources:
               - Effect: Allow
                 Action: [s3:PutObject, s3:GetObject]
                 Resource: !Sub '${DocsBucket.Arn}/*'
+              # the secret that keys the PIN hashes: read only
+              - Effect: Allow
+                Action: [secretsmanager:GetSecretValue]
+                Resource: !Ref PinSecret
 
   ApiFunction:
     Type: AWS::Lambda::Function
@@ -181,6 +185,7 @@ Resources:
           ARCHIVE_TABLE: !Ref ArchiveTable
           USER_POOL_ID: !Ref UserPool
           DOCS_BUCKET: !Ref DocsBucket
+          PIN_SECRET_ARN: !Ref PinSecret
 
   ApiLogs:
     Type: AWS::Logs::LogGroup
@@ -280,6 +285,17 @@ Resources:
 
   # private bucket for each pharmacy's compliance documents (PDFs). Never public; people get a short-lived link per file from the API.
   # Versioning keeps every earlier copy of a file. Retained if the stack is ever deleted.
+  # Keys the hashes of staff PINs. Retained if the stack is ever replaced: losing it would invalidate every PIN (each person would need a temporary one).
+  PinSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Keys the hashes of staff PINs (signing approvals and reviews)
+      GenerateSecretString:
+        PasswordLength: 48
+        ExcludePunctuation: true
+
   DocsBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain

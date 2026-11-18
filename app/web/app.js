@@ -128,7 +128,7 @@ async function api(method, path, body, retried){
   if(r.status === 401 && !retried){ try{ await idToken(true); }catch(e){ showLogin('Your sign-in expired. Please sign in again.'); throw e; } return api(method, path, body, true); }
   const j = await r.json().catch(() => ({}));
   if(r.status === 423 && j.locked){ ownerLockNow('Locked after 5 minutes without activity. Re-enter your password.', true); const e = new Error(j.error); e.auth = true; e.locked = true; throw e; }
-  if(!r.ok){ const e = new Error(j.error || j.message || ('Server answered ' + r.status)); e.status = r.status; throw e; }
+  if(!r.ok){ const e = new Error(j.error || j.message || ('Server answered ' + r.status)); e.status = r.status; if(j.pin) e.pin = j.pin; throw e; }
   if(/^\/owner\/|\/import$/.test(path)) OWN_UNTIL = Date.now() + OWN_MS;         // using the tab keeps it open
   return j;
 }
@@ -305,7 +305,7 @@ async function checkPharm(){
   if(p && p.found && p.logo) LOGOS[p.id] = p.logo;
 }
 $('liPharm').addEventListener('input', () => { clearTimeout(pharmTimer); pharmTimer = setTimeout(checkPharm, 350); });
-function busy(btn, on){ btn.disabled = on; btn.dataset.t = btn.dataset.t || btn.textContent; btn.textContent = on ? 'Please wait…' : btn.dataset.t; }
+function busy(btn, on){ if(!btn) return; btn.disabled = on; btn.dataset.t = btn.dataset.t || btn.textContent; btn.textContent = on ? 'Please wait…' : btn.dataset.t; }
 async function afterAuth(res){
   // Cognito answers with either tokens or the next question (new password, text code)
   if(res.AuthenticationResult){ setTokens(res.AuthenticationResult, LOGIN.user); return enterApp(LOGIN.pharm); }
@@ -1503,6 +1503,9 @@ function effUser(u){
   return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}), acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty, initials:s.initials !== undefined ? s.initials : u.initials,
     disabled:s.disabled !== undefined ? s.disabled : u.disabled});
 }
+const PIN_LABEL = {none:'Not set', set:'Set', temp:'Temporary (they must choose their own)', locked:'Locked'};
+const canIssuePin = u => !!ME && u.login !== ME.login && (ME.host ? ME.hostRole !== 'rep' : (ME.owner && !u.owner && !u.host));
+const pinLine = u => `<span class="hint">Employee ID <b>${esc(u.empId || '-')}</b> · PIN: ${PIN_LABEL[u.pin || 'none']}</span> ${canIssuePin(u) ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="Makes a one-time temporary PIN for you to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}`;
 const stageBtns = sub => `<button class="btn small" data-upd="${esc(sub)}">Update</button> <button class="btn2 small" data-undo="${esc(sub)}">Undo</button>`;
 function peopleMsg(m){ $('ownPeopleMsg').textContent = m || ''; }
 const COPY_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
@@ -1565,7 +1568,8 @@ function renderOwnPeople(){
       ? `<div class="urow"><div class="ucols">${head(u)}<div class="ucell acts"></div><div class="ucell copycell"></div></div>
          <div class="upriv"><span class="plabel">Account type</span><span class="hint">Account Owner · primary account holder</span></div>
          <div class="upriv"><span class="plabel">Pharmacies</span><span class="hint">All pharmacies</span></div>
-         <div class="upriv"><span class="plabel">Privileges</span><span class="hint">Full access</span></div></div>`
+         <div class="upriv"><span class="plabel">Privileges</span><span class="hint">Full access</span></div>
+         <div class="upriv"><span class="plabel">Signing</span>${pinLine(u)}</div></div>`
       : u.host
       ? `<div class="${rowCls(u)}" data-sub="${esc(u.sub)}"><div class="ucols">${head(u)}<div class="ucell acts">${STAGED[u.sub] ? stageBtns(u.sub) : ''}</div><div class="ucell copycell"></div></div>
          <div class="upriv"><span class="plabel">Pharmacies</span>
@@ -1578,6 +1582,7 @@ function renderOwnPeople(){
            <select data-utype><option value="">Not set</option>${Object.entries(ACCT_LABELS).map(([k, l]) => `<option value="${k}"${u.acctType === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
            <span class="hint">Choosing a type sets Submit, Archive, Remove and Backup. Calendar and Documents are set separately.</span></div>
          <div class="upriv"><span class="plabel">Initials</span><input type="text" data-uini maxlength="3" value="${esc(u.initials || '')}" style="width:70px;text-transform:uppercase;" aria-label="Initials"> <span class="hint">2 to 3 letters, stamped on printed documents. Each person needs their own.</span></div>
+         <div class="upriv"><span class="plabel">Signing</span>${pinLine(u)}</div>
          ${u.perms.documents ? `<div class="upriv"><span class="plabel">Document duty</span>${u.acctType === 'pic' ? '<span class="hint">Pharmacist-In-Charge: manages and approves documents</span>' : `<select data-udoc>${Object.entries(DOC_DUTY_PICK).map(([k, l]) => `<option value="${k}"${(u.docDuty || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select> <span class="hint">Designated Person approves; Compliance Technician uploads drafts.</span>`}</div>` : ''}
          <div class="upriv"><span class="plabel">Pharmacies</span>
            <span class="pgroup">${st.map(s => priv(sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('')}</span></div>
@@ -1663,6 +1668,17 @@ function stageChange(staged, u, c){
 $('ownPeople').addEventListener('click', async e => {
   const r = e.target.closest('[data-reset]'), ph = e.target.closest('[data-phone]'), dl = e.target.closest('[data-del]'), cp = e.target.closest('[data-copy]');
   const up = e.target.closest('[data-upd]'), un = e.target.closest('[data-undo]');
+  const pr = e.target.closest('[data-pinreset]');
+  if(pr){
+    const u = OWN.users.find(x => x.sub === pr.dataset.pinreset); if(!u) return;
+    if(!confirm(`Issue a temporary PIN for ${u.name || u.login}?\n\nTheir current PIN stops working. They enter the temporary one and choose their own the next time they sign something. Give it to them in person.`)) return;
+    busy(pr, true);
+    try{ const r = await api('POST', '/owner/users/' + encodeURIComponent(u.sub) + '/pin-reset', {});
+      showPassBox(`<b>Temporary PIN for ${esc(u.name || u.login)}:</b> <span class="mono" style="font-size:20px;letter-spacing:.2em;">${esc(r.tempPin)}</span><br><span class="hint">Shown once. Give it to them in person; they choose their own PIN when they next sign something.</span>`);
+      await loadOwner();
+    }catch(err){ busy(pr, false); if(!err.auth) alert(err.message); }
+    return;
+  }
   if(un){ delete STAGED[un.dataset.undo]; peopleMsg(''); renderOwnPeople(); return; }
   if(up){
     const u = OWN.users.find(x => x.sub === up.dataset.upd), body = STAGED[up.dataset.upd]; if(!u || !body) return;
@@ -1963,6 +1979,7 @@ const DOCS_BODY = {
       ${docsApprove(m) ? `<select data-dfr aria-label="Review status"><option value="">Review: Any</option>${['Overdue', 'Due Soon', 'Current', 'No Date'].map(v => `<option${v === m.freview ? ' selected' : ''}>${v}</option>`).join('')}</select>` : ''}
       ${docsManage(m) ? `<label class="chk"><input type="checkbox" data-dret${m.showRetired ? ' checked' : ''}> Show Retired</label>` : ''}
       <span class="dsp"></span>
+      ${docsApprove(m) ? '<button class="btn2 small" data-dact="mypin" title="Change your signing PIN">My PIN</button>' : ''}
       ${docsApprove(m) ? '<button class="btn2 small" data-dact="csv" title="Copies the register in the order of Document_Register.xlsx">Copy Register As CSV</button>' : ''}
       ${docsManage(m) ? '<button class="btn small" data-dact="add">Add Document</button>' : ''}</div>
     <div data-dz="chips">${docsChipsHtml(m)}</div><div data-dz="tbl">${docsTableHtml(m)}</div><div class="hint dcount" data-dz="count">${docsCount(m)}</div>`
@@ -2033,8 +2050,33 @@ function docsModal(html, wide){ const o = $('docsOv'); o.innerHTML = `<div class
 const docsCloseModal = () => { const o = $('docsOv'); if(o) o.innerHTML = ''; };
 const docsCloseCtx = () => { const c = document.getElementById('dctx'); if(c) c.remove(); };
 const docsErr = e => { if(!e.auth) docsToast(e.message); };
-async function docsDo(path, body, done){                         // one action on a document; the page reloads from the server afterwards so everyone sees the same thing
-  try{ const r = await api('POST', docsPath() + path, body || {}); docsCloseModal(); await docsLoad(); if(done) docsToast(done); return r; }catch(e){ docsErr(e); return null; }
+async function docsDo(path, body, done, redo){                   // one action on a document; the page reloads from the server afterwards so everyone sees the same thing
+  try{ const r = await api('POST', docsPath() + path, body || {}); docsCloseModal(); await docsLoad(); if(done) docsToast(done); return r; }
+  catch(e){
+    if(e.pin === 'pin-not-set' || e.pin === 'pin-temp'){ docsPinModal(e.pin === 'pin-temp' ? 'temp' : 'set', redo); return null; }
+    docsErr(e); return null;
+  }
+}
+/* ---- signing: approve, review, reject, retire and restore need the person's own 4-digit PIN. The server checks it, stamps the initials and
+   employee ID, and locks the PIN after 5 wrong tries. ---- */
+const docsSignField = what => `<div class="dfld"><label for="sPin">Your PIN</label><input type="password" id="sPin" inputmode="numeric" autocomplete="off" maxlength="4" style="max-width:110px;letter-spacing:.3em;"><div class="hint">${ME && ME.initials ? `Signs this as ${esc(ME.initials)} (${esc(what)}).` : 'Your initials are not set yet. Ask the Account Owner.'}</div></div>`;
+const docsPinVal = () => { const v = ($('sPin') || {}).value || ''; if(!/^\d{4}$/.test(v)){ docsToast('Enter your 4-digit PIN.'); return null; } return v; };
+function docsPinModal(mode, redo){                               // mode: set (first time), temp (replace the temporary one), change (know the current one)
+  const cur = mode !== 'set';
+  docsModal(`<h3>${mode === 'change' ? 'Change Your PIN' : 'Choose Your PIN'}</h3><div class="dmb">
+    <div class="hint">${mode === 'temp' ? 'Enter the temporary PIN you were given, then choose your own.' : mode === 'change' ? 'Enter your current PIN, then the new one.' : 'A 4-digit code only you know. It signs your approvals and reviews. Not 1234 or 1111.'} Never share it.</div>
+    ${cur ? `<div class="dfld"><label for="pCur">${mode === 'temp' ? 'Temporary PIN' : 'Current PIN'}</label><input type="password" id="pCur" inputmode="numeric" autocomplete="off" maxlength="4" style="max-width:110px;letter-spacing:.3em;"></div>` : ''}
+    <div class="dg2"><div class="dfld"><label for="pNew">New PIN</label><input type="password" id="pNew" inputmode="numeric" autocomplete="off" maxlength="4" style="letter-spacing:.3em;"></div>
+    <div class="dfld"><label for="pNew2">Repeat New PIN</label><input type="password" id="pNew2" inputmode="numeric" autocomplete="off" maxlength="4" style="letter-spacing:.3em;"></div></div></div>
+   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="pSave">Save PIN</button></div>`);
+  $('pSave').addEventListener('click', async () => {
+    const n = $('pNew').value, n2 = $('pNew2').value, c = cur ? $('pCur').value : '';
+    if(cur && !/^\d{4}$/.test(c)) return docsToast('Enter the ' + (mode === 'temp' ? 'temporary' : 'current') + ' PIN.');
+    if(!/^\d{4}$/.test(n)) return docsToast('The new PIN is 4 digits.'); if(n !== n2) return docsToast('The two new PINs do not match.');
+    busy($('pSave'), true);
+    try{ await api('POST', '/me/pin', { pin: n, current: c }); if(ME) ME.pin = 'set'; docsCloseModal(); docsToast('PIN saved.'); if(redo) redo(); }
+    catch(e){ busy($('pSave'), false); docsErr(e); }
+  });
 }
 /* ---- opening and printing the PDF. The link is short-lived and comes from the server; the stored file is never public. ---- */
 async function docsOpen(id, v, stamp){
@@ -2064,9 +2106,9 @@ function docsDrawer(id){
   const d = docOf(id); if(!d){ docsCloseDrawer(); return; }
   DOCS.open = id; const m = DOCS, i = docInfo(d, m), man = docsManage(m), appr = docsApprove(m), pn = m.pins.includes(id), area = DOC_AREA_LIST.find(x => x.code === d.area);
   const dis = (ok, why) => ok ? '' : ` disabled title="${esc(why)}"`;
-  const vrows = d.versions.slice().reverse().map(v => `<tr><td class="num">v${esc(v.v)}</td><td>${v.state === 'current' ? docPill('ok', 'Current') : v.state === 'pending' ? docPill('warn', 'Pending Approval') : docPill('gray', 'Superseded')}</td><td class="num">${v.effective || '-'}</td><td>${esc(v.by || '-')}</td><td>${esc(v.approvedBy || '-')}${v.selfApproved ? ' ' + docPill('warn', 'Self-approved') : ''}</td><td title="${esc(v.summary)}">${esc(v.summary)}</td><td><button class="btn2 small" data-dact="openv" data-id="${id}" data-v="${esc(v.v)}"${v.hasFile ? '' : ' disabled'}>Open</button></td></tr>`).join('');
-  const rrows = (d.reviews || []).slice().reverse().map(r => `<tr><td class="num">${r.at}</td><td>${esc(r.by)}</td><td>${esc(r.outcome)}</td><td title="${esc(r.comment)}">${esc(r.comment)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No review recorded yet.</td></tr>';
-  const act = (m.log || []).filter(l => l.docId === id).slice(0, 8).map(l => `<tr><td class="num">${esc(docsLocal(l.at))}</td><td>${esc(l.by)}</td><td>${esc(l.action)}${l.flag ? ' ' + docPill('warn', l.flag) : ''}</td><td title="${esc(l.detail)}">${esc(l.detail)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No activity yet.</td></tr>';
+  const vrows = d.versions.slice().reverse().map(v => `<tr><td class="num">v${esc(v.v)}</td><td>${v.state === 'current' ? docPill('ok', 'Current') : v.state === 'pending' ? docPill('warn', 'Pending Approval') : docPill('gray', 'Superseded')}</td><td class="num">${v.effective || '-'}</td><td>${esc(v.by || '-')}</td><td>${esc(v.approvedBy || '-')}${v.approvedIni ? ' (' + esc(v.approvedIni) + ')' : ''}${v.selfApproved ? ' ' + docPill('warn', 'Self-approved') : ''}</td><td title="${esc(v.summary)}">${esc(v.summary)}</td><td><button class="btn2 small" data-dact="openv" data-id="${id}" data-v="${esc(v.v)}"${v.hasFile ? '' : ' disabled'}>Open</button></td></tr>`).join('');
+  const rrows = (d.reviews || []).slice().reverse().map(r => `<tr><td class="num">${r.at}</td><td>${esc(r.by)}${r.ini ? ' (' + esc(r.ini) + ')' : ''}</td><td>${esc(r.outcome)}</td><td title="${esc(r.comment)}">${esc(r.comment)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No review recorded yet.</td></tr>';
+  const act = (m.log || []).filter(l => l.docId === id).slice(0, 8).map(l => `<tr><td class="num">${esc(docsLocal(l.at))}</td><td>${esc(l.by)}${l.ini ? ' (' + esc(l.ini) + (l.emp ? ' ' + esc(l.emp) : '') + ')' : ''}</td><td>${esc(l.action)}${l.flag ? ' ' + docPill('warn', l.flag) : ''}</td><td title="${esc(l.detail)}">${esc(l.detail)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No activity yet.</td></tr>';
   const stampTxt = i.cur ? `${d.id}  |  v${i.cur.v}  |  Effective ${i.cur.effective}  |  Printed [date and time] by [initials]` : '';
   $('docsDrawer').innerHTML = `<div class="dov dright" data-ddov><aside class="ddrawer" role="dialog" aria-modal="true" aria-label="Document details">
    <div class="ddh"><div class="drow"><span class="num hint">${d.id}</span><span class="dsp"></span><button class="btn2 small" data-dact="closedrawer">Close</button></div>
@@ -2164,12 +2206,12 @@ function docsReviewModal(id){
    <div class="dfld"><label>Outcome</label><div class="dradios"><label><input type="radio" name="out" value="ok" checked> Reviewed, No Changes Needed<br><span class="hint">Resets the review clock. The version does not change.</span></label>
    <label><input type="radio" name="out" value="chg"> Reviewed, Changes Needed<br><span class="hint">Sets the status to Under Review. Upload a new version to finish.</span></label></div></div>
    <div class="dg2"><div class="dfld"><label for="rDate">Review Date</label><input type="date" id="rDate" value="${DOCS.today}" max="${DOCS.today}"></div><div class="dfld"><label>Reviewed By</label><div class="dro">${esc(ME.name || ME.login)}</div></div></div>
-   <div class="dfld"><label for="rCom">Comments</label><textarea id="rCom" maxlength="500"></textarea><div class="hint" id="rHint">Optional.</div></div></div>
-   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="rGo">Save Review</button></div>`);
+   <div class="dfld"><label for="rCom">Comments</label><textarea id="rCom" maxlength="500"></textarea><div class="hint" id="rHint">Optional.</div></div>${docsSignField('Reviewed')}</div>
+   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="rGo">Sign And Save Review</button></div>`);
   document.querySelectorAll('[name=out]').forEach(r => r.addEventListener('change', () => { $('rHint').textContent = document.querySelector('[name=out]:checked').value === 'chg' ? 'Required: say what needs to change.' : 'Optional.'; }));
   $('rGo').addEventListener('click', () => { const out = document.querySelector('[name=out]:checked').value, com = $('rCom').value.trim();
-    if(out === 'chg' && !com) return docsToast('Say what needs to change.'); busy($('rGo'), true);
-    docsDo('/' + id + '/review', { outcome: out, date: $('rDate').value, comment: com }, 'Review recorded for ' + id).then(r => { if(!r) busy($('rGo'), false); }); });
+    if(out === 'chg' && !com) return docsToast('Say what needs to change.'); const pin = docsPinVal(); if(!pin) return; busy($('rGo'), true);
+    docsDo('/' + id + '/review', { outcome: out, date: $('rDate').value, comment: com, pin }, 'Review recorded for ' + id, () => docsReviewModal(id)).then(r => { if(!r) busy($('rGo'), false); }); });
 }
 function docsNewVerModal(id){
   const d = docOf(id), i = docInfo(d, DOCS);
@@ -2194,17 +2236,23 @@ function docsApproveModal(id){
    <div class="dinfo"><b>Change Summary:</b> ${esc(p.summary)}</div>
    ${self ? '<div class="dwarn">You submitted this version. Approving your own submission is allowed but is flagged in the activity log.</div>' : ''}
    <div class="dg2"><div class="dfld"><label for="pDate">Effective Date</label><input type="date" id="pDate" value="${DOCS.today}"></div><div class="dfld"><label>Approved By</label><div class="dro">${esc(ME.name || ME.login)}</div></div></div>
-   <div class="hint">${i.cur ? `v${esc(i.cur.v)} becomes Superseded. Approval also counts as a review and resets the review clock.` : 'This makes the document Active and starts its review clock.'}</div></div>
+   <div class="hint">${i.cur ? `v${esc(i.cur.v)} becomes Superseded. Approval also counts as a review and resets the review clock.` : 'This makes the document Active and starts its review clock.'}</div>${docsSignField('Approved')}</div>
    <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="pGo">Approve And Publish</button></div>`);
-  $('pGo').addEventListener('click', () => { if(!$('pDate').value) return docsToast('Enter an effective date.'); busy($('pGo'), true); docsDo('/' + id + '/approve', { effective: $('pDate').value }, 'v' + p.v + ' is now current.').then(r => { if(!r) busy($('pGo'), false); }); });
+  $('pGo').addEventListener('click', () => { if(!$('pDate').value) return docsToast('Enter an effective date.'); const pin = docsPinVal(); if(!pin) return; busy($('pGo'), true); docsDo('/' + id + '/approve', { effective: $('pDate').value, pin }, 'v' + p.v + ' is now current.', () => docsApproveModal(id)).then(r => { if(!r) busy($('pGo'), false); }); });
 }
 function docsReasonModal(id, kind){                              // reject, retire
   const d = docOf(id), p = docInfo(d, DOCS).pend, rej = kind === 'reject';
   docsModal(`<h3>${rej ? `Reject v${esc(p.v)}` : 'Retire'}: ${d.id}</h3><div class="dmb">${rej ? '' : `<div class="hint">${esc(d.title)} leaves the active library. Its files are kept and it can be restored.</div>`}
-   <div class="dfld"><label for="tWhy">Reason</label><textarea id="tWhy" maxlength="500"></textarea><div class="hint">Required.${rej ? ' The submitter sees this in the activity log.' : ' Name the replacement document if there is one.'}</div></div></div>
+   <div class="dfld"><label for="tWhy">Reason</label><textarea id="tWhy" maxlength="500"></textarea><div class="hint">Required.${rej ? ' The submitter sees this in the activity log.' : ' Name the replacement document if there is one.'}</div></div>${docsSignField(rej ? 'Rejected' : 'Retired')}</div>
    <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn danger" id="tGo">${rej ? 'Reject Version' : 'Retire Document'}</button></div>`);
-  $('tGo').addEventListener('click', () => { const w = $('tWhy').value.trim(); if(!w) return docsToast('Enter a reason.'); busy($('tGo'), true);
-    docsDo('/' + id + '/' + (rej ? 'reject' : 'retire'), { reason: w }, rej ? 'Version rejected.' : id + ' retired.').then(r => { if(!r) busy($('tGo'), false); }); });
+  $('tGo').addEventListener('click', () => { const w = $('tWhy').value.trim(); if(!w) return docsToast('Enter a reason.'); const pin = docsPinVal(); if(!pin) return; busy($('tGo'), true);
+    docsDo('/' + id + '/' + (rej ? 'reject' : 'retire'), { reason: w, pin }, rej ? 'Version rejected.' : id + ' retired.', () => docsReasonModal(id, kind)).then(r => { if(!r) busy($('tGo'), false); }); });
+}
+function docsRestoreModal(id){
+  const d = docOf(id);
+  docsModal(`<h3>Restore: ${d.id}</h3><div class="dmb"><div class="hint">${esc(d.title)} returns to the active library.</div>${docsSignField('Restored')}</div>
+   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="sGo">Sign And Restore</button></div>`);
+  $('sGo').addEventListener('click', () => { const pin = docsPinVal(); if(!pin) return; busy($('sGo'), true); docsDo('/' + id + '/restore', { pin }, id + ' restored.', () => docsRestoreModal(id)).then(r => { if(!r) busy($('sGo'), false); }); });
 }
 function docsEditModal(id){
   const d = docOf(id);
@@ -2241,7 +2289,7 @@ const DOCS_ACT = {
   open: id => docsOpen(id), openv: (id, t) => docsOpen(id, t.dataset.v || ''), printv: id => docsOpen(id, '', true), detail: id => docsDrawer(id),
   menu: (id, t) => { const r = t.getBoundingClientRect(); DOCS.sel = id; docsMenu(id, r.left - 300, r.bottom + 2); },
   pin: id => docsPin(id), add: () => docsAddModal(), review: id => docsReviewModal(id), newver: id => docsNewVerModal(id), approve: id => docsApproveModal(id),
-  reject: id => docsReasonModal(id, 'reject'), retire: id => docsReasonModal(id, 'retire'), edit: id => docsEditModal(id), restore: id => docsDo('/' + id + '/restore', {}, id + ' restored.'),
+  reject: id => docsReasonModal(id, 'reject'), retire: id => docsReasonModal(id, 'retire'), edit: id => docsEditModal(id), restore: id => docsRestoreModal(id), mypin: () => docsPinModal('change'),
   closemodal: () => docsCloseModal(), closedrawer: () => docsCloseDrawer(), csv: () => docsCopy(docsCsv(), 'Register')
 };
 function docsInit(){                                             // once, when the page loads

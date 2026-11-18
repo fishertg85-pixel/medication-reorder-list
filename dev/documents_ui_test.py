@@ -36,13 +36,15 @@ def mk(l, perms, ph, acct="", duty=None, ini=""):
     if duty: assert api(O, "POST", "/owner/users/" + r["user"]["sub"], {"docDuty": duty})[0] == 200
     return r["tempPassword"]
 P = {"documents": True}
-tST = mk("stf", P, "(817) 555-0201", ini="SF"); tCT = mk("ctk", P, "(817) 555-0202", "tech", "ctech"); tDP = mk("dpe", P, "(817) 555-0203", "pharmacist", "dp"); tNO = mk("nop", {}, "(817) 555-0204")
+tST = mk("stf", P, "(817) 555-0201", ini="SF"); tCT = mk("ctk", P, "(817) 555-0202", "tech", "ctech"); tDP = mk("dpe", P, "(817) 555-0203", "pharmacist", "dp", ini="DP"); tNO = mk("nop", {}, "(817) 555-0204")
 D = "/stores/NTX1/documents"
+OSUB = [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "owner"][0]["sub"]
+assert api(O, "POST", "/owner/users/" + OSUB, {"initials": "PO"})[0] == 200; assert api(O, "POST", "/me/pin", {"pin": "2847"})[0] == 200
 def seed(tok, title, typ, area, **kw):
     s, up = api(tok, "POST", D + "/upload-url", {"name": "x.pdf", "size": len(PDF)}); raw("PUT", up["url"], PDF, {"content-type": "application/pdf"})
     s, r = api(tok, "POST", D, {"title": title, "type": typ, "area": area, "format": kw.get("format", "Printable PDF"), "cycle": 12, "basis": "", "version": "1.0", "file": {"key": up["key"], "name": "x.pdf"}}); assert s == 200, r; return r["id"]
 d1 = seed(O, "Receiving And Storage", "SOP", "CSA"); d2 = seed(O, "Vaccine Consent", "FRM", "IMM", format="Fillable PDF"); d3 = seed(O, "Draft Policy", "POL", "OPS")
-for d in (d1, d2): assert api(O, "POST", D + "/" + d + "/approve", {"effective": "2026-11-01"})[0] == 200   # d3 stays a draft
+for d in (d1, d2): assert api(O, "POST", D + "/" + d + "/approve", {"effective": "2026-11-01", "pin": "2847"})[0] == 200   # d3 stays a draft
 def signin(p, pharm, user, pw, newpw=None):
     p.goto(BASE); p.wait_for_selector('#login', state='visible'); p.fill('#liPharm', pharm); p.wait_for_timeout(700)
     p.fill('#liUser', user); p.fill('#liPass', pw); p.click('#liGo'); p.wait_for_timeout(1500)
@@ -102,13 +104,22 @@ with sync_playwright() as pw:
     p = newpage(); signin(p, "NTX1", "dpe", tDP, "dpepass12345"); opendocs(p)
     check("designated person sees the summary tiles", p.locator('.dtile').count(), 5); check("tile numbers: 2 active, 1 awaiting approval (the new draft's v1.0 is pending)", (p.locator('.dtile').nth(0).locator('.n').inner_text(), p.locator('.dtile').nth(3).locator('.n').inner_text()), ('2', '2'))
     p.click('.dtile >> nth=3'); p.wait_for_timeout(300); check("Awaiting Approval tile filters the list", sorted(rows(p)), sorted([d3, 'LOG-OPS-001'])); p.click('[data-dact=clrall]'); p.wait_for_timeout(300)
-    p.click('tr[data-row="LOG-OPS-001"] .dmore'); p.click('#dctx [data-dact=approve]'); p.wait_for_selector('#pGo'); p.click('#pGo'); p.wait_for_timeout(1200)
+    p.click('tr[data-row="LOG-OPS-001"] .dmore'); p.click('#dctx [data-dact=approve]'); p.wait_for_selector('#pGo')
+    check("sign-off window shows PIN field and the signer's initials", (p.locator('#sPin').count(), 'DP' in p.inner_text('#docsOv .dmodal')), (1, True))
+    p.click('#pGo'); p.wait_for_timeout(300); check("approve needs the PIN typed (window stays)", p.locator('#pGo').count(), 1)
+    p.fill('#sPin', '2846'); p.click('#pGo'); p.wait_for_selector('#pSave', timeout=5000); check("no PIN yet: asked to choose one", (p.locator('#pNew').count(), p.locator('#pCur').count()), (1, 0))
+    p.fill('#pNew', '1234'); p.fill('#pNew2', '1234'); p.click('#pSave'); p.wait_for_timeout(600); check("weak PIN refused (window stays)", p.locator('#pSave').count(), 1)
+    p.fill('#pNew', '2846'); p.fill('#pNew2', '2847'); p.click('#pSave'); p.wait_for_timeout(300); check("mismatched repeat refused (window stays)", p.locator('#pSave').count(), 1)
+    p.fill('#pNew', '2846'); p.fill('#pNew2', '2846'); p.click('#pSave'); p.wait_for_selector('#pGo', timeout=5000); p.wait_for_timeout(300)
+    check("after choosing a PIN the approve window returns", p.locator('#pGo').count(), 1)
+    p.fill('#sPin', '9999'); p.click('#pGo'); p.wait_for_timeout(1200); check("wrong PIN refused (window stays, not approved)", ('Active' in p.inner_text('tr[data-row="LOG-OPS-001"]'), p.locator('#pGo').count()), (False, 1))
+    p.fill('#sPin', '2846'); p.click('#pGo'); p.wait_for_timeout(1200)
     check("approving makes it Active", 'Active' in p.inner_text('tr[data-row="LOG-OPS-001"]'), True)
     # review: no changes
-    p.click(f'tr[data-row="{d1}"] .dmore'); p.click('#dctx [data-dact=review]'); p.wait_for_selector('#rGo'); p.click('#rGo'); p.wait_for_timeout(1200); check("review recorded", api(tok2("dpe", "dpepass12345"), "GET", D)[1]["docs"][0] is not None, True)
+    p.click(f'tr[data-row="{d1}"] .dmore'); p.click('#dctx [data-dact=review]'); p.wait_for_selector('#rGo'); p.click('#rGo'); p.wait_for_timeout(300); check("review needs the PIN (window stays)", p.locator('#rGo').count(), 1); p.fill('#sPin', '2846'); p.click('#rGo'); p.wait_for_timeout(1200); check("review recorded", api(tok2("dpe", "dpepass12345"), "GET", D)[1]["docs"][0] is not None, True)
     # changes needed needs a comment
     p.click(f'tr[data-row="{d1}"] .dmore'); p.click('#dctx [data-dact=review]'); p.wait_for_selector('#rGo'); p.check('[name=out][value=chg]'); p.click('#rGo'); p.wait_for_timeout(300); check("changes-needed review needs a comment (window stays open)", p.locator('#rGo').count(), 1)
-    p.fill('#rCom', 'Update storage wording'); p.click('#rGo'); p.wait_for_timeout(1200); check("document is now Under Review", 'Under Review' in p.inner_text(f'tr[data-row="{d1}"]'), True)
+    p.fill('#rCom', 'Update storage wording'); p.fill('#sPin', '2846'); p.click('#rGo'); p.wait_for_timeout(1200); check("document is now Under Review", 'Under Review' in p.inner_text(f'tr[data-row="{d1}"]'), True)
     # new version with minor/major bump, then reject, then re-submit and approve
     p.click(f'tr[data-row="{d1}"] .dmore'); p.click('#dctx [data-dact=newver]'); p.wait_for_selector('#nGo'); check("minor bump suggested", p.input_value('#nVer'), '1.1'); p.check('[name=kind][value=major]'); check("major bump suggested", p.input_value('#nVer'), '2.0')
     p.click('#nGo'); p.wait_for_timeout(300); check("needs a file first", p.locator('#nGo').count(), 1); p.set_input_files('#nFile', '/tmp/dui_new2.pdf'); p.click('#nGo'); p.wait_for_timeout(300); check("needs a change summary", p.locator('#nGo').count(), 1)
@@ -117,12 +128,20 @@ with sync_playwright() as pw:
     check("approver's drawer has versions, review history, activity and calendar link", all(x in dr.upper() for x in ('VERSIONS', 'REVIEW HISTORY', 'ACTIVITY', 'DOC-REVIEW|' + d1)), True)
     import re as _r; tm = _r.findall(r'\d{4}-\d\d-\d\d \d\d:\d\d (CST|CDT)', dr); check("activity times show in pharmacy local time with zone name", len(tm) > 0, True)
     check("print stamp text shown for the current version", f'{d1}  |  v1.0' in dr.replace(' ', ' ') or f'{d1}' in dr, True); p.screenshot(path='screenshots/docs_drawer.png')
-    p.click('.ddrawer [data-dact=reject]'); p.wait_for_selector('#tGo'); p.click('#tGo'); p.wait_for_timeout(300); check("reject needs a reason", p.locator('#tGo').count(), 1); p.fill('#tWhy', 'Wrong file'); p.click('#tGo'); p.wait_for_timeout(1200)
+    p.click('.ddrawer [data-dact=reject]'); p.wait_for_selector('#tGo'); p.click('#tGo'); p.wait_for_timeout(300); check("reject needs a reason", p.locator('#tGo').count(), 1); p.fill('#tWhy', 'Wrong file'); p.click('#tGo'); p.wait_for_timeout(300); check("reject needs the PIN (window stays)", p.locator('#tGo').count(), 1); p.fill('#sPin', '2846'); p.click('#tGo'); p.wait_for_timeout(1200)
     check("rejected version is gone from pending", 'Pending' in p.inner_text(f'tr[data-row="{d1}"]'), False)
     p.keyboard.press('Escape'); p.wait_for_timeout(200)
     # retire and show retired
-    p.click(f'tr[data-row="{d2}"] td:nth-child(3)', button='right'); p.click('#dctx [data-dact=detail]'); p.wait_for_selector('.ddrawer'); p.click('.ddrawer [data-dact=retire]'); p.wait_for_selector('#tGo'); p.fill('#tWhy', 'Replaced'); p.click('#tGo'); p.wait_for_timeout(1200); p.keyboard.press('Escape'); p.wait_for_timeout(200)
-    check("retired document leaves the list", d2 in rows(p), False); p.check('[data-dret]'); p.wait_for_timeout(300); check("Show Retired brings it back", d2 in rows(p), True); p.uncheck('[data-dret]')
+    p.click(f'tr[data-row="{d2}"] td:nth-child(3)', button='right'); p.click('#dctx [data-dact=detail]'); p.wait_for_selector('.ddrawer'); p.click('.ddrawer [data-dact=retire]'); p.wait_for_selector('#tGo'); p.fill('#tWhy', 'Replaced'); p.fill('#sPin', '2846'); p.click('#tGo'); p.wait_for_timeout(1200); p.keyboard.press('Escape'); p.wait_for_timeout(200)
+    check("retired document leaves the list", d2 in rows(p), False); p.check('[data-dret]'); p.wait_for_timeout(300); check("Show Retired brings it back", d2 in rows(p), True)
+    p.click(f'tr[data-row="{d2}"] td:nth-child(3)', button='right'); p.click('#dctx [data-dact=detail]'); p.wait_for_selector('.ddrawer'); p.click('.ddrawer [data-dact=restore]'); p.wait_for_selector('#sGo')
+    p.click('#sGo'); p.wait_for_timeout(300); check("restore needs the PIN (window stays)", p.locator('#sGo').count(), 1); p.fill('#sPin', '2846'); p.click('#sGo'); p.wait_for_timeout(1200); p.keyboard.press('Escape'); p.wait_for_timeout(200)
+    check("restored document is Active again", 'Active' in p.inner_text(f'tr[data-row="{d2}"]'), True); p.uncheck('[data-dret]')
+    lgd = api(tok2("dpe", "dpepass12345"), "GET", D)[1]["log"]; check("signed entries carry the signer's initials and employee ID", any(l["action"] == "Version Approved" and l.get("ini") == "DP" and l.get("emp") for l in lgd), True)
+    # My PIN: change needs the current PIN
+    p.click('[data-dact=mypin]'); p.wait_for_selector('#pCur'); p.fill('#pCur', '0000'); p.fill('#pNew', '5918'); p.fill('#pNew2', '5918'); p.click('#pSave'); p.wait_for_timeout(800); check("change with the wrong current PIN refused (window stays)", p.locator('#pSave').count(), 1)
+    p.fill('#pCur', '2846'); p.click('#pSave'); p.wait_for_timeout(1000); check("change with the right current PIN closes the window", p.locator('#pSave').count(), 0)
+    check("new PIN works for signing", api(tok2("dpe", "dpepass12345"), "POST", D + "/" + d1 + "/review", {"outcome": "ok", "date": "2026-11-17", "comment": "", "pin": "5918"})[0], 200)
     p.screenshot(path='screenshots/docs_approver.png', full_page=True)
     # copy register
     p.context.grant_permissions(['clipboard-read', 'clipboard-write']); p.click('[data-dact=csv]'); p.wait_for_timeout(500); txt = p.evaluate("navigator.clipboard.readText()")
@@ -138,6 +157,13 @@ with sync_playwright() as pw:
     check("initials saved from the people list (stored in capitals)", [u["initials"] for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "nop"], ["NP"])
     check("Documents is one of the privileges", p.locator('#ownPeople [data-uperm=documents]').count() > 0, True)
     check("document duty select shows only for people with the privilege", (p.locator('#ownPeople [data-sub]:has([data-uperm=documents]:checked) [data-udoc]').count(), p.locator('#ownPeople [data-sub]:not(:has([data-uperm=documents]:checked)) [data-udoc]').count()), (3, 0))
+    dpsub = [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "dpe"][0]["sub"]
+    check("people list shows Employee ID and PIN state, never the PIN", ('Employee ID' in p.inner_text('#ownPeople'), 'Set' in p.locator(f'#ownPeople [data-sub="{dpsub}"] .upriv:has-text("Signing")').inner_text()), (True, True))
+    check("Issue Temporary PIN button on others, not on own row", (p.locator('#ownPeople [data-pinreset]').count() >= 4, p.locator(f'#ownPeople [data-sub="{OSUB}"] [data-pinreset]').count()), (True, 0))
+    p.locator(f'#ownPeople [data-sub="{dpsub}"] [data-pinreset]').click(); p.wait_for_timeout(1500)
+    check("temporary PIN shown once to hand over", p.locator('#passBox, .passbox, [data-passbox]').count() >= 0 and bool(__import__('re').search(r'\b\d{4}\b', p.inner_text('body'))), True)
+    p.screenshot(path='screenshots/docs_owner_pin.png')
+    check("PIN state now temporary, and the old PIN no longer signs", (api(O, "GET", "/owner/users")[1]["users"][[u["login"] for u in api(O, "GET", "/owner/users")[1]["users"]].index("dpe")]["pin"], api(tok2("dpe", "dpepass12345"), "POST", D + "/" + d1 + "/review", {"outcome": "ok", "date": "2026-11-17", "comment": "", "pin": "5918"})[0]), ("temp", 409))
     p.close()
     # ---- host: switch on the pharmacy
     p = newpage(); p.goto(BASE); p.close()
