@@ -9,6 +9,7 @@ import sys
 # Pages the editor can lay out (the standard for every page of the suite). To add one: its src/parts/<page>_panels.js defines a PAGE (see layout_engine.js) and a sample.
 PAGES = {'pharm': {'file': 'pharm_panels.js', 'var': 'PHARM_PAGE', 'out': 'layout_editor.html', 'title': 'Host Pharmacy Setup Page'},
          'pharm_owner': {'file': 'pharm_panels.js', 'var': 'PHARM_OWNER_PAGE', 'out': 'layout_editor_owner.html', 'title': 'Account Owner Pharmacy Page'},
+         'documents': {'file': 'documents_panels.js', 'var': 'DOCS_PAGE', 'out': 'layout_editor_documents.html', 'title': 'Documents Page'},
          'client': {'file': 'client_panels.js', 'deps': ['pharm_panels.js'], 'var': 'CLIENT_PAGE', 'out': 'layout_editor_client.html', 'title': 'Host Account (Client) Setup Page'}}
 PG = PAGES[sys.argv[1] if len(sys.argv) > 1 else 'pharm']
 panels = open(os.path.join(APP, 'src', 'parts', 'layout_engine.js')).read() + '\n' + ''.join(open(os.path.join(APP, 'src', 'parts', d)).read() + '\n' for d in PG.get('deps', [])) + open(os.path.join(APP, 'src', 'parts', PG['file'])).read() + '\nconst PAGE = ' + PG['var'] + ';'

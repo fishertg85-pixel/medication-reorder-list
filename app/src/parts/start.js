@@ -2,10 +2,11 @@
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('active', x === b));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + b.dataset.tab));
-  document.body.classList.toggle('wideTab', b.dataset.tab === 'owner');
+  document.body.classList.toggle('wideTab', b.dataset.tab === 'owner' || b.dataset.tab === 'documents');
   if(b.dataset.tab === 'owner') openOwnerTab();
   if(b.dataset.tab === 'archive') loadArchive(false).catch(() => {});
   if(b.dataset.tab === 'calendar') calShow();
+  if(b.dataset.tab === 'documents') docsShow();
 });
 function renderAll(){ renderList(); renderArchive(); }
 
@@ -36,6 +37,7 @@ setInterval(async () => {
 }, 1000);
 if('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 $('npPass').value = genTemp();
+docsInit();
 
 (async function start(){
   if(!CFG.apiUrl || !CFG.clientId){ document.body.innerHTML = '<p style="padding:20px">This copy of the app isn’t set up yet (config.js is missing). Deploy it with deploy.sh.</p>'; return; }

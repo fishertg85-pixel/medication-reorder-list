@@ -7,6 +7,7 @@ process.env.AWS_ENDPOINT_URL = 'http://localhost:5005';
 process.env.AWS_REGION = 'us-east-1'; process.env.AWS_ACCESS_KEY_ID = 'x'; process.env.AWS_SECRET_ACCESS_KEY = 'x';
 const ids = JSON.parse(fs.readFileSync(new URL('./moto_ids.json', import.meta.url)));
 process.env.NPI_API = 'http://localhost:8790/npi-mock/';
+process.env.DOCS_BUCKET = 'nortex-docs-dev'; process.env.DOCS_S3_ENDPOINT = 'http://localhost:8790/s3';
 process.env.MAIN_TABLE = 'nortex-reorder-main'; process.env.ARCHIVE_TABLE = 'nortex-reorder-archive'; process.env.USER_POOL_ID = ids.pool;
 const { handler } = await import('../app/lambda/index.mjs');
 const WEB = path.resolve(process.argv[3] || new URL('../app/web', import.meta.url).pathname);
@@ -19,6 +20,12 @@ http.createServer(async (req, res) => {
     const b = await body(req);
     const r = await fetch('http://localhost:5005/', { method: 'POST', headers: { 'content-type': req.headers['content-type'], 'x-amz-target': req.headers['x-amz-target'] }, body: b });
     res.writeHead(r.status, { 'content-type': 'application/x-amz-json-1.1' }); res.end(await r.text()); return;
+  }
+  if(u.pathname.startsWith('/s3/')){            // stand-in for the private documents bucket: the signed links point here, and it forwards to moto
+    const chunks = []; for await (const c of req) chunks.push(c);
+    const r = await fetch('http://localhost:5005' + u.pathname.slice(3) + u.search, { method: req.method, headers: req.headers['content-type'] ? { 'content-type': req.headers['content-type'] } : {}, body: ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(chunks) });
+    const h = {}; r.headers.forEach((v, k) => { if(['content-type', 'content-disposition', 'etag'].includes(k)) h[k] = v; });
+    res.writeHead(r.status, h); res.end(Buffer.from(await r.arrayBuffer())); return;
   }
   if(u.pathname === '/npi-mock/'){            // stand-in for the federal NPI Registry (shape follows API v2.1)
     const n = u.searchParams.get('number'); if(n !== '9999999995') res.writeHead(200, { 'content-type': 'application/json' });

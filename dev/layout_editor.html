@@ -200,6 +200,56 @@
 .lockhint.warn{color:#9c4221;font-weight:600;}
 .pfields>label,.pidbox,.pidbox>*{min-width:0;} .pfields select{text-overflow:ellipsis;}
 .hdrop{margin:8px 0;} .hdrop summary{cursor:pointer;font-size:13px;font-weight:600;padding:6px 9px;border:1px solid var(--line,#ccc);border-radius:6px;} .hdlist{padding:6px 4px;display:grid;gap:4px;}
+/* ---- Documents tab ---- */
+#panel-documents{position:relative;}
+#panel-documents .pgrid{margin-top:2px;}
+#panel-documents .pnl{overflow:hidden;display:flex;flex-direction:column;}
+#panel-documents .pnl>.pb{flex:1;min-height:0;overflow:auto;}
+.drail{display:flex;flex-direction:column;gap:1px;}
+.dit{display:flex;align-items:center;gap:6px;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:6px 8px;font:inherit;font-size:13px;color:var(--text);cursor:pointer;}
+.dit:hover{background:var(--panel-2,rgba(128,128,128,.12));} .dit[aria-current=true]{background:color-mix(in srgb,var(--accent) 16%,var(--panel));font-weight:600;}
+.dit .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} .dit .ct{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;}
+.dit .od{background:var(--bad-soft,#f2ded9);color:var(--bad,#8e3d2b);border-radius:999px;font-size:11px;font-weight:700;padding:0 7px;}
+.dgh{margin:8px 8px 2px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);}
+.dtiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;}
+.dtile{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:8px 10px;text-align:left;cursor:pointer;font:inherit;color:var(--text);}
+.dtile:hover{border-color:var(--accent);} .dtile .n{font-size:24px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums;} .dtile .l{font-size:12px;color:var(--muted);}
+.dtile.bad .n{color:var(--bad,#8e3d2b);} .dtile.warn .n{color:var(--warn,#8a5a22);} .dtile.acc .n{color:var(--accent);}
+.dpins{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.dchip{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:3px 10px;font:inherit;font-size:12.5px;color:var(--text);cursor:pointer;}
+.dchip:hover{border-color:var(--accent);} .dchips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px;}
+.dtool{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;} .dtool input[type=search]{min-width:200px;flex:1;max-width:320px;}
+.dtool select,.dtool input[type=search]{background:var(--input-bg,var(--bg));color:var(--text);border:1px solid var(--input-line,var(--line));border-radius:6px;padding:6px 8px;font:inherit;font-size:13px;}
+.dsp{flex:1;} .dtw{overflow:auto;max-width:100%;}
+.dtable{border-collapse:collapse;width:100%;font-size:13px;} .dtable th{position:sticky;top:0;background:var(--panel);text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:6px 8px;border-bottom:2px solid var(--line);white-space:nowrap;}
+.dtable th.s{cursor:pointer;} .dtable td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.dtable tr.dtr{cursor:default;} .dtable tr.dtr:hover td,.dtable tr.dtr:focus td{background:color-mix(in srgb,var(--accent) 8%,var(--panel));outline:0;} .dtable tr.sel td{background:color-mix(in srgb,var(--accent) 14%,var(--panel));}
+.num{font-variant-numeric:tabular-nums;font-family:Consolas,Menlo,monospace;font-size:12.5px;} .dsmall{font-size:11.5px;word-break:break-all;}
+.dstar,.dmore{background:none;border:0;cursor:pointer;font-size:15px;color:var(--muted);padding:2px 6px;border-radius:4px;} .dstar.on{color:#d19a00;} .dstar:hover,.dmore:hover{background:var(--panel-2,rgba(128,128,128,.15));}
+.dpill{display:inline-block;border-radius:999px;font-size:11.5px;font-weight:600;padding:1px 9px;white-space:nowrap;background:var(--panel-2,#ddd);color:var(--muted,#555);}
+.dpill.ok{background:var(--ok-soft,#d5e6dc);color:var(--ok,#2f6b4e);} .dpill.warn{background:var(--warn-soft,#f3e7d8);color:var(--warn,#8a5a22);} .dpill.bad{background:var(--bad-soft,#f2ded9);color:var(--bad,#8e3d2b);} .dpill.acc{background:color-mix(in srgb,var(--accent) 18%,var(--panel));color:var(--accent);}
+.dempty{padding:24px;text-align:center;color:var(--muted);} .dcount{margin-top:6px;}
+#docsMsg{min-height:1.2em;color:var(--muted);font-size:13px;margin:0 0 6px;}
+.dov{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:70;display:flex;align-items:center;justify-content:center;padding:16px;} .dov.dright{justify-content:flex-end;padding:0;align-items:stretch;}
+.dmodal{background:var(--panel);color:var(--text);border-radius:12px;width:min(520px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.35);} .dmodal.wide{width:min(660px,100%);}
+.dmodal h3{margin:0;padding:14px 18px;border-bottom:1px solid var(--line);font-size:16px;} .dmb{padding:14px 18px;overflow:auto;display:flex;flex-direction:column;gap:10px;} .dmf{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid var(--line);}
+.dfld label{display:block;font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;}
+.dfld input[type=text],.dfld input[type=number],.dfld input[type=date],.dfld select,.dfld textarea{width:100%;box-sizing:border-box;background:var(--input-bg,var(--bg));color:var(--text);border:1px solid var(--input-line,var(--line));border-radius:6px;padding:7px 9px;font:inherit;font-size:14px;} .dfld textarea{min-height:70px;resize:vertical;}
+.dg2{display:grid;grid-template-columns:1fr 1fr;gap:10px;} .dro{padding:7px 9px;border:1px dashed var(--line);border-radius:6px;font-size:14px;}
+.dpath{font:12px Consolas,Menlo,monospace;background:var(--panel-2,rgba(128,128,128,.12));border-radius:6px;padding:7px 9px;word-break:break-all;}
+.dwarn{background:var(--warn-soft,#f3e7d8);color:var(--warn,#8a5a22);border-radius:6px;padding:7px 10px;font-size:13px;} .dinfo{background:var(--panel-2,rgba(128,128,128,.12));border-radius:6px;padding:7px 10px;font-size:13px;}
+.dradios label{display:block;text-transform:none;letter-spacing:0;font-size:14px;color:var(--text);font-weight:400;margin:4px 0;}
+.ddrawer{background:var(--panel);color:var(--text);width:min(760px,100%);height:100%;overflow:auto;box-shadow:-8px 0 30px rgba(0,0,0,.3);display:flex;flex-direction:column;}
+.ddh{padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:1;} .ddh h2{margin:6px 0;font-size:18px;} .drow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;} .dacts{margin-top:8px;}
+.ddbody{padding:14px 18px;display:flex;flex-direction:column;gap:12px;} .ddbody .pnl{grid-column:auto;grid-row:auto;margin:0;} .ddbody .pnl .dtw{padding:0 0 4px;}
+.dkv{display:grid;grid-template-columns:150px 1fr;gap:5px 12px;margin:0;font-size:13px;} .dkv dt{color:var(--muted);} .dkv dd{margin:0;min-width:0;}
+.dstamp{font:12px Consolas,Menlo,monospace;border:1px dashed var(--line);border-radius:4px;padding:4px 8px;display:inline-block;}
+.dctx{position:fixed;z-index:80;width:290px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.3);padding:6px;}
+.dctxh{padding:6px 8px;} .dctxt{font-weight:600;font-size:13px;} .dctxkv{padding:2px 8px 6px;grid-template-columns:90px 1fr;} .dctxsep{height:1px;background:var(--line);margin:4px 0;}
+.dctxi{display:flex;justify-content:space-between;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:7px 8px;font:inherit;font-size:13px;color:var(--text);cursor:pointer;} .dctxi:hover,.dctxi:focus{background:color-mix(in srgb,var(--accent) 14%,var(--panel));outline:0;} .dctxi[disabled]{opacity:.45;cursor:default;}
+#docsToast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:90;background:#222;color:#fff;border-radius:8px;padding:9px 16px;font-size:13.5px;max-width:min(560px,92vw);}
+@media (max-width:1279px){ .dtiles{grid-template-columns:repeat(3,minmax(0,1fr));} }
+@media print{ #panel-documents .dov,#docsToast,.dctx{display:none !important;} }
 
   body.wideTab main{max-width:none;}
   .btn.small,.btn2.small{padding:5px 10px;font-size:12.5px;}
@@ -454,6 +504,9 @@ const PHARM_BODY = {
   act: (s, c) => `<div class="pfields"><div class="calsw">${c.host && !c.rep
         ? `<label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar switched on for this pharmacy</label> <span class="hint">(people also need the Calendar privilege)</span>`
         : `Calendar: <b>${s.calendar ? 'On' : 'Off'}</b> <span class="hint">${LOCKED}</span>`}</div>
+        <div class="calsw">${c.host && !c.rep
+        ? `<label class="chk">${sw(`data-sfdocs="1"`, s.documents, 'Documents tab for this pharmacy')} Documents switched on for this pharmacy</label> <span class="hint">(people also need the Documents privilege)</span>`
+        : `Documents: <b>${s.documents ? 'On' : 'Off'}</b> <span class="hint">${LOCKED}</span>`}</div>
         <div style="margin-top:10px;">${c.rep ? `<label class="reason"><span>Why (required, the supervisor reads this)</span><input type="text" data-draftnote maxlength="300"></label> <button class="btn small" data-draftstore="${esc(s.id)}">Submit for review</button>`
           : c.isNew ? '<button class="btn small" data-createstore="1">Create pharmacy</button>' : `<button class="btn small" data-savestore="${esc(s.id)}">Save details</button>`}</div>
         ${c.host && !c.isNew && !c.rep ? `<div class="identbar"><button class="btn2 small" data-unlockident="1">Change name, address, license or identifiers…</button>
@@ -561,6 +614,7 @@ function pharmCardEvents(root, o){
       const isNew = !!sv.dataset.createstore, id = isNew ? (card.querySelector('[data-newid]').value || '').trim().toUpperCase() : sv.dataset.savestore;
       const body = {}; card.querySelectorAll('[data-sf]').forEach(i => body[i.dataset.sf] = i.value.trim());
       const cal = card.querySelector('[data-sfcal]'); if(cal) body.calendar = cal.checked;
+      const dcs = card.querySelector('[data-sfdocs]'); if(dcs) body.documents = dcs.checked;
       if(card.querySelector('[data-svc]')) body.services = [...card.querySelectorAll('[data-svc]')].filter(i => i.checked).map(i => i.dataset.svc);
       const cur = o.stores().find(x => x.id === id);
       if(card.dataset.hrTouched || (cur && cur.hours)) body.hours = DAYS.map((_, i) => card.querySelector(`[data-hx="${i}"]`).checked ? null : {o: card.querySelector(`[data-ho="${i}"]`).value, c: card.querySelector(`[data-hc="${i}"]`).value});

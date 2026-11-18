@@ -1,0 +1,416 @@
+/* ---------------- Documents page: a pharmacy's own compliance document library ----------------
+   Built on the layout engine (layout_engine.js) like every page of the suite. DOCS_LAYOUT is set by Neo with the layout editor
+   (dev/build_layout_editor.py documents) and is the same for everyone. Panels: folders, summary tiles (Owner, Pharmacist-In-Charge, Designated Person only),
+   pinned, and the document list. The detail panel and the windows (add, new version, approve, review, retire) open over the page.
+   What a person may do is decided by the server from their duty (Owner, Pharmacist-In-Charge, Designated Person, Compliance Technician, Staff); the screen only follows it.
+   Everyone with the Documents privilege can open, print and pin the current documents. */
+const DOC_SLUG = s => s.replace(/ /g, '_').replace(/[()]/g, '');
+const DOC_AREA_LIST = [['01', 'OPS', 'Pharmacy Operations'], ['02', 'CSA', 'Controlled Substances'], ['03', 'NSC', 'Nonsterile Compounding (USP 795)'], ['04', 'STC', 'Sterile Compounding (USP 797)'], ['05', 'HDR', 'Hazardous Drugs (USP 800)'], ['06', 'IMM', 'Immunizations'], ['07', 'HIP', 'Privacy and Security (HIPAA)'], ['08', 'OSH', 'Workplace Safety (OSHA)'], ['09', 'QMS', 'Quality and Medication Safety'], ['10', 'PER', 'Personnel Training and Competency'], ['11', 'REG', 'Licensing and Regulatory'], ['12', 'FAC', 'Facilities and Equipment']].map(([n, code, name]) => ({ n, code, name, folder: n + '_' + DOC_SLUG(name) }));
+const DOC_AF = Object.fromEntries(DOC_AREA_LIST.map(a => [a.code, a.folder]));
+const DOC_CMPA = ['NSC', 'STC', 'HDR'];
+const DOC_TYPE_LIST = [
+  { c: 'POL', n: 'Policy', f: '01_Policies', sub: null }, { c: 'SOP', n: 'SOP', f: '02_SOPs', sub: null }, { c: 'FRM', n: 'Form', f: '03_Forms', sub: null },
+  { c: 'MFR', n: 'MFR', f: '04_MFRs', sub: DOC_CMPA, tip: 'Paper (PDF) renderings of Master Formulation Records' }, { c: 'CMP', n: 'Compounding Record', f: '05_Compounding_Records', sub: DOC_CMPA, tip: 'Blank compounding record templates' },
+  { c: 'LOG', n: 'Log', f: '06_Logs', sub: null }, { c: 'CHK', n: 'Checklist', f: '07_Checklists', sub: null },
+  { c: 'TRN', n: 'Training Material', f: '08_Training_and_Competency', sub: ['Orientation', 'Competency_Assessments', 'Training_Materials'] },
+  { c: 'PAT', n: 'Patient Material', f: '09_Patient_Materials', sub: ['Notices', 'Counseling_Handouts', 'Immunization'] },
+  { c: 'REF', n: 'Reference', f: '10_Reference', sub: ['Regulatory_Rules', 'Safety_Data_Sheets', 'Manufacturer_and_Vendor', 'Accreditation'] },
+  { c: 'TMP', n: 'Template', f: '11_Templates_General', sub: ['Letterhead', 'General'] }];
+const DOC_TY = Object.fromEntries(DOC_TYPE_LIST.map(t => [t.c, t]));
+const DOC_FORMATS = ['Fillable PDF', 'Printable PDF'];
+const DOC_DUTY_LABELS = { owner: 'Owner', pic: 'Pharmacist-In-Charge', dp: 'Designated Person', ctech: 'Compliance Technician', staff: 'Staff' };
+const DOC_DUE_SOON = 30;
+const docSubFor = d => { const t = DOC_TY[d.type]; return t.sub === null || DOC_CMPA.includes(t.sub[0]) ? DOC_AF[d.area] : (d.sub || t.sub[0]); };
+const docFileName = (d, v) => `${d.id}_v${v}_${d.title.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '')}.pdf`;
+const docPathOf = (d, v) => `${DOC_TY[d.type].f}/${docSubFor(d)}/${docFileName(d, v)}`;
+
+const DOCS_PANELS = [['rail', 'Folders'], ['tiles', 'Compliance Summary'], ['pins', 'Pinned'], ['list', 'Documents']];
+const DOCS_LAYOUT = {"v":2,"cols":12,"panels":{"rail":[1,1,3,34],"tiles":[4,1,9,9],"pins":[4,10,9,8],"list":[4,18,9,52]}};   // starting guess; Neo arranges it in the layout editor
+const DOCS_PAGE = { id: 'documents', title: 'Documents Page', panels: DOCS_PANELS, layout: DOCS_LAYOUT,
+  render: (_unused, panels) => docsHtml(DOCS_SAMPLE_MODEL(), { panels }) };
+
+/* ---- the screen's state (one per sign-in); the layout editor builds its own from the sample below ---- */
+function docsNewModel(){ return { duty: 'staff', today: '', docs: [], pins: [], log: [], pharmacy: '', q: '', type: 'all', fstatus: '', fformat: '', freview: '', fpend: false, showRetired: false, sort: { k: 'id', d: 1 }, sel: '', loaded: false }; }
+const docsIs = (m, ...ds) => ds.includes(m.duty);
+const docsManage = m => docsIs(m, 'owner', 'pic', 'dp', 'ctech'), docsApprove = m => docsIs(m, 'owner', 'pic', 'dp');
+const docsDate = s => { const [y, mo, d] = s.split('-').map(Number); return Date.UTC(y, mo - 1, d); };
+const docsDiff = (a, b) => Math.round((docsDate(a) - docsDate(b)) / 864e5);
+function docsAddMonths(s, n){ const [y, m, d] = s.split('-').map(Number), t = new Date(Date.UTC(y, m - 1 + n, 1)), last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate(); t.setUTCDate(Math.min(d, last)); return t.toISOString().slice(0, 10); }
+function docInfo(d, m){
+  const cur = d.versions.find(v => v.state === 'current'), pend = d.versions.find(v => v.state === 'pending');
+  const status = d.retired ? 'Retired' : cur ? (d.underReview ? 'Under Review' : 'Active') : 'Draft';
+  const base = d.lastReviewed || (cur && cur.effective) || null, next = base && d.cycle ? docsAddMonths(base, d.cycle) : null, days = next ? docsDiff(next, m.today) : null;
+  let r = 'n/a'; if(status === 'Active' || status === 'Under Review') r = next == null ? 'No Date' : days < 0 ? 'Overdue' : days <= DOC_DUE_SOON ? 'Due Soon' : 'Current';
+  return { cur, pend, status, version: cur ? cur.v : (pend ? pend.v : ''), effective: cur ? cur.effective : '', next, days, r };
+}
+const DOC_RORD = { Overdue: 0, 'Due Soon': 1, 'No Date': 2, Current: 3, 'n/a': 4 };
+const docPill = (cls, t, title) => `<span class="dpill ${cls}"${title ? ` title="${esc(title)}"` : ''}>${esc(t)}</span>`;
+const docStatusPill = s => docPill({ Active: 'ok', Draft: 'gray', 'Under Review': 'warn', Retired: 'gray' }[s], s);
+const docReviewPill = r => r === 'n/a' ? '<span class="hint">n/a</span>' : docPill({ Overdue: 'bad', 'Due Soon': 'warn', Current: 'ok', 'No Date': 'bad' }[r], r);
+const docFormatPill = f => docPill(f === 'Fillable PDF' ? 'acc' : 'gray', f.replace(' PDF', ''));
+function docDueText(i){ if(i.next == null) return ''; if(i.r === 'n/a') return i.next; return i.days < 0 ? `${-i.days} day${i.days === -1 ? '' : 's'} overdue` : i.days === 0 ? 'due today' : `in ${i.days} day${i.days === 1 ? '' : 's'}`; }
+
+function docsRows(m){
+  const q = m.q.trim().toLowerCase(), man = docsManage(m);
+  let rows = m.docs.map(d => ({ d, i: docInfo(d, m) })).filter(({ d, i }) => {
+    if(!man && (i.status === 'Draft' || i.status === 'Retired')) return false;
+    if(m.type !== 'all' && d.type !== m.type) return false;
+    if(i.status === 'Retired' && !m.showRetired && m.fstatus !== 'Retired') return false;
+    if(m.fstatus && i.status !== m.fstatus) return false;
+    if(m.fformat && d.format !== m.fformat) return false;
+    if(m.freview && i.r !== m.freview) return false;
+    if(m.fpend && !i.pend) return false;
+    if(q && !(d.id + ' ' + d.title + ' ' + d.notes + ' ' + d.basis).toLowerCase().includes(q)) return false;
+    return true; });
+  const V = { id: x => x.d.id, title: x => x.d.title.toLowerCase(), type: x => DOC_TY[x.d.type].n, version: x => x.i.version, status: x => x.i.status, next: x => x.i.next || '9999', r: x => DOC_RORD[x.i.r] }[m.sort.k] || (x => x.d.id);
+  rows.sort((a, b) => { const x = V(a), y = V(b); return (x < y ? -1 : x > y ? 1 : a.d.id < b.d.id ? -1 : 1) * m.sort.d; });
+  return rows;
+}
+/* ---- panel regions. Each region has a data-dz name so the live page can refresh just that part (typing in the search box is never interrupted) ---- */
+function docsRailHtml(m){
+  const all = m.docs.map(d => ({ d, i: docInfo(d, m) })), man = docsManage(m), appr = docsApprove(m);
+  const live = all.filter(x => x.i.status !== 'Retired' && (man || x.i.status !== 'Draft'));
+  return `<button class="dit" data-dact="type" data-id="all" aria-current="${m.type === 'all'}"><span class="nm">All Documents</span><span class="ct">${live.length}</span></button>` +
+    DOC_TYPE_LIST.map(t => { const mm = live.filter(x => x.d.type === t.c), od = mm.filter(x => x.i.r === 'Overdue').length;
+      return `<button class="dit" data-dact="type" data-id="${t.c}" aria-current="${m.type === t.c}" title="${esc(t.tip || t.f)}"><span class="nm">${t.f.replace(/_/g, ' ')}</span>${od && appr ? `<span class="od">${od}</span>` : ''}<span class="ct">${mm.length}</span></button>`; }).join('') +
+    (man ? `<div class="dgh">Archive</div><button class="dit" data-dact="showret"><span class="nm">99 Archive (Retired)</span><span class="ct">${all.filter(x => x.i.status === 'Retired').length}</span></button>` : '');
+}
+function docsTilesHtml(m){
+  const all = m.docs.map(d => ({ d, i: docInfo(d, m) })), c = k => all.filter(x => x.i.r === k).length;
+  return `<div class="dtiles">${[['active', 'acc', 'Active', all.filter(x => x.i.status === 'Active' || x.i.status === 'Under Review').length], ['Overdue', 'bad', 'Review Overdue', c('Overdue')], ['Due Soon', 'warn', `Due In ${DOC_DUE_SOON} Days`, c('Due Soon')],
+    ['pend', 'warn', 'Awaiting Approval', all.filter(x => x.i.pend).length], ['Under Review', 'acc', 'Under Review', all.filter(x => x.i.status === 'Under Review').length]]
+    .map(([k, cl, l, n]) => `<button class="dtile ${cl}" data-dact="tile" data-id="${k}"><div class="n">${n}</div><div class="l">${esc(l)}</div></button>`).join('')}</div>`;
+}
+function docsPinsHtml(m){
+  const pins = m.pins.map(id => m.docs.find(d => d.id === id)).filter(Boolean);
+  return pins.length ? pins.map(d => `<button class="dchip" data-dact="open" data-id="${d.id}" title="${esc(d.title)}"><span class="num">${d.id}</span> ${esc(d.title.length > 34 ? d.title.slice(0, 33) + '…' : d.title)}</button>`).join('') : '<span class="hint">Nothing pinned yet. Use the star on any row.</span>';
+}
+function docsChipsHtml(m){
+  const act = [];
+  if(m.type !== 'all') act.push(['Folder: ' + DOC_TY[m.type].f.replace(/_/g, ' '), 'type']); if(m.fstatus) act.push(['Status: ' + m.fstatus, 'fstatus']); if(m.fformat) act.push(['Format: ' + m.fformat, 'fformat']);
+  if(m.freview) act.push(['Review: ' + m.freview, 'freview']); if(m.fpend) act.push(['Awaiting Approval', 'fpend']); if(m.showRetired) act.push(['Showing Retired', 'showRetired']);
+  return act.length ? `<div class="dchips">${act.map(([l, k]) => `<button class="dchip" data-dact="clr" data-id="${k}">${esc(l)} ×</button>`).join('')}<button class="btn2 small" data-dact="clrall">Clear All</button></div>` : '';
+}
+function docsTableHtml(m){
+  const rows = docsRows(m), man = docsManage(m), appr = docsApprove(m), pn = m.pins;
+  const H = [['pin', ''], ['id', 'Doc ID'], ['title', 'Title'], ['type', 'Type'], ['version', 'Version'], ...(man ? [['status', 'Status']] : []), ...(appr ? [['next', 'Next Review'], ['r', 'Review']] : []), ['more', '']];
+  const arrow = k => m.sort.k === k ? (m.sort.d > 0 ? ' ▲' : ' ▼') : '';
+  if(!rows.length) return `<div class="dempty">No documents match. ${m.docs.length ? '<button class="btn2 small" data-dact="clrall">Clear Filters</button>' : ''}</div>`;
+  return `<div class="dtw"><table class="dtable"><thead><tr>${H.map(([k, l]) => k === 'pin' || k === 'more' ? '<th></th>' : `<th class="s" data-dact="sort" data-id="${k}" scope="col">${l}${arrow(k)}</th>`).join('')}</tr></thead><tbody>${rows.map(({ d, i }) => `<tr class="dtr${m.sel === d.id ? ' sel' : ''}" tabindex="0" data-row="${d.id}">
+    <td><button class="dstar${pn.includes(d.id) ? ' on' : ''}" data-dact="pin" data-id="${d.id}" aria-label="${pn.includes(d.id) ? 'Unpin' : 'Pin'} ${d.id}">${pn.includes(d.id) ? '★' : '☆'}</button></td>
+    <td class="num">${d.id}</td><td title="${esc(d.title)}">${esc(d.title)}${i.pend && man ? ` ${docPill('warn', 'v' + i.pend.v + ' Pending', 'A new version is waiting for approval')}` : ''}</td><td>${DOC_TY[d.type].n}</td>
+    <td class="num">${i.version || '-'}</td>${man ? `<td>${docStatusPill(i.status)}</td>` : ''}${appr ? `<td class="num">${i.next || '-'}</td><td>${docReviewPill(i.r)}</td>` : ''}
+    <td><button class="dmore" data-dact="menu" data-id="${d.id}" aria-label="Details and actions for ${d.id}">⋯</button></td></tr>`).join('')}</tbody></table></div>`;
+}
+const docsCount = m => `${docsRows(m).length} of ${m.docs.filter(d => docsManage(m) || (d.versions.some(v => v.state === 'current') && !d.retired)).length} documents`;
+const DOCS_BODY = {
+  rail: m => `<div class="drail" data-dz="rail">${docsRailHtml(m)}</div>`,
+  tiles: m => `<div data-dz="tiles">${docsTilesHtml(m)}</div>`,
+  pins: m => `<div class="dpins" data-dz="pins">${docsPinsHtml(m)}</div>`,
+  list: m => `<div class="dtool">
+      <input type="search" data-dq placeholder="Search" value="${esc(m.q)}" aria-label="Search documents">
+      ${docsManage(m) ? `<select data-dfs aria-label="Status"><option value="">Status: Any</option>${['Active', 'Draft', 'Under Review', 'Retired'].map(v => `<option${v === m.fstatus ? ' selected' : ''}>${v}</option>`).join('')}</select>` : ''}
+      <select data-dff aria-label="Format"><option value="">Format: Any</option>${DOC_FORMATS.map(v => `<option${v === m.fformat ? ' selected' : ''}>${v}</option>`).join('')}</select>
+      ${docsApprove(m) ? `<select data-dfr aria-label="Review status"><option value="">Review: Any</option>${['Overdue', 'Due Soon', 'Current', 'No Date'].map(v => `<option${v === m.freview ? ' selected' : ''}>${v}</option>`).join('')}</select>` : ''}
+      ${docsManage(m) ? `<label class="chk"><input type="checkbox" data-dret${m.showRetired ? ' checked' : ''}> Show Retired</label>` : ''}
+      <span class="dsp"></span>
+      ${docsApprove(m) ? '<button class="btn2 small" data-dact="csv" title="Copies the register in the order of Document_Register.xlsx">Copy Register As CSV</button>' : ''}
+      ${docsManage(m) ? '<button class="btn small" data-dact="add">Add Document</button>' : ''}</div>
+    <div data-dz="chips">${docsChipsHtml(m)}</div><div data-dz="tbl">${docsTableHtml(m)}</div><div class="hint dcount" data-dz="count">${docsCount(m)}</div>`
+};
+// panels slide up to close the gap when one is hidden (the summary tiles are for approvers only)
+function docsLayoutWithout(L, hide){
+  const P = {}; for(const k in L.panels) if(!hide.includes(k)) P[k] = L.panels[k].slice();
+  const ks = Object.keys(P).sort((a, b) => P[a][1] - P[b][1] || P[a][0] - P[b][0]), hit = (a, b) => a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3];
+  for(const k of ks){ while(P[k][1] > 1){ P[k][1]--; if(ks.some(q => q !== k && hit(P[k], P[q]))){ P[k][1]++; break; } } }
+  return { v: 2, cols: LAYOUT_COLS, panels: P };
+}
+function docsHtml(m, c){
+  const hide = docsApprove(m) ? [] : ['tiles'], pg = Object.assign({}, DOCS_PAGE, { panels: DOCS_PANELS.filter(p => !hide.includes(p[0])) });
+  const base = c && c.panels ? { v: 2, cols: LAYOUT_COLS, panels: c.panels } : (layoutOk(DOCS_PAGE, DOCS_LAYOUT) ? DOCS_LAYOUT : null);
+  return layoutGridHtml(pg, base ? docsLayoutWithout(base, hide) : undefined, id => DOCS_BODY[id](m));
+}
+const DOCS_SAMPLE_MODEL = () => {
+  const m = docsNewModel(), t = '2026-11-18', ago = n => { const d = new Date(Date.UTC(2026, 10, 18 - n)); return d.toISOString().slice(0, 10); };
+  const V = (v, state, eff, o) => Object.assign({ v, state, effective: eff, at: eff || t, summary: 'Initial Release', by: 'Pat Owner', approvedBy: 'Pat Owner', hasFile: true }, o || {});
+  const D = (id, title, o) => Object.assign({ id, title, type: id.slice(0, 3), area: id.slice(4, 7), sub: '', format: 'Printable PDF', cycle: 12, basis: 'Internal Policy', notes: '', underReview: false, retired: false, lastReviewed: '', reviews: [], versions: [] }, o);
+  m.duty = 'owner'; m.today = t; m.pharmacy = 'NorTex Pharmacy - Haslet'; m.pins = ['FRM-IMM-001'];
+  m.docs = [D('POL-OPS-001', 'Policy And Procedure Manual Overview', { lastReviewed: ago(120), versions: [V('1.0', 'current', ago(300))] }),
+    D('SOP-CSA-001', 'Controlled Substance Receiving And Storage', { lastReviewed: ago(372), versions: [V('1.0', 'current', ago(380))] }),
+    D('FRM-IMM-001', 'Vaccine Consent And Screening - General', { format: 'Fillable PDF', lastReviewed: ago(20), versions: [V('1.0', 'current', ago(20))] }),
+    D('MFR-NSC-001', 'Hydroquinone Cream (Example Product)', { lastReviewed: ago(90), versions: [V('1.0', 'superseded', ago(240)), V('1.1', 'current', ago(90)), V('1.2', 'pending', '', { summary: 'Updated wording', approvedBy: '' })] }),
+    D('SOP-HDR-001', 'Hazardous Drug Handling And Spill Response', { versions: [V('1.0', 'pending', '', { approvedBy: '' })] }),
+    D('LOG-OPS-002', 'Delivery Log', { lastReviewed: ago(335), versions: [V('1.0', 'current', ago(350))], underReview: true }),
+    D('SOP-OPS-002', 'Will-Call Procedure (Legacy)', { retired: true, lastReviewed: ago(600), versions: [V('1.0', 'current', ago(900))] })];
+  return m;
+};
+
+/* ---------------- live page: loads, refreshes and acts ---------------- */
+let DOCS = docsNewModel(), DOCS_STORE = '';
+const dzq = s => document.querySelector('#docsRoot ' + s);
+const docOf = id => DOCS.docs.find(d => d.id === id);
+const docsPath = () => '/stores/' + encodeURIComponent(STORE.id) + '/documents';
+const docsOK = () => !!(ME && STORE && STORE.documents === true && PERM('documents'));
+function docsPaint(){                                            // the whole page (after loading, or when something changed that touches several panels)
+  const r = $('docsRoot'); if(!r) return;
+  r.innerHTML = docsHtml(DOCS, {}); docsHook();
+}
+function docsHook(){ const q = dzq('[data-dq]'); if(q) q.addEventListener('input', e => { DOCS.q = e.target.value; docsUpdate(); }); }
+function docsUpdate(){                                           // refresh only the regions that depend on the data or filters
+  if(!dzq('[data-dz]')) return;
+  const set = (z, h) => { const e = dzq(`[data-dz="${z}"]`); if(e) e.innerHTML = h; };
+  set('rail', docsRailHtml(DOCS)); set('tiles', docsTilesHtml(DOCS)); set('pins', docsPinsHtml(DOCS)); set('chips', docsChipsHtml(DOCS)); set('tbl', docsTableHtml(DOCS)); set('count', docsCount(DOCS));
+}
+async function docsLoad(){
+  if(!docsOK()) return;
+  const id = STORE.id; $('docsMsg').textContent = DOCS.loaded && DOCS_STORE === id ? '' : 'Loading…';
+  try{
+    const r = await api('GET', docsPath());
+    if(!STORE || STORE.id !== id) return;
+    const keep = DOCS_STORE === id ? DOCS : docsNewModel();
+    DOCS = Object.assign(keep, { duty: r.duty, today: r.today, docs: r.docs, pins: r.pins, log: r.log || [], pharmacy: r.pharmacy, maxMb: r.maxMb, loaded: true }); DOCS_STORE = id;
+    $('docsMsg').textContent = ''; docsPaint(); if(DOCS.open && docOf(DOCS.open)) docsDrawer(DOCS.open); else if(DOCS.open) docsCloseDrawer();
+  }catch(e){ if(!e.auth) $('docsMsg').textContent = e.message; }
+}
+function docsShow(){ if(!docsOK()) return; if(!DOCS.loaded || DOCS_STORE !== STORE.id || Date.now() - (DOCS.at || 0) > 60000){ DOCS.at = Date.now(); docsLoad(); } }
+function docsPaintTab(){                                         // called whenever the pharmacy or the person changes
+  const tab = document.querySelector('#tabs [data-tab="documents"]'); if(!tab) return;
+  const ok = docsOK(); tab.style.display = ok ? '' : 'none';
+  if(!ok || (DOCS_STORE && STORE && DOCS_STORE !== STORE.id)){ DOCS = docsNewModel(); DOCS_STORE = ''; const r = $('docsRoot'); if(r) r.innerHTML = ''; docsCloseDrawer(); docsCloseModal();
+    if(!ok && tab.classList.contains('active')) document.querySelector('#tabs [data-tab="list"]').click(); }
+}
+const docsToast = t => { const e = $('docsToast'); e.textContent = t; e.style.display = ''; clearTimeout(docsToast.t); docsToast.t = setTimeout(() => e.style.display = 'none', 3200); };
+function docsModal(html, wide){ const o = $('docsOv'); o.innerHTML = `<div class="dov" data-dov><div class="dmodal${wide ? ' wide' : ''}" role="dialog" aria-modal="true">${html}</div></div>`; const f = o.querySelector('[autofocus],input:not([type=hidden]),select,textarea'); if(f) f.focus(); }
+const docsCloseModal = () => { const o = $('docsOv'); if(o) o.innerHTML = ''; };
+const docsCloseCtx = () => { const c = document.getElementById('dctx'); if(c) c.remove(); };
+const docsErr = e => { if(!e.auth) docsToast(e.message); };
+async function docsDo(path, body, done){                         // one action on a document; the page reloads from the server afterwards so everyone sees the same thing
+  try{ const r = await api('POST', docsPath() + path, body || {}); docsCloseModal(); await docsLoad(); if(done) docsToast(done); return r; }catch(e){ docsErr(e); return null; }
+}
+/* ---- opening and printing the PDF. The link is short-lived and comes from the server; the stored file is never public. ---- */
+async function docsOpen(id, v, stamp){
+  const w = window.open('', '_blank');                           // opened now, while the click is still fresh, so the browser doesn't block it
+  try{
+    const r = await api('GET', docsPath() + '/' + encodeURIComponent(id) + '/file' + (v ? '?v=' + encodeURIComponent(v) : ''));
+    if(!w){ docsToast('Allow pop-ups for this site to open documents.'); return; }
+    if(stamp) await docsStampOpen(w, r, id); else w.location = r.url;
+  }catch(e){ if(w) w.close(); docsErr(e); }
+}
+function docsAsset(src){ return new Promise((ok, no) => { if(document.querySelector(`script[data-asset="${src}"]`)) return ok(); const s = document.createElement('script'); s.src = src; s.dataset.asset = src; s.onload = ok; s.onerror = () => no(new Error('Could not load the print tools.')); document.head.appendChild(s); }); }
+async function docsStampOpen(w, r, id){                           // "Print Copy": the same PDF with the footer stamp on every page (Doc ID, version, effective date)
+  const d = docOf(id), i = docInfo(d, DOCS), v = d.versions.find(x => x.v === r.v);
+  if(!v || v.state !== 'current'){ w.location = r.url; docsToast('Only the current version is stamped. Opening it without a stamp.'); return; }
+  await docsAsset('pdf-lib.min.js');
+  const bytes = await (await fetch(r.url)).arrayBuffer(), pdf = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: false }), font = await pdf.embedFont(PDFLib.StandardFonts.Courier);
+  const text = `${d.id}  |  v${v.v}  |  Effective ${v.effective}  |  Printed from IronLedger`;
+  for(const pg of pdf.getPages()){ const { width } = pg.getSize(); pg.drawLine({ start: { x: 36, y: 26 }, end: { x: width - 36, y: 26 }, thickness: 0.5, color: PDFLib.rgb(0.55, 0.55, 0.55) });
+    pg.drawText(text, { x: 36, y: 15, size: 7.5, font, color: PDFLib.rgb(0.25, 0.25, 0.25) }); }
+  w.location = URL.createObjectURL(new Blob([await pdf.save()], { type: 'application/pdf' }));
+}
+/* ---- the detail drawer ---- */
+function docsCloseDrawer(){ DOCS.open = ''; const r = $('docsDrawer'); if(r) r.innerHTML = ''; }
+function docsDrawer(id){
+  const d = docOf(id); if(!d){ docsCloseDrawer(); return; }
+  DOCS.open = id; const m = DOCS, i = docInfo(d, m), man = docsManage(m), appr = docsApprove(m), pn = m.pins.includes(id), area = DOC_AREA_LIST.find(x => x.code === d.area);
+  const dis = (ok, why) => ok ? '' : ` disabled title="${esc(why)}"`;
+  const vrows = d.versions.slice().reverse().map(v => `<tr><td class="num">v${esc(v.v)}</td><td>${v.state === 'current' ? docPill('ok', 'Current') : v.state === 'pending' ? docPill('warn', 'Pending Approval') : docPill('gray', 'Superseded')}</td><td class="num">${v.effective || '-'}</td><td>${esc(v.by || '-')}</td><td>${esc(v.approvedBy || '-')}${v.selfApproved ? ' ' + docPill('warn', 'Self-approved') : ''}</td><td title="${esc(v.summary)}">${esc(v.summary)}</td><td><button class="btn2 small" data-dact="openv" data-id="${id}" data-v="${esc(v.v)}"${v.hasFile ? '' : ' disabled'}>Open</button></td></tr>`).join('');
+  const rrows = (d.reviews || []).slice().reverse().map(r => `<tr><td class="num">${r.at}</td><td>${esc(r.by)}</td><td>${esc(r.outcome)}</td><td title="${esc(r.comment)}">${esc(r.comment)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No review recorded yet.</td></tr>';
+  const act = (m.log || []).filter(l => l.docId === id).slice(0, 8).map(l => `<tr><td class="num">${esc(l.at.slice(0, 16).replace('T', ' '))}</td><td>${esc(l.by)}</td><td>${esc(l.action)}${l.flag ? ' ' + docPill('warn', l.flag) : ''}</td><td title="${esc(l.detail)}">${esc(l.detail)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No activity yet.</td></tr>';
+  const stampTxt = i.cur ? `${d.id}  |  v${i.cur.v}  |  Effective ${i.cur.effective}  |  Printed from IronLedger` : '';
+  $('docsDrawer').innerHTML = `<div class="dov dright" data-ddov><aside class="ddrawer" role="dialog" aria-modal="true" aria-label="Document details">
+   <div class="ddh"><div class="drow"><span class="num hint">${d.id}</span><span class="dsp"></span><button class="btn2 small" data-dact="closedrawer">Close</button></div>
+    <h2>${esc(d.title)}</h2><div class="drow">${man ? docStatusPill(i.status) : ''}${appr && i.r !== 'n/a' ? docReviewPill(i.r) : ''}${docFormatPill(d.format)}${docPill('gray', DOC_TY[d.type].n)}${i.pend && man ? docPill('warn', 'v' + i.pend.v + ' Awaiting Approval') : ''}</div>
+    <div class="drow dacts">
+     <button class="btn small" data-dact="openv" data-id="${id}"${i.cur || man ? '' : ' disabled'}>${d.format === 'Fillable PDF' ? 'Open Form' : 'Open'}</button>
+     <button class="btn2 small" data-dact="printv" data-id="${id}"${i.cur ? '' : ' disabled'} title="The current version with the footer stamp on every page">Print Copy</button>
+     <button class="btn2 small" data-dact="pin" data-id="${id}">${pn ? '★ Unpin' : '☆ Pin'}</button>
+     ${man ? `<button class="btn2 small" data-dact="review" data-id="${id}"${dis(appr && (i.status === 'Active' || i.status === 'Under Review'), appr ? 'Only Active documents can be reviewed' : 'Owner, Pharmacist-In-Charge or Designated Person only')}>Mark Reviewed</button>
+     <button class="btn2 small" data-dact="newver" data-id="${id}"${dis(!i.pend && i.status !== 'Retired' && i.status !== 'Draft', i.pend ? 'A version is already waiting for approval' : 'Not available for this status')}>Upload New Version</button>
+     ${i.pend ? `<button class="btn small" data-dact="approve" data-id="${id}"${dis(appr, 'Owner, Pharmacist-In-Charge or Designated Person only')}>Approve v${esc(i.pend.v)}</button><button class="btn2 small danger" data-dact="reject" data-id="${id}"${dis(appr, 'Owner, Pharmacist-In-Charge or Designated Person only')}>Reject</button>` : ''}
+     <button class="btn2 small" data-dact="edit" data-id="${id}">Edit Details</button>
+     ${i.status === 'Retired' ? `<button class="btn2 small" data-dact="restore" data-id="${id}"${dis(appr, 'Owner, Pharmacist-In-Charge or Designated Person only')}>Restore</button>` : `<button class="btn2 small danger" data-dact="retire" data-id="${id}"${dis(appr && i.status !== 'Draft', 'Owner, Pharmacist-In-Charge or Designated Person only')}>Retire</button>`}` : ''}</div></div>
+   <div class="ddbody">
+    <section class="pnl"><h4 class="pt">Details</h4><div class="pb"><dl class="dkv">
+      <dt>Type</dt><dd>${DOC_TY[d.type].n}</dd><dt>File Type</dt><dd>${d.format}</dd>
+      <dt>Program Area</dt><dd>${area.n} ${esc(area.name)}</dd><dt>Version</dt><dd class="num">${i.version ? 'v' + esc(i.version) : '-'}${i.cur ? '' : ' (not approved)'}</dd><dt>Effective Date</dt><dd class="num">${i.effective || '-'}</dd>
+      ${appr ? `<dt>Last Reviewed</dt><dd class="num">${d.lastReviewed || '-'}</dd><dt>Review Cycle</dt><dd>${d.cycle ? d.cycle + ' months' : 'None'}</dd><dt>Next Review Due</dt><dd><span class="num">${i.next || '-'}</span> ${i.next && i.r !== 'n/a' ? `<span class="hint">${docDueText(i)}</span>` : ''}</dd>` : ''}
+      ${man ? `<dt>Regulatory Basis</dt><dd>${esc(d.basis || '-')}</dd>` : ''}
+      <dt>Print Footer Stamp</dt><dd>${i.cur ? `<div class="dstamp">${esc(stampTxt)}</div>` : '<span class="hint">Applied when the version is approved.</span>'}</dd>
+      ${man ? `<dt>File Path</dt><dd class="num dsmall">${esc(docPathOf(d, i.version || '1.0'))}</dd>${d.notes ? `<dt>Notes</dt><dd>${esc(d.notes)}</dd>` : ''}` : ''}</dl></div></section>
+    ${man ? `<section class="pnl"><h4 class="pt">Versions</h4><div class="dtw"><table class="dtable"><thead><tr><th>Version</th><th>State</th><th>Effective</th><th>Submitted By</th><th>Approved By</th><th>Change Summary</th><th></th></tr></thead><tbody>${vrows}</tbody></table></div></section>` : ''}
+    ${appr ? `<section class="pnl"><h4 class="pt">Review History</h4><div class="dtw"><table class="dtable"><thead><tr><th>Date</th><th>Reviewed By</th><th>Outcome</th><th>Comments</th></tr></thead><tbody>${rrows}</tbody></table></div></section>
+    <section class="pnl"><h4 class="pt">Activity</h4><div class="dtw"><table class="dtable"><thead><tr><th>When</th><th>Who</th><th>What</th><th>Detail</th></tr></thead><tbody>${act}</tbody></table></div></section>
+    <section class="pnl"><h4 class="pt">Compliance Calendar Link</h4><div class="pb"><dl class="dkv"><dt>Calendar Track</dt><dd class="num">doc-review|${d.id}</dd><dt>Repeats</dt><dd>${d.cycle ? `Rolling: next due is the last review plus ${d.cycle} months` : 'No review cycle set'}</dd><dt>Status</dt><dd class="hint">Not connected to the Calendar tab yet.</dd></dl></div></section>` : ''}
+   </div></aside></div>`;
+}
+/* ---- right-click / ⋯ menu ---- */
+function docsMenu(id, x, y){
+  docsCloseCtx(); const d = docOf(id); if(!d) return; const m = DOCS, i = docInfo(d, m), man = docsManage(m), a = docsApprove(m), pn = m.pins.includes(id);
+  const up = i.cur || i.pend, due = i.next ? `<span class="num">${i.next}</span>${a && i.r !== 'n/a' ? ' ' + docReviewPill(i.r) : ''}` : (i.status === 'Draft' ? '<span class="hint">Not yet active</span>' : '<span class="hint">None</span>');
+  const el = document.createElement('div'); el.id = 'dctx'; el.className = 'dctx'; el.setAttribute('role', 'menu');
+  el.innerHTML = `<div class="dctxh"><span class="num hint">${d.id}</span><div class="dctxt">${esc(d.title)}</div></div>
+   <dl class="dkv dctxkv"><dt>Uploaded</dt><dd class="num">${up ? (up.at || up.effective || '-') : '-'}</dd><dt>Version</dt><dd class="num">${i.version ? 'v' + esc(i.version) : '-'}${i.cur ? '' : ' (not approved)'}</dd><dt>Type</dt><dd>${DOC_TY[d.type].n}</dd><dt>File Type</dt><dd>${d.format}</dd>${a ? `<dt>Update Due</dt><dd>${due}</dd>` : ''}</dl>
+   <div class="dctxsep"></div>
+   <button role="menuitem" class="dctxi" data-dact="openv" data-id="${id}"${i.cur || man ? '' : ' disabled'}>Open<span class="hint">Double-click</span></button>
+   <button role="menuitem" class="dctxi" data-dact="printv" data-id="${id}"${i.cur ? '' : ' disabled'}>Print Copy</button>
+   <button role="menuitem" class="dctxi" data-dact="detail" data-id="${id}">Document Details</button>
+   <button role="menuitem" class="dctxi" data-dact="pin" data-id="${id}">${pn ? 'Unpin From Quick Access' : 'Pin To Quick Access'}</button>
+   ${man && !i.pend && i.status !== 'Retired' && i.status !== 'Draft' ? `<button role="menuitem" class="dctxi" data-dact="newver" data-id="${id}">Upload New Version</button>` : ''}
+   ${a && (i.status === 'Active' || i.status === 'Under Review') ? `<button role="menuitem" class="dctxi" data-dact="review" data-id="${id}">Mark Reviewed</button>` : ''}
+   ${a && i.pend ? `<button role="menuitem" class="dctxi" data-dact="approve" data-id="${id}">Approve v${esc(i.pend.v)}</button>` : ''}`;
+  $('panel-documents').appendChild(el);
+  const w = el.offsetWidth, h = el.offsetHeight; el.style.left = Math.max(8, Math.min(x, innerWidth - w - 8)) + 'px'; el.style.top = Math.max(8, Math.min(y, innerHeight - h - 8)) + 'px';
+  const f = el.querySelector('.dctxi:not([disabled])'); if(f) f.focus();
+}
+/* ---- windows ---- */
+const dOpts = (list, sel, fn) => list.map(x => { const v = fn ? fn(x)[0] : x, l = fn ? fn(x)[1] : x; return `<option value="${esc(v)}"${v === sel ? ' selected' : ''}>${esc(l)}</option>`; }).join('');
+const dBump = (v, kind) => { const [a, b] = v.split('.').map(Number); return kind === 'major' ? (a + 1) + '.0' : a + '.' + (b + 1); };
+async function docsUpload(file){                                 // asks for a one-time upload link, then sends the file straight to private storage
+  const r = await api('POST', docsPath() + '/upload-url', { name: file.name, size: file.size });
+  let put; try{ put = await fetch(r.url, { method: 'PUT', headers: r.headers, body: file }); }catch(e){ throw new Error('The file could not be sent. Check the internet and try again.'); }
+  if(!put.ok) throw new Error('The file could not be stored (' + put.status + '). Try again.');
+  return { key: r.key, name: file.name };
+}
+async function docsDetectFillable(file){ try{ const t = new TextDecoder('latin1').decode(new Uint8Array(await file.arrayBuffer())); return /\/AcroForm/.test(t); }catch(e){ return null; } }
+function docsAddModal(){
+  docsModal(`<h3>Add Document</h3><div class="dmb">
+   <div class="dwarn">Blank masters only. Do not upload anything containing patient information.</div>
+   <div class="dfld"><label for="aFile">PDF File</label><input type="file" id="aFile" accept="application/pdf,.pdf"><div class="hint" id="aDet">Fillable form fields are detected automatically. Up to ${DOCS.maxMb || 25} MB.</div></div>
+   <div class="dg2"><div class="dfld"><label for="aType">Document Type</label><select id="aType">${DOC_TYPE_LIST.map(t => `<option value="${t.c}">${t.n}</option>`).join('')}</select></div>
+   <div class="dfld"><label for="aArea">Program Area</label><select id="aArea"></select></div></div>
+   <div class="dfld" id="aSubWrap" style="display:none"><label for="aSub">Folder</label><select id="aSub"></select></div>
+   <div class="dfld"><label for="aTitle">Title</label><input type="text" id="aTitle" maxlength="200" placeholder="Vaccine Consent And Screening - General"></div>
+   <div class="dg2"><div class="dfld"><label for="aFmt">Format</label><select id="aFmt">${dOpts(DOC_FORMATS)}</select></div><div class="dfld"><label for="aVer">Version</label><input type="text" id="aVer" value="1.0"></div></div>
+   <div class="dg2"><div class="dfld"><label for="aCyc">Review Cycle (Months)</label><input type="number" id="aCyc" min="0" max="120" value="12"><div class="hint">0 = no review cycle.</div></div>
+   <div class="dfld"><label for="aBas">Regulatory Basis</label><input type="text" id="aBas" maxlength="200" placeholder="Internal Policy"></div></div>
+   <div class="dfld"><label>Will Be Saved As</label><div class="dpath" id="aPath"></div></div>
+  </div><div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="aGo">Add As Draft</button></div>`, true);
+  const g = id => $(id), nextN = (t, a) => { const p = t + '-' + a + '-', ns = DOCS.docs.filter(d => d.id.startsWith(p)).map(d => +d.id.slice(-3)); return p + String((ns.length ? Math.max(...ns) : 0) + 1).padStart(3, '0'); };
+  const refresh = () => { const t = g('aType').value, tt = DOC_TY[t], ar = g('aArea').value || 'OPS', tsub = tt.sub && !DOC_CMPA.includes(tt.sub[0]); g('aSubWrap').style.display = tsub ? '' : 'none';
+    if(tsub && g('aSub').dataset.t !== t){ g('aSub').innerHTML = dOpts(tt.sub); g('aSub').dataset.t = t; }
+    g('aPath').textContent = docPathOf({ id: nextN(t, ar), title: g('aTitle').value || 'Title', type: t, area: ar, sub: tsub ? g('aSub').value : '' }, g('aVer').value || '1.0'); };
+  const fillAreas = () => { const t = g('aType').value, limited = DOC_TY[t].sub && DOC_CMPA.includes(DOC_TY[t].sub[0]), cur = g('aArea').value;
+    g('aArea').innerHTML = DOC_AREA_LIST.filter(a => !limited || DOC_CMPA.includes(a.code)).map(a => `<option value="${a.code}"${a.code === cur ? ' selected' : ''}>${a.n} ${esc(a.name)}</option>`).join(''); refresh(); };
+  g('aType').addEventListener('change', fillAreas); fillAreas(); ['aArea', 'aSub', 'aTitle', 'aVer'].forEach(k => g(k).addEventListener('input', refresh));
+  let file = null;
+  g('aFile').addEventListener('change', async e => { file = e.target.files[0] || null; if(!file) return;
+    if(!/\.pdf$/i.test(file.name)){ g('aDet').textContent = 'This is not a PDF. Only PDF files are accepted.'; file = null; return; }
+    if(file.size > (DOCS.maxMb || 25) * 1048576){ g('aDet').textContent = 'That file is too big.'; file = null; return; }
+    const fill = await docsDetectFillable(file); if(fill !== null){ g('aFmt').value = fill ? 'Fillable PDF' : 'Printable PDF'; g('aDet').textContent = fill ? 'Detected: fillable form fields found.' : 'Detected: no form fields. Set to Printable.'; }
+    if(!g('aTitle').value) g('aTitle').value = file.name.replace(/\.pdf$/i, '').replace(/_+/g, ' '); refresh(); });
+  g('aGo').addEventListener('click', async () => {
+    const title = g('aTitle').value.trim(); if(!file) return docsToast('Choose the PDF file.'); if(!title) return docsToast('Enter a title.'); if(!/^\d+\.\d+$/.test(g('aVer').value.trim())) return docsToast('Version must look like 1.0.');
+    const t = g('aType').value, tt = DOC_TY[t], btn = g('aGo'); busy(btn, true);
+    try{ const f = await docsUpload(file);
+      const r = await api('POST', docsPath(), { title, type: t, area: g('aArea').value, sub: tt.sub && !DOC_CMPA.includes(tt.sub[0]) ? g('aSub').value : '', format: g('aFmt').value, version: g('aVer').value.trim(), cycle: g('aCyc').value, basis: g('aBas').value.trim(), file: f });
+      docsCloseModal(); DOCS.open = r.id; await docsLoad(); docsToast(r.id + ' added as a draft. Approve it to make it Active.');
+    }catch(e){ docsErr(e); busy(btn, false); }
+  });
+}
+function docsReviewModal(id){
+  const d = docOf(id), i = docInfo(d, DOCS);
+  docsModal(`<h3>Mark Reviewed: ${d.id}</h3><div class="dmb"><div class="hint">${esc(d.title)} (v${esc(i.version)}). Next review is ${i.next || 'not set'}.</div>
+   <div class="dfld"><label>Outcome</label><div class="dradios"><label><input type="radio" name="out" value="ok" checked> Reviewed, No Changes Needed<br><span class="hint">Resets the review clock. The version does not change.</span></label>
+   <label><input type="radio" name="out" value="chg"> Reviewed, Changes Needed<br><span class="hint">Sets the status to Under Review. Upload a new version to finish.</span></label></div></div>
+   <div class="dg2"><div class="dfld"><label for="rDate">Review Date</label><input type="date" id="rDate" value="${DOCS.today}" max="${DOCS.today}"></div><div class="dfld"><label>Reviewed By</label><div class="dro">${esc(ME.name || ME.login)}</div></div></div>
+   <div class="dfld"><label for="rCom">Comments</label><textarea id="rCom" maxlength="500"></textarea><div class="hint" id="rHint">Optional.</div></div></div>
+   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="rGo">Save Review</button></div>`);
+  document.querySelectorAll('[name=out]').forEach(r => r.addEventListener('change', () => { $('rHint').textContent = document.querySelector('[name=out]:checked').value === 'chg' ? 'Required: say what needs to change.' : 'Optional.'; }));
+  $('rGo').addEventListener('click', () => { const out = document.querySelector('[name=out]:checked').value, com = $('rCom').value.trim();
+    if(out === 'chg' && !com) return docsToast('Say what needs to change.'); busy($('rGo'), true);
+    docsDo('/' + id + '/review', { outcome: out, date: $('rDate').value, comment: com }, 'Review recorded for ' + id).then(r => { if(!r) busy($('rGo'), false); }); });
+}
+function docsNewVerModal(id){
+  const d = docOf(id), i = docInfo(d, DOCS);
+  docsModal(`<h3>Upload New Version: ${d.id}</h3><div class="dmb"><div class="hint">Current version is v${esc(i.version)}. The new version waits for approval; the current one stays in use until then.</div>
+   <div class="dwarn">Blank masters only. No patient information.</div>
+   <div class="dfld"><label for="nFile">PDF File</label><input type="file" id="nFile" accept="application/pdf,.pdf"></div>
+   <div class="dfld"><label>Kind Of Change</label><div class="dradios"><label><input type="radio" name="kind" value="minor" checked> Minor: wording or formatting only</label><label><input type="radio" name="kind" value="major"> Major: content or requirements changed</label></div></div>
+   <div class="dg2"><div class="dfld"><label for="nVer">New Version</label><input type="text" id="nVer" value="${dBump(i.version, 'minor')}"></div><div class="dfld"><label>Submitted By</label><div class="dro">${esc(ME.name || ME.login)}</div></div></div>
+   <div class="dfld"><label for="nSum">Change Summary</label><textarea id="nSum" maxlength="300"></textarea><div class="hint">Required. Appears in the version history.</div></div>
+   <div class="dpath" id="nPath"></div></div>
+   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="nGo">Submit For Approval</button></div>`);
+  const upd = () => { $('nPath').textContent = docPathOf(d, $('nVer').value || '?'); }; upd();
+  document.querySelectorAll('[name=kind]').forEach(r => r.addEventListener('change', () => { $('nVer').value = dBump(i.version, r.value); upd(); })); $('nVer').addEventListener('input', upd);
+  $('nGo').addEventListener('click', async () => { const v = $('nVer').value.trim(), sum = $('nSum').value.trim(), f = $('nFile').files[0];
+    if(!f) return docsToast('Choose the PDF file.'); if(!/\.pdf$/i.test(f.name)) return docsToast('Only PDF files are accepted.'); if(!/^\d+\.\d+$/.test(v)) return docsToast('Version must look like 1.1.');
+    if(d.versions.some(x => x.v === v)) return docsToast('That version number already exists.'); if(!sum) return docsToast('Enter a change summary.');
+    busy($('nGo'), true); try{ const up = await docsUpload(f); const r = await docsDo('/' + id + '/version', { version: v, summary: sum, file: up }, 'v' + v + ' is waiting for approval.'); if(!r) busy($('nGo'), false); }catch(e){ docsErr(e); busy($('nGo'), false); } });
+}
+function docsApproveModal(id){
+  const d = docOf(id), i = docInfo(d, DOCS), p = i.pend, self = (p.by || '') === (ME.name || ME.login);
+  docsModal(`<h3>Approve v${esc(p.v)}: ${d.id}</h3><div class="dmb"><div class="hint">${esc(d.title)}. Submitted by ${esc(p.by)} on ${p.at}.</div>
+   <div class="dinfo"><b>Change Summary:</b> ${esc(p.summary)}</div>
+   ${self ? '<div class="dwarn">You submitted this version. Approving your own submission is allowed but is flagged in the activity log.</div>' : ''}
+   <div class="dg2"><div class="dfld"><label for="pDate">Effective Date</label><input type="date" id="pDate" value="${DOCS.today}"></div><div class="dfld"><label>Approved By</label><div class="dro">${esc(ME.name || ME.login)}</div></div></div>
+   <div class="hint">${i.cur ? `v${esc(i.cur.v)} becomes Superseded. Approval also counts as a review and resets the review clock.` : 'This makes the document Active and starts its review clock.'}</div></div>
+   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="pGo">Approve And Publish</button></div>`);
+  $('pGo').addEventListener('click', () => { if(!$('pDate').value) return docsToast('Enter an effective date.'); busy($('pGo'), true); docsDo('/' + id + '/approve', { effective: $('pDate').value }, 'v' + p.v + ' is now current.').then(r => { if(!r) busy($('pGo'), false); }); });
+}
+function docsReasonModal(id, kind){                              // reject, retire
+  const d = docOf(id), p = docInfo(d, DOCS).pend, rej = kind === 'reject';
+  docsModal(`<h3>${rej ? `Reject v${esc(p.v)}` : 'Retire'}: ${d.id}</h3><div class="dmb">${rej ? '' : `<div class="hint">${esc(d.title)} leaves the active library. Its files are kept and it can be restored.</div>`}
+   <div class="dfld"><label for="tWhy">Reason</label><textarea id="tWhy" maxlength="500"></textarea><div class="hint">Required.${rej ? ' The submitter sees this in the activity log.' : ' Name the replacement document if there is one.'}</div></div></div>
+   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn danger" id="tGo">${rej ? 'Reject Version' : 'Retire Document'}</button></div>`);
+  $('tGo').addEventListener('click', () => { const w = $('tWhy').value.trim(); if(!w) return docsToast('Enter a reason.'); busy($('tGo'), true);
+    docsDo('/' + id + '/' + (rej ? 'reject' : 'retire'), { reason: w }, rej ? 'Version rejected.' : id + ' retired.').then(r => { if(!r) busy($('tGo'), false); }); });
+}
+function docsEditModal(id){
+  const d = docOf(id);
+  docsModal(`<h3>Edit Details: ${d.id}</h3><div class="dmb"><div class="hint">Doc ID, type and program area cannot change, because the ID, folder and calendar link depend on them.</div>
+   <div class="dfld"><label for="eTitle">Title</label><input type="text" id="eTitle" maxlength="200" value="${esc(d.title)}"></div>
+   <div class="dg2"><div class="dfld"><label for="eCyc">Review Cycle (Months)</label><input type="number" id="eCyc" min="0" max="120" value="${d.cycle}"></div><div class="dfld"><label for="eBas">Regulatory Basis</label><input type="text" id="eBas" maxlength="200" value="${esc(d.basis)}"></div></div>
+   <div class="dfld"><label for="eNot">Notes</label><textarea id="eNot" maxlength="1000">${esc(d.notes)}</textarea></div></div>
+   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="eGo">Save</button></div>`);
+  $('eGo').addEventListener('click', () => { const t = $('eTitle').value.trim(); if(!t) return docsToast('Title is required.'); busy($('eGo'), true);
+    docsDo('/' + id + '/edit', { title: t, cycle: $('eCyc').value, basis: $('eBas').value.trim(), notes: $('eNot').value.trim() }, 'Saved.').then(r => { if(!r) busy($('eGo'), false); }); });
+}
+const docsCsv = () => {
+  const m = DOCS, out = [['Doc ID', 'Title', 'Doc Type', 'Program Area', 'Format', 'Status', 'Version', 'Effective Date', 'Last Reviewed', 'Review Cycle (Months)', 'Next Review Due', 'Days Until Due', 'Review Status', 'Approver', 'Regulatory Basis', 'Applies To (Site)', 'Supersedes', 'File Path', 'Calendar Item ID', 'Notes']];
+  m.docs.forEach(d => { const i = docInfo(d, m), a = DOC_AREA_LIST.find(x => x.code === d.area);
+    out.push([d.id, d.title, DOC_TY[d.type].n, a.n + ' ' + a.name, d.format, i.status, i.version, i.effective, d.lastReviewed, d.cycle, i.next || '', i.days == null ? '' : i.days, i.r === 'n/a' ? 'n/a' : i.r, i.cur ? i.cur.approvedBy || '' : '', d.basis, m.pharmacy,
+      d.versions.filter(v => v.state === 'superseded').map(v => 'v' + v.v).join(' '), docPathOf(d, i.version || '1.0'), i.status === 'Active' ? 'doc-review|' + d.id : '', d.notes]); });
+  return out.map(r => r.map(v => { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(',')).join('\n');
+};
+async function docsCopy(txt, label){
+  try{ await navigator.clipboard.writeText(txt); docsToast(label + ' copied.'); }
+  catch(e){ docsModal(`<h3>Copy ${esc(label)}</h3><div class="dmb"><div class="hint">The browser blocked automatic copying. Select all and copy.</div><textarea id="cpTa" style="min-height:260px;font:12px Consolas,monospace">${esc(txt)}</textarea></div><div class="dmf"><button class="btn2" data-dact="closemodal">Close</button></div>`); const t = $('cpTa'); t.focus(); t.select(); }
+}
+async function docsPin(id){
+  const k = DOCS.pins.indexOf(id); if(k < 0) DOCS.pins.push(id); else DOCS.pins.splice(k, 1);
+  docsUpdate(); if(DOCS.open) docsDrawer(DOCS.open);
+  try{ await api('POST', docsPath() + '/pins', { ids: DOCS.pins }); }catch(e){ docsErr(e); }
+}
+const DOCS_ACT = {
+  type: id => { DOCS.type = id; docsUpdate(); }, showret: () => { DOCS.fstatus = 'Retired'; docsPaint(); },
+  tile: id => { DOCS.fstatus = ''; DOCS.freview = ''; DOCS.fpend = false; DOCS.showRetired = false; if(id === 'Overdue' || id === 'Due Soon') DOCS.freview = id; else if(id === 'pend') DOCS.fpend = true; else if(id === 'Under Review') DOCS.fstatus = 'Under Review'; else DOCS.fstatus = 'Active'; docsPaint(); },
+  clr: id => { ({ type: () => DOCS.type = 'all', fstatus: () => DOCS.fstatus = '', fformat: () => DOCS.fformat = '', freview: () => DOCS.freview = '', fpend: () => DOCS.fpend = false, showRetired: () => DOCS.showRetired = false })[id](); docsPaint(); },
+  clrall: () => { DOCS.type = 'all'; DOCS.fstatus = DOCS.fformat = DOCS.freview = ''; DOCS.fpend = false; DOCS.showRetired = false; DOCS.q = ''; docsPaint(); },
+  sort: id => { DOCS.sort = DOCS.sort.k === id ? { k: id, d: -DOCS.sort.d } : { k: id, d: 1 }; docsUpdate(); },
+  open: id => docsOpen(id), openv: (id, t) => docsOpen(id, t.dataset.v || ''), printv: id => docsOpen(id, '', true), detail: id => docsDrawer(id),
+  menu: (id, t) => { const r = t.getBoundingClientRect(); DOCS.sel = id; docsMenu(id, r.left - 300, r.bottom + 2); },
+  pin: id => docsPin(id), add: () => docsAddModal(), review: id => docsReviewModal(id), newver: id => docsNewVerModal(id), approve: id => docsApproveModal(id),
+  reject: id => docsReasonModal(id, 'reject'), retire: id => docsReasonModal(id, 'retire'), edit: id => docsEditModal(id), restore: id => docsDo('/' + id + '/restore', {}, id + ' restored.'),
+  closemodal: () => docsCloseModal(), closedrawer: () => docsCloseDrawer(), csv: () => docsCopy(docsCsv(), 'Register')
+};
+function docsInit(){                                             // once, when the page loads
+  const root = $('panel-documents'); if(!root) return;
+  root.addEventListener('click', e => {
+    docsCloseCtx();
+    if(e.target.closest('[data-ddov]') && e.target.matches('[data-ddov]')){ docsCloseDrawer(); return; }
+    const t = e.target.closest('[data-dact]'); if(!t || t.disabled) return; if(t.tagName === 'A') e.preventDefault();
+    const f = DOCS_ACT[t.dataset.dact]; if(f) f(t.dataset.id, t, e);
+  });
+  root.addEventListener('change', e => { const t = e.target;
+    if(t.matches('[data-dfs]')){ DOCS.fstatus = t.value; docsUpdate(); } else if(t.matches('[data-dff]')){ DOCS.fformat = t.value; docsUpdate(); }
+    else if(t.matches('[data-dfr]')){ DOCS.freview = t.value; docsUpdate(); } else if(t.matches('[data-dret]')){ DOCS.showRetired = t.checked; docsUpdate(); } });
+  root.addEventListener('dblclick', e => { const tr = e.target.closest('tr[data-row]'); if(!tr || e.target.closest('button')) return; docsCloseCtx(); docsOpen(tr.dataset.row); });
+  root.addEventListener('contextmenu', e => { const tr = e.target.closest('tr[data-row]'); if(!tr) return; e.preventDefault(); DOCS.sel = tr.dataset.row; docsMenu(tr.dataset.row, e.clientX, e.clientY); });
+  document.addEventListener('keydown', e => {
+    if(!root.classList.contains('active')) return;
+    const ctx = document.getElementById('dctx');
+    if(ctx && (e.key === 'ArrowDown' || e.key === 'ArrowUp')){ e.preventDefault(); const it = [...ctx.querySelectorAll('.dctxi:not([disabled])')], k = it.indexOf(document.activeElement); it[(k + (e.key === 'ArrowDown' ? 1 : -1) + it.length) % it.length].focus(); return; }
+    if(e.key === 'Escape'){ if(ctx) ctx.remove(); else if($('docsOv').innerHTML) docsCloseModal(); else if(DOCS.open) docsCloseDrawer(); return; }
+    if(e.key === 'Enter' && document.activeElement && document.activeElement.matches('tr[data-row]')) docsOpen(document.activeElement.dataset.row); });
+  addEventListener('scroll', docsCloseCtx, true); addEventListener('resize', docsCloseCtx);
+}

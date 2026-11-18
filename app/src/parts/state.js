@@ -214,7 +214,7 @@ function paintStore(){
   $('submitOff').style.display = ME && !PERM('submit') ? '' : 'none';
   $('exportCard').style.display = PERM('export') ? '' : 'none';
   renderStoreInfo();
-  calPaint();
+  calPaint(); docsPaintTab();
 }
 const SVC_NAMES = {retail:'Retail dispensing', controlled:'Controlled substances', nonsterile:'Nonsterile compounding', sterile:'Sterile compounding', hazardous:'Hazardous drug compounding', immunizations:'Immunizations', delivery:'Delivery', ltc:'Long-term care', specialty:'Specialty', infusion:'Home infusion'};
 function hoursText(h){

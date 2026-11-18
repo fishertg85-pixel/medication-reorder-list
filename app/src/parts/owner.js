@@ -39,8 +39,9 @@ setInterval(() => {
   if(now - ownLastAct > OWN_MS || now > OWN_UNTIL){ ownerLockNow('Locked after 5 minutes without activity. Re-enter your password.'); return; }
   if(ownLastAct > ownPingAt && now - ownPingAt > 60000){ ownPingAt = now; api('POST', '/owner/keepalive', {}).catch(() => {}); }
 }, 15000);
-const PERM_LABELS = {submit:'Submit orders', archive:'View archive', remove:'Remove lines', export:'Download backup', calendar:'Calendar'};
-const PERM_HEADS = {submit:'Submit', archive:'Archive', remove:'Remove', export:'Backup', calendar:'Calendar'};
+const PERM_LABELS = {submit:'Submit orders', archive:'View archive', remove:'Remove lines', export:'Download backup', calendar:'Calendar', documents:'Documents'};
+const PERM_HEADS = {submit:'Submit', archive:'Archive', remove:'Remove', export:'Backup', calendar:'Calendar', documents:'Documents'};
+const DOC_DUTY_PICK = {'':'Staff (view and print only)', dp:'Designated Person', ctech:'Compliance Technician'};
 let OWN = {stores:[], users:[]};
 // temporary passwords made on this screen, kept only in this page (never saved anywhere) so they can be copied again
 // while the person is still pending; gone on sign-out or reload, or once the person has signed in
@@ -49,7 +50,7 @@ const TEMPS = {};
 const STAGED = {};
 function effUser(u){
   const s = STAGED[u.sub]; if(!s) return u;
-  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}), acctType:s.acctType !== undefined ? s.acctType : u.acctType,
+  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}), acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty,
     disabled:s.disabled !== undefined ? s.disabled : u.disabled});
 }
 const stageBtns = sub => `<button class="btn small" data-upd="${esc(sub)}">Update</button> <button class="btn2 small" data-undo="${esc(sub)}">Undo</button>`;
@@ -125,7 +126,8 @@ function renderOwnPeople(){
       : `<div class="${rowCls(u)}" data-sub="${esc(u.sub)}"><div class="ucols">${head(u)}${acts(u)}</div>
          <div class="upriv"><span class="plabel">Account type</span>
            <select data-utype><option value="">Not set</option>${Object.entries(ACCT_LABELS).map(([k, l]) => `<option value="${k}"${u.acctType === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
-           <span class="hint">Choosing a type sets Submit, Archive, Remove and Backup. Calendar is set separately.</span></div>
+           <span class="hint">Choosing a type sets Submit, Archive, Remove and Backup. Calendar and Documents are set separately.</span></div>
+         ${u.perms.documents ? `<div class="upriv"><span class="plabel">Document duty</span>${u.acctType === 'pic' ? '<span class="hint">Pharmacist-In-Charge: manages and approves documents</span>' : `<select data-udoc>${Object.entries(DOC_DUTY_PICK).map(([k, l]) => `<option value="${k}"${(u.docDuty || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select> <span class="hint">Designated Person approves; Compliance Technician uploads drafts.</span>`}</div>` : ''}
          <div class="upriv"><span class="plabel">Pharmacies</span>
            <span class="pgroup">${st.map(s => priv(sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('')}</span></div>
          <div class="upriv"><span class="plabel">Privileges</span>
@@ -138,7 +140,7 @@ function paintNewPerson(){
   $('npType').innerHTML = '<option value="">Not set</option>' + Object.entries(ACCT_LABELS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
   $('npType').onchange = () => { const pre = ACCT_PRESETS[$('npType').value]; if(pre) for(const k in pre){ const c = document.querySelector(`[data-npperm="${k}"]`); if(c) c.checked = pre[k]; } };
   $('npStores').innerHTML = OWN.stores.map(s => `<label class="chk">${sw(`data-npst="${esc(s.id)}"`, OWN.stores.length === 1)} ${esc(s.id)} · ${esc(s.name)}</label>`).join('');
-  $('npPerms').innerHTML = Object.entries(PERM_LABELS).map(([p, l]) => `<label class="chk">${sw(`data-npperm="${p}"`, p !== 'export' && p !== 'calendar')} ${l}</label>`).join('');
+  $('npPerms').innerHTML = Object.entries(PERM_LABELS).map(([p, l]) => `<label class="chk">${sw(`data-npperm="${p}"`, p !== 'export' && p !== 'calendar' && p !== 'documents')} ${l}</label>`).join('');
 }
 function genTemp(){ const L = 'abcdefghjkmnpqrstuvwxyz', D = '23456789', A = L + D; let p = L[Math.random()*23|0] + D[Math.random()*8|0]; while(p.length < 12) p += A[Math.random()*A.length|0]; return p; }
 function showPassBox(html){ $('passBox').innerHTML = html; $('passBox').style.display = 'block'; $('passBox').scrollIntoView({block:'center'}); }
@@ -175,6 +177,14 @@ $('ownPeople').addEventListener('change', async e => {
     if(ty.value === (u.acctType || '')) delete stg.acctType; else stg.acctType = ty.value;
     const pre = ACCT_PRESETS[ty.value];
     if(pre){ stg.perms = stg.perms || {}; for(const k in pre){ if(pre[k] === !!(u.perms || {})[k]) delete stg.perms[k]; else stg.perms[k] = pre[k]; } if(!Object.keys(stg.perms).length) delete stg.perms; }
+    if(!Object.keys(stg).length) delete STAGED[sub];
+    peopleMsg(''); renderOwnPeople(); return;
+  }
+  const dd = e.target.closest('select[data-udoc]');
+  if(dd){                                                         // the person's document duty: staged like the switches
+    const sub = dd.closest('[data-sub]').dataset.sub, u = OWN.users.find(x => x.sub === sub); if(!u) return;
+    const stg = STAGED[sub] || (STAGED[sub] = {});
+    if(dd.value === (u.docDuty || '')) delete stg.docDuty; else stg.docDuty = dd.value;
     if(!Object.keys(stg).length) delete STAGED[sub];
     peopleMsg(''); renderOwnPeople(); return;
   }

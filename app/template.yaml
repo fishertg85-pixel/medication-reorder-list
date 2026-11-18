@@ -160,6 +160,10 @@ Resources:
                          cognito-idp:AdminSetUserMFAPreference, cognito-idp:AdminUserGlobalSignOut, cognito-idp:ListUsers,
                          cognito-idp:AdminDeleteUser]
                 Resource: !GetAtt UserPool.Arn
+              # documents: put and read only (the links the app hands out are signed with these rights). No delete: a stored file can't be removed by the app.
+              - Effect: Allow
+                Action: [s3:PutObject, s3:GetObject]
+                Resource: !Sub '${DocsBucket.Arn}/*'
 
   ApiFunction:
     Type: AWS::Lambda::Function
@@ -176,6 +180,7 @@ Resources:
           MAIN_TABLE: !Ref MainTable
           ARCHIVE_TABLE: !Ref ArchiveTable
           USER_POOL_ID: !Ref UserPool
+          DOCS_BUCKET: !Ref DocsBucket
 
   ApiLogs:
     Type: AWS::Logs::LogGroup
@@ -273,6 +278,31 @@ Resources:
       OwnershipControls:
         Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
 
+  # private bucket for each pharmacy's compliance documents (PDFs). Never public; people get a short-lived link per file from the API.
+  # Versioning keeps every earlier copy of a file. Retained if the stack is ever deleted.
+  DocsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      VersioningConfiguration: { Status: Enabled }
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: [!Sub 'https://${Distribution.DomainName}']
+            AllowedMethods: [GET, PUT, HEAD]
+            AllowedHeaders: ['*']
+            MaxAge: 3600
+
   SiteOAC:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
@@ -324,6 +354,7 @@ Outputs:
   UserPoolId:     { Value: !Ref UserPool }
   ClientId:       { Value: !Ref UserPoolClient }
   SiteBucketName: { Value: !Ref SiteBucket }
+  DocsBucketName: { Value: !Ref DocsBucket }
   DistributionId: { Value: !Ref Distribution }
   FunctionName:   { Value: !Ref ApiFunction }
   MainTableName:    { Value: !Ref MainTable }

@@ -95,6 +95,9 @@ const PHARM_BODY = {
   act: (s, c) => `<div class="pfields"><div class="calsw">${c.host && !c.rep
         ? `<label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar switched on for this pharmacy</label> <span class="hint">(people also need the Calendar privilege)</span>`
         : `Calendar: <b>${s.calendar ? 'On' : 'Off'}</b> <span class="hint">${LOCKED}</span>`}</div>
+        <div class="calsw">${c.host && !c.rep
+        ? `<label class="chk">${sw(`data-sfdocs="1"`, s.documents, 'Documents tab for this pharmacy')} Documents switched on for this pharmacy</label> <span class="hint">(people also need the Documents privilege)</span>`
+        : `Documents: <b>${s.documents ? 'On' : 'Off'}</b> <span class="hint">${LOCKED}</span>`}</div>
         <div style="margin-top:10px;">${c.rep ? `<label class="reason"><span>Why (required, the supervisor reads this)</span><input type="text" data-draftnote maxlength="300"></label> <button class="btn small" data-draftstore="${esc(s.id)}">Submit for review</button>`
           : c.isNew ? '<button class="btn small" data-createstore="1">Create pharmacy</button>' : `<button class="btn small" data-savestore="${esc(s.id)}">Save details</button>`}</div>
         ${c.host && !c.isNew && !c.rep ? `<div class="identbar"><button class="btn2 small" data-unlockident="1">Change name, address, license or identifiers…</button>
@@ -202,6 +205,7 @@ function pharmCardEvents(root, o){
       const isNew = !!sv.dataset.createstore, id = isNew ? (card.querySelector('[data-newid]').value || '').trim().toUpperCase() : sv.dataset.savestore;
       const body = {}; card.querySelectorAll('[data-sf]').forEach(i => body[i.dataset.sf] = i.value.trim());
       const cal = card.querySelector('[data-sfcal]'); if(cal) body.calendar = cal.checked;
+      const dcs = card.querySelector('[data-sfdocs]'); if(dcs) body.documents = dcs.checked;
       if(card.querySelector('[data-svc]')) body.services = [...card.querySelectorAll('[data-svc]')].filter(i => i.checked).map(i => i.dataset.svc);
       const cur = o.stores().find(x => x.id === id);
       if(card.dataset.hrTouched || (cur && cur.hours)) body.hours = DAYS.map((_, i) => card.querySelector(`[data-hx="${i}"]`).checked ? null : {o: card.querySelector(`[data-ho="${i}"]`).value, c: card.querySelector(`[data-hc="${i}"]`).value});

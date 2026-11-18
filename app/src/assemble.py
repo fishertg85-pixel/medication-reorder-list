@@ -198,6 +198,7 @@ cut('<header>', '<nav id="tabs">', '''<div id="login">
 rep('''  <button data-tab="setup">Setup</button>
 </nav>''', '''  <button data-tab="setup">Setup</button>
   <button data-tab="calendar" style="display:none;">Calendar</button>
+  <button data-tab="documents" style="display:none;">Documents</button>
   <button data-tab="owner" style="display:none;">Account Owner</button>
 </nav>''')
 cut('  <div id="wipeBanner"', '  <!-- ======================= REORDER LIST', '''  <div id="offlineBanner" class="banner warn" style="display:none;">No connection to the server right now. Changes can’t be saved until the connection is back.</div>
@@ -256,6 +257,13 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
   <!-- ======================= CALENDAR ======================= -->
   <section id="panel-calendar" class="panel" style="padding:0;">
     <iframe id="calFrame" title="Compliance Calendar" style="width:100%;height:calc(100vh - 120px);min-height:620px;border:0;background:#fff;display:block;"></iframe>
+  </section>
+
+  <!-- ======================= DOCUMENTS ======================= -->
+  <section id="panel-documents" class="panel">
+    <div id="docsMsg" role="status"></div>
+    <div id="docsRoot"></div>
+    <div id="docsDrawer"></div><div id="docsOv"></div><div id="docsToast" role="status" style="display:none;"></div>
   </section>
 
   <!-- ======================= ACCOUNT OWNER ======================= -->
@@ -321,7 +329,7 @@ rep('''/* ======================================================================
    Drug search: NLM RxTerms / RxNav live, FDA NDC Directory backup. DailyMed links open labels.
    ======================================================================= */''')
 cut('/* ---------------- shared state ---------------- */', '/* ---------------- drug search:', open(P + 'state.js').read() + '\n' + open(P + 'login.js').read() + '\n')
-cut('/* ---------------- safety net:', '</script>', open(P + 'layout_engine.js').read() + '\n' + open(P + 'pharm_panels.js').read() + '\n' + open(P + 'owner.js').read() + '\n' + open(P + 'calendar.js').read() + '\n' + open(P + 'start.js').read())
+cut('/* ---------------- safety net:', '</script>', open(P + 'layout_engine.js').read() + '\n' + open(P + 'pharm_panels.js').read() + '\n' + open(P + 'owner.js').read() + '\n' + open(P + 'calendar.js').read() + '\n' + open(P + 'documents_panels.js').read() + '\n' + open(P + 'start.js').read())
 # remove the old tabs/start (now in start.js) — it was after the safety-net block, so already cut
 
 # ---------- list rows: who added it, labels for phone layout, remove only with permission
@@ -433,10 +441,11 @@ rep("""  <div class="li-card">
 rep('<img id="ilLogo" src="ironledger-logo.png" alt="" hidden>', '<img id="ilLogo" src="mark.svg" alt="" hidden>')
 
 PCSS = open(os.path.join(HERE, 'parts', 'pharm_panels.css')).read()
-s = s.replace('/*PHARM_CSS*/', PCSS, 1)
+s = s.replace('/*PHARM_CSS*/', PCSS + open(os.path.join(HERE, 'parts', 'documents.css')).read(), 1)
 open(OUT.replace('index.html', 'pharm_panels.css'), 'w').write(PCSS)
 open(OUT.replace('index.html', 'layout_engine.js'), 'w').write(open(P + 'layout_engine.js').read())
 open(OUT.replace('index.html', 'pharm_panels.js'), 'w').write(open(P + 'pharm_panels.js').read())
+open(OUT.replace('index.html', 'documents_panels.js'), 'w').write(open(P + 'documents_panels.js').read())
 open(OUT.replace('index.html', 'client_panels.js'), 'w').write(open(P + 'client_panels.js').read())          # the host page uses the same card and layout
 # ---------- move the app script out of the page so a strict Content-Security-Policy can block injected scripts
 import hashlib, base64 as b64
