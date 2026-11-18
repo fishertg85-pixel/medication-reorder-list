@@ -25,7 +25,7 @@ const docFileName = (d, v) => `${d.id}_v${v}_${d.title.replace(/[^A-Za-z0-9]+/g,
 const docPathOf = (d, v) => `${DOC_TY[d.type].f}/${docSubFor(d)}/${docFileName(d, v)}`;
 
 const DOCS_PANELS = [['rail', 'Folders'], ['tiles', 'Compliance Summary'], ['pins', 'Pinned'], ['list', 'Documents']];
-const DOCS_LAYOUT = {"v":2,"cols":12,"panels":{"rail":[1,1,3,34],"tiles":[4,1,9,9],"pins":[4,10,9,8],"list":[4,18,9,52]}};   // starting guess; Neo arranges it in the layout editor
+const DOCS_LAYOUT = {"v":2,"cols":12,"panels":{"rail":[1,1,2,43],"tiles":[3,1,10,11],"pins":[3,12,10,8],"list":[3,20,10,45]}};   // set by Neo from the layout editor (2026-11-18)
 const DOCS_PAGE = { id: 'documents', title: 'Documents Page', panels: DOCS_PANELS, layout: DOCS_LAYOUT,
   render: (_unused, panels) => docsHtml(DOCS_SAMPLE_MODEL(), { panels }) };
 
