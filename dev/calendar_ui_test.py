@@ -87,7 +87,7 @@ with sync_playwright() as pw:
     check("added days are listed", (card.locator('.clrow').count(), "Mardi Gras" in card.locator('[data-cllist]').inner_text(), "every year" in card.locator('[data-cllist]').inner_text()), (2, True, True))
     card.locator('[data-savestore]').click(); p.wait_for_timeout(1500)
     ns = [x for x in api(H, "GET", "/host/stores")[1]["stores"] if x["id"] == "NTX1"][0]
-    check("closed days saved from the screen", (ns["closures"]["obs"], [(x["d"], x["y"]) for x in ns["closures"]["days"]]), ([], [("2026-12-28", False), ("2027-02-09", True)]))
+    check("closed days saved from the screen", (ns["closures"].get("obs"), [(x["d"], x["y"]) for x in ns["closures"]["days"]]), (None, [("2026-12-28", False), ("2027-02-09", True)]))
     check("hours untouched by saving closed days", ns["hours"][1], {"o": "08:00", "c": "20:00"})
     p.click('#tabs [data-tab=calendar]'); fr = p.frame_locator('#calFrame'); fr.locator('body').wait_for(timeout=8000); p.wait_for_timeout(1500)
     hf = lambda d: fr.locator('body').evaluate("(el, d) => { const h = hoursFor(d); return [h.closed, h.reason || '']; }", d)

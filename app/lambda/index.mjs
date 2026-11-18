@@ -112,13 +112,11 @@ function cleanHours(h){
     return { o: String(x.o), c: String(x.c) };
   });
 }
-// Closed days beyond the weekly hours: yearly observances picked from a list, plus dated days the pharmacy adds (Christmas Eve, a regional
-// day like Good Friday in south Louisiana). A dated day may repeat every year. All of them show on the calendar for everyone who can open it.
-const CLOSE_OBS = ['goodfriday', 'easter', 'blackfriday', 'xmaseve', 'nyeve'];
+// Additional closed days beyond the weekly hours: dated days the pharmacy enters by hand (Christmas Eve, a regional day like Good Friday in south
+// Louisiana). A day is saved for that year only, or repeats every year. All show on the calendar for everyone who can open it. Anything else is dropped.
 function cleanClosures(c){
   if(c == null || typeof c !== 'object' || Array.isArray(c)) throw bad('Closed days: unrecognized format.');
-  const obs = Array.isArray(c.obs) ? c.obs : [], days = Array.isArray(c.days) ? c.days : [];
-  if(obs.some(x => !CLOSE_OBS.includes(x))) throw bad('Closed days: pick the holidays from the list.');
+  const days = Array.isArray(c.days) ? c.days : [];
   if(days.length > 60) throw bad('Closed days: up to 60 dates.');
   const seen = new Set(), out = days.map(x => {
     const d = String(x && x.d || ''), n = String(x && x.n || '').trim().slice(0, 60);
@@ -129,7 +127,7 @@ function cleanClosures(c){
     seen.add(key);
     return { d, n, y };
   }).sort((a, b) => a.d.localeCompare(b.d));
-  return { obs: CLOSE_OBS.filter(x => obs.includes(x)), days: out };
+  return { days: out };
 }
 // ---- clients and legal entities. An EIN belongs to a legal entity, not a location: a pharmacy carries the licensed entity (legal name, type, EIN) and
 // belongs to a client (the bill-to account, with the IL- account number). The client record is kept apart in CLIENTS.
@@ -147,7 +145,7 @@ async function allStores(){
     .map(s => ({ id: s.sk, ...pick(s, STORE_FIELDS), timezone: TIMEZONES.includes(s.timezone) ? s.timezone : DEFAULT_TZ, hasLogo: !!s.hasLogo, calendar: s.calendar === true,
       deaVerified: s.dea && s.deaVerifiedDea === s.dea ? { at: s.deaVerifiedAt || '', by: s.deaVerifiedBy || '' } : null,
       services: Array.isArray(s.services) ? s.services.filter(x => SERVICES.includes(x)) : [], hours: Array.isArray(s.hours) && s.hours.length === 7 ? s.hours : null,
-      closures: s.closures && Array.isArray(s.closures.days) ? { obs: Array.isArray(s.closures.obs) ? s.closures.obs : [], days: s.closures.days } : { obs: [], days: [] } }))
+      closures: s.closures && Array.isArray(s.closures.days) ? { days: s.closures.days } : { days: [] } }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 const maskStore = s => ({ ...s, ein: '', einMasked: maskEin(s.ein) });      // only IronLedger sees a full EIN

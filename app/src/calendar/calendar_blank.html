@@ -802,15 +802,12 @@ function nowIn(tz){
   return {date:p.year+'-'+p.month+'-'+p.day,min:(+p.hour%24)*60+(+p.minute),s:+p.second,abbr:p.timeZoneName,dow:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(p.weekday),hh:+p.hour%24,mm:p.minute};
 }
 /* Hours for a date, honoring weekly hours and holiday closures. Returns {closed,reason} or {closed:false,o,c,text} */
-/* Closed days the pharmacy sets on its account page (the Account Owner): yearly observances + dated days. Read live from the host, so a change shows
+/* Closed days the pharmacy sets on its account page (the Account Owner): dated days (one year or every year). Read live from the host, so a change shows
    for everyone who opens the calendar without anyone re-saving it. Returns the day's name, or null. */
-const CLOSE_NAMES={goodfriday:'Good Friday',easter:'Easter Sunday',blackfriday:'Day After Thanksgiving',xmaseve:'Christmas Eve',nyeve:"New Year's Eve"};
-const CLOSE_BY_OBS={'Good Friday':'goodfriday','Easter Sunday':'easter','Black Friday':'blackfriday','Christmas Eve':'xmaseve',"New Year's Eve":'nyeve'};
 function pharmClosure(date){
   const c=window.ILHOST&&ILHOST.pharmacy&&ILHOST.pharmacy.closures; if(!c)return null;
   const md=date.slice(5);
   for(const x of (c.days||[])) if(x.d===date||(x.y&&x.d.slice(5)===md))return x.n;
-  if((c.obs||[]).length) for(const it of US.day(date,{hol:false,obs:true})){ const id=it.kind==='obs2'&&CLOSE_BY_OBS[it.name]; if(id&&c.obs.includes(id))return CLOSE_NAMES[id]; }
   return null;
 }
 function hoursFor(date){
