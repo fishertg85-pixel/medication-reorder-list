@@ -159,9 +159,17 @@ async function allStores(){
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 const maskStore = s => ({ ...s, ein: '', einMasked: maskEin(s.ein) });      // only IronLedger sees a full EIN
-async function storesFor(me){ const all = await allStores(); const mine = me.owner ? all : all.filter(s => (me.stores || {})[s.id] === true); return me.host ? mine : mine.map(maskStore); }
+async function storesFor(me){ const all = await allStores(); const mine = me.owner ? all : all.filter(s => (me.stores || {})[s.id] === true); return me.host ? mine : mine.map(maskStore).map(s => suiteStore(s.id) ? { ...s, calendar: suiteUser(me, s.id), documents: suiteUser(me, s.id) } : s); }
 function canUse(me, store){ return !!me.owner || (me.stores || {})[store] === true; }
 function permsOf(me){ const o = {}; for(const p of PERMS) o[p] = me.owner ? true : ((me.perms || {})[p] ?? DEFAULT_PERMS[p]); return o; }
+// ---------- Calendar + Documents suite access: a fixed list of logins per pharmacy (SUITE_USERS in template.yaml, "NTX1:login,login;..."),
+// not switches. For a pharmacy on the list, ONLY these logins get Calendar and Documents, whatever else they have access to there (the reorder
+// list, Account Owner role, other privileges). Pharmacies not on the list keep the older switches. Editing the list is a code/template change.
+const SUITE = (() => { const o = {}; for(const part of String(process.env.SUITE_USERS || '').split(';')){ const [id, list] = part.split(':'); if(id && list) o[id.trim()] = list.split(',').map(x => x.trim().toLowerCase()).filter(Boolean); } return o; })();
+const suiteStore = id => Object.prototype.hasOwnProperty.call(SUITE, id);
+const suiteUser = (me, id) => suiteStore(id) && canUse(me, id) && !me.host && SUITE[id].includes(String(me.login || '').toLowerCase());
+const suiteAny = me => Object.keys(SUITE).some(id => suiteUser(me, id));
+const effPerms = me => { const o = permsOf(me); if(suiteAny(me)){ o.calendar = true; o.documents = true; } return o; };
 function need(me, p, what){ if(!permsOf(me)[p]) throw forbidden(`You don't have permission to ${what}. Ask the Account Owner.`); }
 const who = me => me.name || me.login;
 
@@ -554,7 +562,7 @@ async function listPeople(){
     PaginationToken = r.PaginationToken; } while(PaginationToken);
   for(const p of profiles) if(!p.deleted && !p.empId) await ensureEmpId(p);
   return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host, hostRole: p.host ? (p.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: p.host ? (p.repStores || {}) : {}, acctType: p.acctType || '', docDuty: DOC_DUTIES.includes(p.docDuty) ? p.docDuty : '', initials: p.initials || '', empId: p.empId || '', pin: pinState(p),
-    stores: p.stores || {}, perms: permsOf(p), disabled: status[p.sk] ? !status[p.sk].enabled : !!p.disabled,
+    stores: p.stores || {}, perms: effPerms(p), disabled: status[p.sk] ? !status[p.sk].enabled : !!p.disabled,
     status: (status[p.sk] || {}).status || 'UNKNOWN', ...pendingOf(p, status[p.sk]) }))
     // Account Owner, host, then people still waiting to sign in for the first time, then everyone else
     .sort((a, b) => (b.owner - a.owner) || (b.host - a.host) || (b.pending - a.pending) || (a.name || a.login).localeCompare(b.name || b.login));
@@ -799,6 +807,7 @@ const CAL_COLLS = ['records', 'events', 'obl', 'log'];
 const CAL_CFG = ['v', 'profile', 'sites', 'people', 'equipment', 'documents', 'tracks', 'plans', 'work', 'reminders', 'rooms'];
 const CAL_MAX_BYTES = 380000, CAL_MAX_OPS = 100;
 function calGate(me, storeItem){
+  if(suiteStore(storeItem.sk)){ if(!suiteUser(me, storeItem.sk)) throw forbidden('The calendar is limited to the named users for this pharmacy.'); return; }
   if(storeItem.calendar !== true) throw forbidden('The calendar is not switched on for this pharmacy.');
   if(!permsOf(me).calendar) throw forbidden('You do not have the Calendar privilege. Ask the Account Owner.');
 }
@@ -831,7 +840,7 @@ async function calCommit(store, me, b){
   }
   if(writes.length + deletes.length > CAL_MAX_OPS) throw bad('Too many calendar changes in one request.');
   if(!writes.length && !deletes.length) return { ok: true, saved: 0 };
-  if(!me.owner){                                       // only the Account Owner starts a pharmacy's calendar
+  if(!me.owner && !suiteStore(store)){                 // only the Account Owner starts a pharmacy's calendar (on the named-user list, any named user may)
     const started = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: calPk(store), sk: 'CAL#cfg#profile' } }));
     if(!started.Item) throw forbidden('Only the Account Owner can start this pharmacy’s calendar.');
   }
@@ -864,6 +873,7 @@ const docPk = store => 'STORE#' + store;
 let s3c = null;
 const s3 = () => s3c || (s3c = new S3Client({ forcePathStyle: !!process.env.AWS_ENDPOINT_URL, ...(process.env.AWS_ENDPOINT_URL ? { endpoint: process.env.AWS_ENDPOINT_URL } : {}) }));
 function docGate(me, storeItem){
+  if(suiteStore(storeItem.sk)){ if(!suiteUser(me, storeItem.sk)) throw forbidden('Documents is limited to the named users for this pharmacy.'); if(!DOCS_BUCKET) throw new HttpError(503, 'Document storage is not set up yet. Run deploy.sh again.'); return; }
   if(storeItem.documents !== true) throw forbidden('Documents is not switched on for this pharmacy.');
   if(!permsOf(me).documents) throw forbidden('You do not have the Documents privilege. Ask the Account Owner.');
   if(!DOCS_BUCKET) throw new HttpError(503, 'Document storage is not set up yet. Run deploy.sh again.');
@@ -1074,7 +1084,7 @@ async function route(method, path, q, body, me, claims){
   if(seg[0] === 'api') seg.shift();                    // works with or without an /api prefix
 
   if(method === 'GET' && seg[0] === 'me' && seg.length === 1)
-    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty(me), initials: me.initials || '', empId: await ensureEmpId(me), pin: pinState(me), pinRequired: PIN_REQUIRED, perms: permsOf(me), stores: await storesFor(me) };
+    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty(me), initials: me.initials || '', empId: await ensureEmpId(me), pin: pinState(me), pinRequired: PIN_REQUIRED, perms: effPerms(me), stores: await storesFor(me) };
 
   if(method === 'POST' && seg[0] === 'me' && seg[1] === 'pin' && seg.length === 2) return await setMyPin(me, body);
 

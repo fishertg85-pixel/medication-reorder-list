@@ -182,6 +182,7 @@ Resources:
       Environment:
         Variables:
           MAIN_TABLE: !Ref MainTable
+          SUITE_USERS: 'NTX1:tfisher85,mferreiro,eoviedo,mamare'   # Calendar + Documents: only these logins, at this pharmacy ID (STORE:login,login;STORE2:...)
           ARCHIVE_TABLE: !Ref ArchiveTable
           USER_POOL_ID: !Ref UserPool
           DOCS_BUCKET: !Ref DocsBucket
