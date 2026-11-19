@@ -185,7 +185,6 @@ cut('<header>', '<nav id="tabs">', '''<div id="login">
   <img id="storeLogo" alt="" style="display:none;">
   <div>
     <h1 id="storeName">Reorder List</h1>
-    <div class="sub" id="dmHeader">Drug search: NLM RxTerms / RxNav</div>
   </div>
   <div class="spacer"></div>
   <select class="hsel" id="storeSel" title="Switch pharmacy" style="display:none;"></select>
@@ -428,6 +427,8 @@ rep('</style>\n</head>', """</style>
 </head>""")
 rep('  <img id="storeLogo" alt="" style="display:none;">\n', '  <img class="ilmark" src="mark.svg" alt="" width="36" height="36"><span class="ilword">Iron<b>Ledger</b></span>\n  <img id="storeLogo" alt="" style="display:none;">\n')
 rep('  <div class="spacer"></div>\n  <select class="hsel" id="storeSel"', '  <button class="hbtn" id="acctBtn" style="display:none;" title="Pharmacy account details, people and backup">Account</button>\n  <div class="spacer"></div>\n  <select class="hsel" id="storeSel"')
+rep('''  $('dmHeader').textContent = netState === 'offline' ? 'Drug search: no internet'
+    : netState === 'down' ? 'Drug search: NLM not answering' : 'Drug search: NLM RxTerms / RxNav';''', "  /* the header carries no drug-search status line */")
 rep('<meta name="theme-color" content="#1f3864">', '<meta name="theme-color" content="#ffffff">')
 rep('<meta name="apple-mobile-web-app-title" content="Reorder">', '<meta name="apple-mobile-web-app-title" content="IronLedger Reorder">')
 rep('<link rel="icon" href="icon-192.png">', '<link rel="icon" href="mark.svg" type="image/svg+xml">\n<link rel="alternate icon" href="icon-192.png">')

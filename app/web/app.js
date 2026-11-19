@@ -457,8 +457,7 @@ function bridgeGet(url){
 }
 let netState = 'unknown';
 function setHeader(){
-  $('dmHeader').textContent = netState === 'offline' ? 'Drug search: no internet'
-    : netState === 'down' ? 'Drug search: NLM not answering' : 'Drug search: NLM RxTerms / RxNav';
+  /* the header carries no drug-search status line */
 }
 async function getJSON(url){
   try{
