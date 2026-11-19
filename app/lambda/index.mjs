@@ -151,17 +151,78 @@ const DEFAULT_TZ = 'America/Chicago';
 const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
 async function allStores(){
   return (await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'STORES' } }))
-    .map(s => ({ id: s.sk, ...pick(s, STORE_FIELDS), timezone: TIMEZONES.includes(s.timezone) ? s.timezone : DEFAULT_TZ, hasLogo: !!s.hasLogo, calendar: s.calendar === true, documents: s.documents === true,
+    .map(s => ({ id: s.sk, ...pick(s, STORE_FIELDS), timezone: TIMEZONES.includes(s.timezone) ? s.timezone : DEFAULT_TZ, hasLogo: !!s.hasLogo, calendar: s.calendar === true, documents: s.documents === true, reorder: s.reorder !== false, rx: s.rx !== false,
+      licenses: licensesOf(s), ownerIsPic: typeof s.ownerIsPic === 'boolean' ? s.ownerIsPic : null, picLogin: s.picLogin || '',
       deaVerified: s.dea && s.deaVerifiedDea === s.dea ? { at: s.deaVerifiedAt || '', by: s.deaVerifiedBy || '' } : null,
       services: Array.isArray(s.services) ? s.services.filter(x => SERVICES.includes(x)) : [], hours: Array.isArray(s.hours) && s.hours.length === 7 ? s.hours : null,
       closures: s.closures && Array.isArray(s.closures.days) ? { days: s.closures.days } : { days: [] },
       holClosed: Array.isArray(s.holClosed) ? s.holClosed : null }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
-const maskStore = s => ({ ...s, ein: '', einMasked: maskEin(s.ein) });      // only IronLedger sees a full EIN
-async function storesFor(me){ const all = await allStores(); const mine = me.owner ? all : all.filter(s => (me.stores || {})[s.id] === true); return me.host ? mine : mine.map(maskStore).map(s => suiteStore(s.id) ? { ...s, calendar: suiteUser(me, s.id), documents: suiteUser(me, s.id), rx: suiteUser(me, s.id) && rxPharmacist(me) } : s); }
-function canUse(me, store){ return !!me.owner || (me.stores || {})[store] === true; }
+// The first Account Owner (made by the setup script) used to own every pharmacy. Once, they are moved to the pharmacies that have no client yet (the original ones);
+// a pharmacy created for a client belongs to that client's owner instead. Linking an original pharmacy to a client later does not change who owns it.
+let _ownMig = null;
+function migrateOwners(){
+  if(_ownMig) return _ownMig;
+  return (_ownMig = (async () => {
+    const profiles = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'USERS' } });
+    const legacy = profiles.filter(p => p.owner === true && !p.deleted && !p.ownerMig);
+    if(!legacy.length) return;
+    const free = (await allStores()).filter(s => !s.clientId).map(s => s.id), os = {}; for(const id of free) os[id] = true;
+    for(const p of legacy) await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: p.sk }, UpdateExpression: 'SET ownerStores = :o, ownerMig = :t, #ow = :f',
+      ExpressionAttributeNames: { '#ow': 'owner' }, ExpressionAttributeValues: { ':o': os, ':t': true, ':f': false } }));
+  })().catch(e => { _ownMig = null; throw e; }));
+}
+const maskStore = s => ({ ...s, ein: '', einMasked: maskEin(s.ein) });
+// State licenses: a pharmacy can hold one per state. Kept as a list {state, number, expires, type}; the resident license (else the first) is mirrored into license /
+// licenseExpires so the calendar and Rx Intake keep working. A pharmacy saved before the list existed shows its single license as one row.
+const LIC_TYPES = ['resident', 'nonresident'];
+function licensesOf(s){
+  if(Array.isArray(s.licenses)) return s.licenses.map(x => ({ state: String(x.state || ''), number: String(x.number || ''), expires: String(x.expires || ''), type: LIC_TYPES.includes(x.type) ? x.type : 'resident' }));
+  return s.license ? [{ state: String(s.state || ''), number: String(s.license), expires: String(s.licenseExpires || ''), type: 'resident' }] : [];
+}
+function cleanLicenses(a){
+  if(!Array.isArray(a) || a.length > 60) throw bad('State licenses: a list of up to 60.');
+  const seen = new Set();
+  return a.map(x => {
+    const state = String(x && x.state || '').toUpperCase().trim(), number = cleanLicense(x && x.number), expires = String(x && x.expires || '').trim(), type = String(x && x.type || 'resident');
+    if(!US_STATES.includes(state)) throw bad('State licenses: pick the state for each license.');
+    if(!number) throw bad('State licenses: ' + state + ' needs a license number.');
+    if(expires && !DATE.test(expires)) throw bad('State licenses: use the date picker for the expiration date.');
+    if(!LIC_TYPES.includes(type)) throw bad('State licenses: pick resident or non-resident.');
+    if(seen.has(state)) throw bad('State licenses: ' + state + ' is listed twice.');
+    seen.add(state); return { state, number, expires, type };
+  });
+}      // only IronLedger sees a full EIN
+// ---------- who owns what. A Pharmacy Account Owner belongs to specific pharmacies (profile.ownerStores), a Client Account Owner to specific clients
+// (profile.ownerClients). One login can hold either or both and still work as staff at another pharmacy. adminStores: a PIC the owner gave super-user
+// privileges (everything the owner can do at that pharmacy except billing, the client page and changing ownership).
+const hasAny = m => !!m && typeof m === 'object' && Object.values(m).some(v => v === true);
+const trueKeys = m => Object.keys(m || {}).filter(k => m[k] === true);
+const ownsStore = (me, id) => !!(me && me.ownerStores && me.ownerStores[id] === true);
+const adminStore = (me, id) => !!(me && me.adminStores && me.adminStores[id] === true);
+const mgrStore = (me, id) => ownsStore(me, id) || adminStore(me, id);
+const ownsClient = (me, id) => !!(me && me.ownerClients && me.ownerClients[id] === true);
+const isOwnerP = p => !!p && (hasAny(p.ownerStores) || hasAny(p.adminStores));
+const isClientOwnerP = p => !!p && hasAny(p.ownerClients);
+const managedIds = me => new Set([...trueKeys(me.ownerStores), ...trueKeys(me.adminStores)]);
+const asStore = (me, id) => ({ ...me, owner: mgrStore(me, id), isOwner: ownsStore(me, id) });     // the caller as seen inside one pharmacy
+// Pharmacist functions at a pharmacy (Rx Intake, pharmacist-level calendar tasks): a staff pharmacist or the PIC; the Account Owner only when the host recorded that the
+// owner is the PIC. A pharmacy the host has not answered that for yet keeps the earlier rule (the Account Owner counts).
+const pharmFn = (me, s) => { if(me.host) return false; if(ownsStore(me, s.id)) return s.ownerIsPic !== false; return me.acctType === 'pharmacist' || me.acctType === 'pic'; };
+async function storesFor(me){
+  const all = await allStores(), mine = all.filter(s => canUse(me, s.id));
+  if(me.host) return mine;
+  return mine.map(maskStore).map(s => {
+    const o = ownsStore(me, s.id), a = adminStore(me, s.id), ph = pharmFn(me, s), su = suiteStore(s.id) ? suiteUser(me, s.id) : null;
+    const out = { ...s, owner: o || a, isOwner: o, pharm: ph, perms: permsAt(me, s.id) };
+    if(su !== null){ out.calendar = su; out.documents = su; out.rx = su && ph; } else out.rx = s.rx && ph;
+    return out;
+  });
+}
+function canUse(me, store){ return mgrStore(me, store) || (me.stores || {})[store] === true; }
 function permsOf(me){ const o = {}; for(const p of PERMS) o[p] = me.owner ? true : ((me.perms || {})[p] ?? DEFAULT_PERMS[p]); return o; }
+const permsAt = (me, id) => { const o = permsOf({ ...me, owner: mgrStore(me, id) }); if(suiteStore(id) && suiteUser(me, id)){ o.calendar = true; o.documents = true; } return o; };
 // ---------- Calendar + Documents suite access: a fixed list of logins per pharmacy (SUITE_USERS in template.yaml, "NTX1:login,login;..."),
 // not switches. For a pharmacy on the list, ONLY these logins get Calendar and Documents, whatever else they have access to there (the reorder
 // list, Account Owner role, other privileges). Pharmacies not on the list keep the older switches. Editing the list is a code/template change.
@@ -169,7 +230,7 @@ const SUITE = (() => { const o = {}; for(const part of String(process.env.SUITE_
 const suiteStore = id => Object.prototype.hasOwnProperty.call(SUITE, id);
 const suiteUser = (me, id) => suiteStore(id) && canUse(me, id) && !me.host && SUITE[id].includes(String(me.login || '').toLowerCase());
 const suiteAny = me => Object.keys(SUITE).some(id => suiteUser(me, id));
-const effPerms = me => { const o = permsOf(me); if(suiteAny(me)){ o.calendar = true; o.documents = true; } return o; };
+const effPerms = me => { const o = permsOf({ ...me, owner: false }); if(suiteAny(me)){ o.calendar = true; o.documents = true; } return o; };
 function need(me, p, what){ if(!permsOf(me)[p]) throw forbidden(`You don't have permission to ${what}. Ask the Account Owner.`); }
 const who = me => me.name || me.login;
 
@@ -327,9 +388,10 @@ function storeFields(b){
   if(f.timezone !== undefined && !TIMEZONES.includes(f.timezone)) throw bad('Pick the pharmacy’s time zone from the list.');
   if(b.calendar !== undefined){ if(typeof b.calendar !== 'boolean') throw bad('Calendar switch must be on or off.'); f.calendar = b.calendar; }
   if(b.documents !== undefined){ if(typeof b.documents !== 'boolean') throw bad('Documents switch must be on or off.'); f.documents = b.documents; }
-  if(f.npi && !validNpi(f.npi)) throw bad('NPI should be 10 digits and pass the NPI check digit. Re-check it.');
+  for(const [k, l] of [['reorder', 'Reorder List'], ['rx', 'Rx Intake']]) if(b[k] !== undefined){ if(typeof b[k] !== 'boolean') throw bad(l + ' switch must be on or off.'); f[k] = b[k]; }
+  if(f.npi){ if(!/^\d{10}$/.test(f.npi)) throw bad('NPI must be exactly 10 digits.'); if(!validNpi(f.npi)) throw bad('That NPI’s check digit doesn’t match. Re-check the number.'); }
   if(f.dea){ f.dea = f.dea.toUpperCase(); if(!validDea(f.dea)) throw bad('DEA number should be 2 letters and 7 digits and pass the DEA check digit. Re-check it.'); }
-  if(f.ncpdp && !/^\d{7}$/.test(f.ncpdp)) throw bad('NCPDP provider ID is 7 digits.');
+  if(f.ncpdp && !/^\d{7}$/.test(f.ncpdp)) throw bad('NCPDP ID must be exactly 7 digits.');
   for(const k of ['licenseExpires', 'deaExpires']) if(f[k] && !DATE.test(f[k])) throw bad('Expiration dates: use the date picker (YYYY-MM-DD).');
   if(b.services !== undefined){
     if(!Array.isArray(b.services) || b.services.some(x => !SERVICES.includes(x))) throw bad('Pick services from the list.');
@@ -341,12 +403,17 @@ function storeFields(b){
   if(b.hours !== undefined) f.hours = cleanHours(b.hours);
   if(b.closures !== undefined) f.closures = cleanClosures(b.closures);
   if(b.holClosed !== undefined) f.holClosed = cleanHolClosed(b.holClosed);
+  if(b.licenses !== undefined){
+    f.licenses = cleanLicenses(b.licenses);
+    const prim = f.licenses.find(x => x.type === 'resident') || f.licenses[0];
+    f.license = prim ? prim.number : ''; f.licenseExpires = prim ? prim.expires : '';
+  }
   return f;
 }
 // What each side may change on a pharmacy.
 // The Account Owner (the pharmacy's primary account holder) may change only these. Everything else (name, address, email, license, NPI, DEA, NCPDP,
 // services, the Calendar switch) is set by IronLedger (the host login); billing follows the client's identity, so those must stay consistent.
-const AM_EDITABLE = ['phone', 'fax', 'email', 'timezone', 'hours', 'closures', 'holClosed', 'licenseExpires', 'deaExpires'];
+const AM_EDITABLE = ['phone', 'fax', 'email', 'timezone', 'hours', 'closures', 'holClosed', 'licenseExpires', 'deaExpires', 'licenses'];
 // Identity: once a value is on file it is hard to change. Even the host must give a reason, and every change is written to the pharmacy's change history.
 const IDENTITY = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp', 'clientId', 'entityLegalName', 'entityType', 'ein'];
 async function nextAcctNo(){                              // the client's IronLedger account number: generated once, never changed
@@ -494,11 +561,20 @@ async function updateStore(id, b, by, isHost){
   const f = storeFields(b);
   const curItem = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }))).Item;
   if(!curItem) throw bad('No such pharmacy.');
+  let licIdentChanged = false;
+  if(f.licenses){
+    const old = licensesOf(curItem);
+    licIdentChanged = old.some(o => o.number && !f.licenses.some(n => n.state === o.state && n.number === o.number));          // a license on file was changed or removed
+    if(!isHost && (old.length !== f.licenses.length || f.licenses.some((n, i) => n.state !== old[i].state || n.number !== old[i].number || n.type !== old[i].type)))
+      throw forbidden('Only the expiration dates of state licenses can be changed here. States and license numbers are set by IronLedger.');
+    if(!isHost){ delete f.license; }
+  }
   // changing an identity value that is already on file needs a written reason (filling a blank does not)
   if(f.clientId) await needClient(f.clientId);
   if(f.ein === '' && curItem.ein) throw bad('The licensed entity’s EIN is required and can’t be cleared. Enter the corrected number instead.');
   const changedIdent = IDENTITY.filter(k => f[k] !== undefined && (curItem[k] || '') !== '' && f[k] !== curItem[k]);
   const reason = String(b.changeReason || '').trim();
+  if(licIdentChanged) changedIdent.push('state licenses');
   if(changedIdent.length && reason.length < 10) throw bad('Changing ' + changedIdent.join(', ') + ' needs a reason (at least 10 characters). The name, address, license and identifiers must stay consistent with the license and with billing.');
   const diff = {};
   for(const [k, v] of Object.entries(f)){ const o = curItem[k]; if(JSON.stringify(o === undefined ? (Array.isArray(v) ? [] : '') : o) !== JSON.stringify(v)) diff[k] = [o === undefined ? null : o, v]; }
@@ -561,16 +637,24 @@ async function listPeople(){
     for(const u of r.Users || []){ const sub = (u.Attributes || []).find(a => a.Name === 'sub'); if(sub) status[sub.Value] = { status: u.UserStatus, enabled: u.Enabled, created: u.UserCreateDate }; }
     PaginationToken = r.PaginationToken; } while(PaginationToken);
   for(const p of profiles) if(!p.deleted && !p.empId) await ensureEmpId(p);
-  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host, hostRole: p.host ? (p.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: p.host ? (p.repStores || {}) : {}, acctType: p.acctType || '', docDuty: DOC_DUTIES.includes(p.docDuty) ? p.docDuty : '', initials: p.initials || '', license: p.license || '', empId: p.empId || '', pin: pinState(p),
+  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: isOwnerP(p), ownerStores: p.ownerStores || {}, adminStores: p.adminStores || {}, ownerClients: p.ownerClients || {}, createdBySub: p.createdBySub || '', host: !!p.host, hostRole: p.host ? (p.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: p.host ? (p.repStores || {}) : {}, acctType: p.acctType || '', docDuty: DOC_DUTIES.includes(p.docDuty) ? p.docDuty : '', initials: p.initials || '', license: p.license || '', empId: p.empId || '', pin: pinState(p),
     stores: p.stores || {}, perms: effPerms(p), disabled: status[p.sk] ? !status[p.sk].enabled : !!p.disabled,
     status: (status[p.sk] || {}).status || 'UNKNOWN', ...pendingOf(p, status[p.sk]) }))
     // Account Owner, host, then people still waiting to sign in for the first time, then everyone else
     .sort((a, b) => (b.owner - a.owner) || (b.host - a.host) || (b.pending - a.pending) || (a.name || a.login).localeCompare(b.name || b.login));
 }
-async function cleanStoreToggles(obj){
-  const all = new Set((await allStores()).map(s => s.id)), out = {};
-  for(const [k, v] of Object.entries(obj && typeof obj === 'object' ? obj : {})) if(all.has(k)) out[k] = v === true;
+async function cleanStoreToggles(obj, me){
+  const all = new Set((await allStores()).map(s => s.id)), out = {}, m = me && !me.host ? managedIds(me) : null;
+  for(const [k, v] of Object.entries(obj && typeof obj === 'object' ? obj : {})) if(all.has(k) && (!m || m.has(k))) out[k] = v === true;     // an Account Owner only touches their own pharmacies
   return out;
+}
+// the people an Account Owner can see and change: anyone with access to (or ownership of) one of their pharmacies, people they added, themselves, and the host logins
+// (so they can grant host access to their pharmacies). Never anyone else's pharmacies.
+const personInScope = (me, p) => { if(me.host || p.sk === me.sk || p.host || p.createdBySub === me.sk) return true; const m = managedIds(me); return [...trueKeys(p.stores), ...trueKeys(p.ownerStores), ...trueKeys(p.adminStores)].some(k => m.has(k)); };
+function scopePeople(me, people){
+  if(me.host) return people;
+  const m = managedIds(me), only = o => Object.fromEntries(Object.entries(o || {}).filter(([k, v]) => v === true && m.has(k)));
+  return people.filter(p => personInScope(me, { ...p, sk: p.sub })).map(p => ({ ...p, stores: only(p.stores), ownerStores: only(p.ownerStores), adminStores: only(p.adminStores), ownerClients: {} }));
 }
 function cleanPerms(obj){ const o = {}; for(const p of PERMS) if(obj && typeof obj[p] === 'boolean') o[p] = obj[p]; return o; }
 async function createLogin(b){
@@ -671,7 +755,7 @@ async function setMyPin(me, body){
 async function resetPin(me, p){                          // a temporary PIN, handed to the person by the Account Owner or a host supervisor
   if(p.sk === me.sk) throw forbidden('Ask the Account Owner (or IronLedger) for a temporary PIN; you can change your own PIN if you know it.');
   if(me.host ? !isSupervisor(me) : !me.owner) throw forbidden('Only the Account Owner or an IronLedger supervisor can issue a temporary PIN.');
-  if((p.owner || p.host) && !me.host) throw forbidden('IronLedger issues the temporary PIN for the Account Owner and host logins.');
+  if((isOwnerP(p) || p.host) && !me.host) throw forbidden('IronLedger issues the temporary PIN for the Account Owner and host logins.');
   if(p.host && !isSupervisor(me)) throw forbidden();
   let t; do { t = String(crypto.randomInt(0, 10000)).padStart(4, '0'); } while(weakPin(t));
   await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: p.sk }, UpdateExpression: 'SET pin = :v',
@@ -692,7 +776,7 @@ async function repGuard(p, seg3, body){
   if(seg3) throw forbidden('A rep can’t do that. Ask an IronLedger supervisor.');
   const keys = Object.keys(body);
   if(!keys.length || keys.some(k => k !== 'perms')) throw forbidden('A rep can change privileges only. Ask an IronLedger supervisor for anything else.');
-  if(p.owner) throw forbidden('The Account Owner always has full access.');
+  if(isOwnerP(p) || isClientOwnerP(p)) throw forbidden('An Account Owner always has full access.');
   if(!p.acctType) throw forbidden('A rep can change privileges only on a person who has an account type. Ask an IronLedger supervisor.');
   if(body.perms && (Object.prototype.hasOwnProperty.call(body.perms, 'calendar') || Object.prototype.hasOwnProperty.call(body.perms, 'documents'))) throw forbidden('The Calendar and Documents privileges are part of a service line and are set by an IronLedger supervisor.');
   const g = await idp.send(new AdminGetUserCommand({ UserPoolId: POOL, Username: p.login })).catch(() => null);
@@ -701,16 +785,18 @@ async function repGuard(p, seg3, body){
 async function updatePerson(me, sub, seg3, body){
   if(!okId(sub)) throw bad('Bad user');
   const p = await profileOf(sub); if(!p) throw new HttpError(404, 'No such person.');
+  if(!personInScope(me, p)) throw new HttpError(404, 'No such person.');
   // the host login belongs to IronLedger: the Account Owner sees it but only the host changes it
   // except which pharmacies it may open: only the Account Owner grants that
   // the Account Owner decides which pharmacies the host may open and what it may do there; nothing else about the host login
   if(p.host && !me.host && (seg3 || Object.keys(body).some(k => k !== 'stores' && k !== 'perms'))) throw forbidden('The host login is managed by IronLedger.');
   if(sub === me.sk && body.disabled === true) throw bad('You can’t switch off your own login.');
+  if(!me.host && sub !== me.sk && (isOwnerP(p) || isClientOwnerP(p))) throw forbidden('An Account Owner’s login is managed by IronLedger.');
   if(me.host && me.hostRole === 'rep') await repGuard(p, seg3, body);
   if(seg3 === 'delete'){
     // the login is removed for good (the Login ID can be used again); what they did stays on the orders and archive by name.
     // A short record is kept of who existed and who removed them, with their SMS consent dates.
-    if(p.owner) throw bad('The Account Owner can’t be deleted.');
+    if(isOwnerP(p) || isClientOwnerP(p)) throw bad('An Account Owner can’t be deleted. IronLedger first gives their ownership to someone else.');
     if(p.host) throw bad('The host login can’t be deleted here.');
     if(sub === me.sk) throw bad('You can’t delete your own login.');
     if(p.deleted) return { ok: true };
@@ -732,19 +818,29 @@ async function updatePerson(me, sub, seg3, body){
     return { ok: true, tempPassword: pw };
   }
   // the Account Owner's own mobile is her second sign-in factor (Login ID + password + texted code), so only IronLedger changes it
-  if(p.owner && !me.host && body.phone !== undefined) throw forbidden('The Account Owner’s own mobile number is changed by IronLedger. Contact IronLedger to update it.');
+  if((isOwnerP(p) || isClientOwnerP(p)) && !me.host && body.phone !== undefined) throw forbidden('The Account Owner’s own mobile number is changed by IronLedger. Contact IronLedger to update it.');
   // no per-person email exists today; if one is ever added, changing it for the Account Owner must also need the host
   if(body.email !== undefined) throw bad('People don’t have an email address in this app.');
-  if(p.owner && (body.stores !== undefined || body.perms !== undefined || (body.disabled !== undefined && !me.host)))
-    throw bad('The Account Owner always has full access.');
   if(p.host && me.host && (body.stores !== undefined || body.perms !== undefined)) throw bad('Only the Account Owner can give the host access to a pharmacy or privileges in it.');
   const upd = {};
-  if(body.acctType !== undefined){ if(p.owner || p.host) throw bad('The Account Owner and host logins have their own account type.'); upd.acctType = cleanType(body.acctType); }
-  if(body.docDuty !== undefined){ if(p.owner || p.host) throw bad('The Account Owner and host logins have their own document duty.'); const dd = String(body.docDuty || ''); if(dd !== '' && !DOC_DUTIES.includes(dd)) throw bad('Pick the document duty from the list.'); upd.docDuty = dd; }
+  if(body.acctType !== undefined){ if(p.host) throw bad('The host login has its own account type.'); upd.acctType = cleanType(body.acctType); }
+  if(body.docDuty !== undefined){ if(p.host) throw bad('The host login has its own document duty.'); const dd = String(body.docDuty || ''); if(dd !== '' && !DOC_DUTIES.includes(dd)) throw bad('Pick the document duty from the list.'); upd.docDuty = dd; }
   if(body.initials !== undefined){ const ini = cleanInitials(body.initials); if(ini && await initialsTaken(ini, sub)) throw bad('Those initials are already used by someone else.'); upd.initials = ini; }
   if(body.license !== undefined) upd.license = cleanLicense(body.license);
   if(body.repStores !== undefined){ if(!isSupervisor(me)) throw forbidden('A supervisor assigns reps to pharmacies.'); if(!(p.host && p.hostRole === 'rep')) throw bad('Only rep logins have assigned pharmacies.'); upd.repStores = Object.assign({}, p.repStores || {}, await cleanStoreToggles(body.repStores)); }
-  if(body.stores !== undefined) upd.stores = Object.assign({}, p.stores || {}, await cleanStoreToggles(body.stores));
+  if(body.stores !== undefined) upd.stores = Object.assign({}, p.stores || {}, await cleanStoreToggles(body.stores, me));
+  if(body.adminStores !== undefined){                // super user (administrator) privileges for a PIC at one pharmacy
+    if(!body.adminStores || typeof body.adminStores !== 'object') throw bad('Bad administrator setting.');
+    if(p.host) throw bad('The host login can’t be an administrator.');
+    const cur = Object.assign({}, p.adminStores || {});
+    for(const [id, v] of Object.entries(body.adminStores)){
+      if(!okId(id)) throw bad('Bad pharmacy');
+      if(me.host ? !isSupervisor(me) : !ownsStore(me, id)) throw forbidden('Only the pharmacy’s Account Owner or an IronLedger supervisor gives administrator privileges.');
+      if(v === true){ if(!(p.license || upd.license) || !((upd.acctType || p.acctType) === 'pic' || (upd.acctType || p.acctType) === 'pharmacist')) throw bad('Administrator privileges go to the licensed pharmacist in charge: set the account type and RPh license number first.'); cur[id] = true; }
+      else delete cur[id];
+    }
+    upd.adminStores = cur;
+  }
   if(body.perms !== undefined) upd.perms = Object.assign({}, p.perms || {}, cleanPerms(body.perms));
   if(body.name !== undefined){ upd.name = clean(body.name, 120) || '';
     if(upd.name) await idp.send(new AdminUpdateUserAttributesCommand({ UserPoolId: POOL, Username: p.login, UserAttributes: [{ Name: 'name', Value: upd.name }] })); }
@@ -769,8 +865,8 @@ async function updatePerson(me, sub, seg3, body){
 
 // ---------- Account Owner tab lock: password again to open it; locks after 5 minutes without activity there
 const UNLOCK_MS = 5 * 60 * 1000;
-class Locked extends HttpError { constructor(){ super(423, 'The Account Owner tab is locked. Re-enter your password.'); this.locked = true; } }
-const manages = me => !!(me.owner || me.host);         // the Account Owner, and the host (IronLedger)
+class Locked extends HttpError { constructor(){ super(423, 'This page is locked. Re-enter your password.'); this.locked = true; } }
+const manages = me => !!(me.owner || me.clientOwner || me.host);         // an Account Owner (pharmacy or client), and the host (IronLedger)
 async function requireUnlocked(me){
   if(!manages(me)) throw forbidden('Only the Account Owner can do that.');
   if(!(me.unlockUntil > Date.now())) throw new Locked();
@@ -814,6 +910,19 @@ function calGate(me, storeItem){
   if(!permsOf(me).calendar) throw forbidden('You do not have the Calendar privilege. Ask the Account Owner.');
 }
 const calPk = store => 'STORE#' + store;
+// Who may complete which built-in task type (the calendar app shows every task to everyone; this decides who can finish one). The responsible duty of each built-in task, copied
+// from the calendar app (checked by dev/roles_test): PIC and Designated Person tasks are pharmacist or compliance-technician work, Owner tasks belong to the owner or administrator
+// (a pharmacist may also finish them). A task type that is not in this list is a custom one: anyone with the calendar may complete it, including a Pharmacy Associate.
+const CAL_ROLE = { 'dea-reg': 'Owner', 'dea-biennial': 'PIC', 'tx-cs-annual': 'PIC', 'cs-reconcile': 'PIC', 'cs-cycle': 'PIC', 'tx-pharmacy-license': 'Owner', 'tx-rph-license': 'PIC', 'tx-tech-reg': 'PIC', 'tx-pic-change': 'PIC', 'tx-pic-inventory': 'PIC', 'tx-officer-change': 'Owner', 'tx-location-change': 'Owner',
+  'u795-training': 'DP', 'u795-sop': 'DP', 'u797-cert-pec': 'DP', 'u797-cert-sec': 'DP', 'u797-air': 'DP', 'u797-surface': 'DP', 'u797-sop': 'DP', 'u797-qaqc': 'DP', 'u797-didactic': 'DP', 'u797-garb': 'DP', 'u797-media': 'DP', 'u797-sporicidal': 'DP', 'u797-monitor-cal': 'DP', 'u797-pressure': 'DP',
+  'u800-list': 'DP', 'u800-risk': 'DP', 'u800-sop': 'DP', 'u800-training': 'DP', 'u800-wipe': 'DP', 'osha-ecp': 'Owner', 'osha-training': 'Owner', 'hipaa-risk': 'Owner', 'hipaa-training': 'Owner', 'doc-review': 'PIC' };
+function calMayComplete(me, obId){
+  const role = CAL_ROLE[obId]; if(!role || me.host) return true;
+  if(me.pharm) return true;
+  if(role === 'Owner') return !!me.owner;
+  if(role === 'DP') return me.docDuty === 'dp' || me.docDuty === 'ctech';
+  return false;                                                  // PIC tasks: a pharmacist only
+}
 async function calLoad(store){
   const items = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p AND begins_with(sk, :c)', ExpressionAttributeValues: { ':p': calPk(store), ':c': 'CAL#' } });
   const out = { started: false, config: {}, records: [], events: [], obl: [], log: [] };
@@ -832,7 +941,11 @@ async function calCommit(store, me, b){
   for(const c of Object.keys(put)){
     if(!CAL_COLLS.includes(c)) throw bad('Unknown calendar list: ' + c);
     if(!Array.isArray(put[c])) throw bad('Bad calendar list.');
-    for(const o of put[c]){ if(!o || typeof o !== 'object' || !okId(o.id)) throw bad('Every calendar item needs an id.'); writes.push({ sk: `CAL#${c}#${o.id}`, v: o }); }
+    for(const o of put[c]){
+      if(!o || typeof o !== 'object' || !okId(o.id)) throw bad('Every calendar item needs an id.');
+      if(c === 'records' && o.status !== 'void' && !calMayComplete(me, String(o.track || '').split('|')[0])) throw forbidden('Your role can’t complete that task. You can see it on the calendar; a pharmacist or the responsible person finishes it.');
+      writes.push({ sk: `CAL#${c}#${o.id}`, v: o });
+    }
   }
   for(const c of Object.keys(del)){
     if(!CAL_COLLS.includes(c)) throw bad('Unknown calendar list: ' + c);
@@ -959,8 +1072,13 @@ const addMonthsIso = (s, n) => { const [y, m, d] = s.split('-').map(Number); con
 const RX_ALLOW = ['https://npiregistry.cms.hhs.gov/api/', 'https://geocoding.geo.census.gov/geocoder/', 'https://clinicaltables.nlm.nih.gov/api/', 'https://rxnav.nlm.nih.gov/REST/'];
 const RX_FIELDS = { ph: ['name', 'addr', 'city', 'state', 'zip', 'phone', 'fax', 'license', 'npi', 'dea'], pr: ['name', 'last', 'first', 'cred', 'addr', 'city', 'state', 'zip', 'phone', 'fax', 'license', 'npi', 'dea'] };
 // Only a pharmacist (job type on the login: Staff Pharmacist or Pharmacist-In-Charge; the Account Owner counts as PIC) can take or receive a prescription, so Rx Intake is hidden from everyone else.
-const rxPharmacist = me => !me.host && (!!me.owner || me.acctType === 'pharmacist' || me.acctType === 'pic');
-function rxGate(me, storeItem){ if(!suiteStore(storeItem.sk) || !suiteUser(me, storeItem.sk)) throw forbidden('Rx Intake is limited to the named users for this pharmacy.'); if(!rxPharmacist(me)) throw forbidden('Only a pharmacist can use Rx Intake.'); }
+// me.pharm is set once the caller is seen inside one pharmacy (pharmFn): a staff pharmacist or the PIC, or the Account Owner only where IronLedger recorded that the owner is the PIC.
+const rxPharmacist = me => !me.host && !!me.pharm;
+function rxGate(me, storeItem){
+  if(suiteStore(storeItem.sk)){ if(!suiteUser(me, storeItem.sk)) throw forbidden('Rx Intake is limited to the named users for this pharmacy.'); }
+  else if(storeItem.rx === false) throw forbidden('Rx Intake is switched off for this pharmacy.');
+  if(!rxPharmacist(me)) throw forbidden('Only a pharmacist can use Rx Intake.');
+}
 function rxCleanRec(kind, r){
   if(!r || typeof r !== 'object') throw bad('Bad record.');
   const o = {};
@@ -977,11 +1095,12 @@ async function rxLoad(store, storeItem, me){
   const items = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'RXDIR#' + store } });
   const ph = [], pr = [];
   for(const it of items){ const { pk, sk, ...rec } = it; (sk.startsWith('PH#') ? ph : pr).push(rec); }
-  const people = (await listPeople()).filter(p => !p.host && (p.owner || (p.stores || {})[store] === true));
-  const isRph = p => p.acctType === 'pharmacist' || p.acctType === 'pic' || p.owner;
+  const people = (await listPeople()).filter(p => !p.host && ((p.stores || {})[store] === true || (p.ownerStores || {})[store] === true || (p.adminStores || {})[store] === true));
+  const ownerP = p => (p.ownerStores || {})[store] === true, ownerPic = storeItem.ownerIsPic !== false;
+  const isRph = p => p.acctType === 'pharmacist' || p.acctType === 'pic' || (ownerP(p) && ownerPic);
   const me2 = people.find(p => p.sub === me.sk) || {};
   const receiving = isRph(me2) && me2.license ? { name: RX_NAME(me2), license: me2.license } : null;
-  const picP = people.find(p => p.acctType === 'pic' && p.license) || people.find(p => p.owner && p.license) || null;
+  const picP = (storeItem.picLogin && people.find(p => p.login === storeItem.picLogin && p.license)) || people.find(p => p.acctType === 'pic' && p.license) || (ownerPic ? people.find(p => ownerP(p) && p.license) : null) || null;
   const pic = picP ? { name: RX_NAME(picP), license: picP.license } : null;
   const notes = []; if(!receiving) notes.push(isRph(me2) ? 'Your RPh license number is not set. Ask the Account Owner to add it to your login.' : 'Only a pharmacist can take or receive a prescription. Your login is not set up as a pharmacist.'); if(!pic) notes.push('The Pharmacist-In-Charge name and license number are not set. Ask the Account Owner.');
   const s = storeItem;
@@ -1151,13 +1270,165 @@ async function docsRoute(method, store, seg, q, body, me, storeItem){
   }
   throw new HttpError(404, 'Not found');
 }
+// ---------- Account Owners (pharmacy and client), the PIC question, and the client page
+// IronLedger (host) is the only one who names an owner, records whether the owner is the PIC, and records a change of PIC (with a reason, kept in the change history).
+async function clientsOf(me){
+  if(me.host) return [];
+  const out = [];
+  for(const id of trueKeys(me.ownerClients)){
+    const c = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'CLIENTS', sk: id } }))).Item;
+    if(c) out.push({ id, name: c.dba || c.legalName || id, legalName: c.legalName || '' });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+async function profilesAll(){ return (await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'USERS' } })).map(p => ({ ...p, sub: p.sk })).filter(p => !p.deleted); }
+// an existing login (by sub or Login ID) or a brand-new one (needs the signed SMS consent, like any new login)
+async function resolveOwner(spec, by){
+  if(!spec || typeof spec !== 'object') throw bad('Pick the person who will be the Account Owner.');
+  const all = await profilesAll();
+  if(spec.create){
+    const c = spec.create; if(!c || typeof c !== 'object') throw bad('Enter the new login’s details.');
+    if(c.smsConsent !== true) throw bad('Have the person sign the SMS consent form first, then tick the box.');
+    const ini = cleanInitials(c.initials); if(ini && await initialsTaken(ini, '')) throw bad('Those initials are already used by someone else.');
+    const lic = cleanLicense(c.license);
+    const u = await createLogin(c);
+    try{
+      await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'USERS', sk: u.sub, login: u.login, name: u.name, phone: u.phone, stores: {}, perms: {}, acctType: cleanType(c.acctType), initials: ini, license: lic,
+        empId: await nextEmpNo(), owner: false, ownerMig: true, createdAt: now(), createdBy: by, tempIssuedAt: now(), smsConsentAt: now(), smsConsentRecordedBy: by } }));
+    }catch(e){ await idp.send(new AdminDeleteUserCommand({ UserPoolId: POOL, Username: u.login })).catch(() => {}); throw e; }
+    return { sub: u.sub, login: u.login, name: u.name, tempPassword: u.tempPassword, created: true };
+  }
+  const p = all.find(x => (spec.sub && x.sub === spec.sub) || (spec.login && x.login === String(spec.login).trim().toLowerCase()));
+  if(!p) throw bad('No such login. Pick an existing login or create a new one.');
+  if(p.host) throw bad('A host login can’t be an Account Owner.');
+  return { sub: p.sub, login: p.login, name: p.name || '', created: false };
+}
+async function setProfileMap(sub, attr, id, on){
+  const p = await profileOf(sub); const m = Object.assign({}, p[attr] || {});
+  if(on) m[id] = true; else delete m[id];
+  await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: sub }, UpdateExpression: 'SET #a = :m, ownerMig = :t', ExpressionAttributeNames: { '#a': attr }, ExpressionAttributeValues: { ':m': m, ':t': true } }));
+}
+const auditPut = (pk, by, reason, changes) => ddb.send(new PutCommand({ TableName: MAIN, Item: { pk, sk: now() + '#' + Math.random().toString(36).slice(2, 7), at: now(), by: by || '', reason: reason || '', changes } }));
+async function needStore(id){
+  if(!okId(id)) throw bad('Bad pharmacy');
+  const s = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id } }))).Item;
+  if(!s) throw new HttpError(404, 'No such pharmacy.');
+  return s;
+}
+async function setStoreOwner(me, id, b){
+  if(!isSupervisor(me)) throw forbidden('Only an IronLedger supervisor names the Account Owner.');
+  const s = await needStore(id), by = who(me), all = await profilesAll();
+  let spec = b.owner;
+  if(b.sameAsClient === true){
+    if(!s.clientId) throw bad('This pharmacy has no client yet.');
+    const co = all.find(p => ownsClient(p, s.clientId)); if(!co) throw bad('The client has no Account Owner yet.');
+    spec = { sub: co.sub };
+  }
+  const r = await resolveOwner(spec, by);
+  const prev = all.filter(p => ownsStore(p, id) && p.sub !== r.sub), reason = String(b.reason || '').trim();
+  if(prev.length && reason.length < 10) throw bad('Changing the Account Owner needs a reason (at least 10 characters).');
+  if(b.ownerIsPic === true){ const np = all.find(p => p.sub === r.sub) || {}; if(!np.license && !(spec && spec.create && cleanLicense(spec.create.license))) throw bad('The owner is the pharmacist in charge: enter their RPh license number on their login first.'); }
+  for(const p of prev) await setProfileMap(p.sub, 'ownerStores', id, false);
+  await setProfileMap(r.sub, 'ownerStores', id, true);
+  await setProfileMap(r.sub, 'stores', id, true);
+  await auditPut('STOREAUDIT#' + id, by, reason || 'Account Owner set', { accountOwner: [prev.map(p => p.login).join(', ') || null, r.login] });
+  if(typeof b.ownerIsPic === 'boolean') await setStorePic(me, id, { ownerIsPic: b.ownerIsPic, picLogin: b.picLogin, reason: 'Set with the Account Owner', _first: true });
+  return { ok: true, owner: { sub: r.sub, login: r.login, name: r.name }, ...(r.tempPassword ? { tempPassword: r.tempPassword } : {}) };
+}
+// Is the owner the PIC? Answered at setup and changed only by IronLedger, with a reason. A PIC must be a licensed pharmacist (a license number is on their login).
+async function setStorePic(me, id, b){
+  if(!isSupervisor(me)) throw forbidden('Only an IronLedger supervisor records who the pharmacist in charge is.');
+  const s = await needStore(id), all = await profilesAll(), by = who(me);
+  if(typeof b.ownerIsPic !== 'boolean') throw bad('Answer yes or no: is the Account Owner the pharmacist in charge?');
+  const first = typeof s.ownerIsPic !== 'boolean', reason = String(b.reason || '').trim();
+  if(!first && !b._first && reason.length < 10) throw bad('Changing the pharmacist in charge needs a reason (at least 10 characters).');
+  let picLogin = '';
+  if(b.ownerIsPic){
+    const o = all.find(p => ownsStore(p, id));
+    if(!o) throw bad('Name the Account Owner first.');
+    if(!o.license) throw bad('The pharmacist in charge needs an RPh license number on their login. Enter it first.');
+  } else {
+    picLogin = String(b.picLogin || '').trim().toLowerCase();
+    const pp = all.find(p => p.login === picLogin);
+    if(!pp || !(pp.stores && pp.stores[id] === true || ownsStore(pp, id) || adminStore(pp, id))) throw bad('Pick the pharmacist in charge from the people who work at this pharmacy.');
+    if(pp.acctType !== 'pic' && pp.acctType !== 'pharmacist') throw bad('The pharmacist in charge must be a pharmacist (account type Staff Pharmacist or Pharmacist-In-Charge).');
+    if(!pp.license) throw bad('The pharmacist in charge needs an RPh license number on their login. Enter it first.');
+  }
+  await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id }, UpdateExpression: 'SET ownerIsPic = :o, picLogin = :l, updatedAt = :u', ExpressionAttributeValues: { ':o': b.ownerIsPic, ':l': picLogin, ':u': now() } }));
+  await auditPut('STOREAUDIT#' + id, by, reason || 'Set at setup', { pharmacistInCharge: [s.ownerIsPic === true ? 'owner' : (s.picLogin || null), b.ownerIsPic ? 'owner' : picLogin] });
+  return { ok: true };
+}
+async function setClientOwner(me, clientId, b){
+  if(!isSupervisor(me)) throw forbidden('Only an IronLedger supervisor names the client’s Account Owner.');
+  await needClient(clientId);
+  const by = who(me), all = await profilesAll(), r = await resolveOwner(b.owner, by);
+  const prev = all.filter(p => ownsClient(p, clientId) && p.sub !== r.sub), reason = String(b.reason || '').trim();
+  if(prev.length && reason.length < 10) throw bad('Changing the client’s Account Owner needs a reason (at least 10 characters).');
+  for(const p of prev) await setProfileMap(p.sub, 'ownerClients', clientId, false);
+  await setProfileMap(r.sub, 'ownerClients', clientId, true);
+  await auditPut('CLIENTAUDIT#' + clientId, by, reason || 'Account Owner set', { accountOwner: [prev.map(p => p.login).join(', ') || null, r.login] });
+  return { ok: true, owner: { sub: r.sub, login: r.login, name: r.name }, ...(r.tempPassword ? { tempPassword: r.tempPassword } : {}) };
+}
+// ---- invoices (kept by IronLedger by hand for now; no payment processor yet). The client's owner can read them, never change them.
+const INV_STATUS = ['unpaid', 'paid', 'void'];
+const toCents = v => { const n = Math.round(parseFloat(String(v).replace(/[$,\s]/g, '')) * 100); if(!Number.isFinite(n) || n <= 0 || n > 100000000) throw bad('Amount: a dollar amount above zero.'); return n; };
+const invView = (i, today) => ({ id: i.sk, number: i.number, issued: i.issued, due: i.due, period: i.period, cents: i.cents, description: i.description || '', status: i.status,
+  delinquent: i.status === 'unpaid' && !!i.due && i.due < today, paidOn: i.paidOn || '', note: i.note || '' });
+function invSummary(list, today){
+  const month = today.slice(0, 7), z = () => ({ count: 0, cents: 0 }), add = (o, i) => { o.count++; o.cents += i.cents; };
+  const s = { newThisMonth: z(), paidThisMonth: z(), unpaid: z(), delinquent: z() };
+  for(const i of list){ if(i.status === 'void') continue;
+    if(i.issued.slice(0, 7) === month) add(s.newThisMonth, i);
+    if(i.status === 'paid' && (i.paidOn || '').slice(0, 7) === month) add(s.paidThisMonth, i);
+    if(i.status === 'unpaid') add(i.delinquent ? s.delinquent : s.unpaid, i); }
+  return s;
+}
+async function billingOf(clientId){
+  const today = todayIn(DEFAULT_TZ);
+  const items = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'INVOICE#' + clientId } });
+  const list = items.map(i => invView(i, today)).sort((a, b) => b.issued.localeCompare(a.issued) || b.id.localeCompare(a.id));
+  return { invoices: list, summary: invSummary(list, today), today };
+}
+async function addInvoice(me, clientId, b){
+  if(!isSupervisor(me)) throw forbidden('Invoices are entered by an IronLedger supervisor.');
+  await needClient(clientId);
+  const issued = String(b.issued || todayIn(DEFAULT_TZ)), due = String(b.due || '');
+  if(!DATE.test(issued) || isNaN(Date.parse(issued))) throw bad('Issue date: use the date picker.');
+  if(!DATE.test(due) || isNaN(Date.parse(due)) || due < issued) throw bad('Due date: use the date picker, on or after the issue date.');
+  const cents = toCents(b.amount), existing = (await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'INVOICE#' + clientId } })).length;
+  const number = String(clean(b.number, 30) || '').trim() || `${clientId}-${issued.slice(0, 7).replace('-', '')}-${String(existing + 1).padStart(2, '0')}`;
+  const sk = issued + '_' + Math.random().toString(36).slice(2, 8);
+  await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'INVOICE#' + clientId, sk, number, issued, due, period: issued.slice(0, 7), cents, description: String(clean(b.description, 200) || '').trim(), status: 'unpaid', createdAt: now(), createdBy: who(me) } }));
+  return { ok: true, id: sk, number };
+}
+async function setInvoice(me, clientId, sk, b){
+  if(!isSupervisor(me)) throw forbidden('Invoices are changed by an IronLedger supervisor.');
+  await needClient(clientId);
+  if(!/^\d{4}-\d{2}-\d{2}_[a-z0-9]+$/.test(String(sk))) throw bad('Bad invoice');
+  const cur = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'INVOICE#' + clientId, sk } }))).Item; if(!cur) throw new HttpError(404, 'No such invoice.');
+  const status = String(b.status || ''); if(!INV_STATUS.includes(status)) throw bad('Status: paid, unpaid or void.');
+  const note = String(clean(b.note, 200) || '').trim();
+  if(status === 'void' && note.length < 5) throw bad('Say why the invoice is voided.');
+  const paidOn = status === 'paid' ? String(b.paidOn || todayIn(DEFAULT_TZ)) : '';
+  if(status === 'paid' && (!DATE.test(paidOn) || isNaN(Date.parse(paidOn)))) throw bad('Paid date: use the date picker.');
+  await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'INVOICE#' + clientId, sk }, UpdateExpression: 'SET #s = :s, paidOn = :p, note = :n, updatedAt = :u, updatedBy = :b',
+    ExpressionAttributeNames: { '#s': 'status' }, ExpressionAttributeValues: { ':s': status, ':p': paidOn, ':n': note, ':u': now(), ':b': who(me) } }));
+  await auditPut('CLIENTAUDIT#' + clientId, who(me), note, { invoice: [cur.number + ' ' + cur.status, cur.number + ' ' + status] });
+  return { ok: true };
+}
+// what the client's own Account Owner sees: the setup information entered for the client and the billing. Read only.
+async function clientPage(clientId){
+  const c = await needClient(clientId), stores = await allStores(), all = await profilesAll();
+  return { client: clientView(c), pharmacies: stores.filter(s => s.clientId === clientId).map(s => ({ id: s.id, name: s.name, city: s.city || '', state: s.state || '', owner: ((all.find(p => ownsStore(p, s.id)) || {}).name) || ((all.find(p => ownsStore(p, s.id)) || {}).login) || '' })),
+    billing: await billingOf(clientId) };
+}
 // ---------- router
 async function route(method, path, q, body, me, claims){
   const seg = path.split('/').filter(Boolean);
   if(seg[0] === 'api') seg.shift();                    // works with or without an /api prefix
 
   if(method === 'GET' && seg[0] === 'me' && seg.length === 1)
-    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty(me), initials: me.initials || '', license: me.license || '', empId: await ensureEmpId(me), pin: pinState(me), pinRequired: PIN_REQUIRED, perms: effPerms(me), stores: await storesFor(me) };
+    return { name: me.name || '', login: me.login, owner: !!me.owner, clientOwner: !!me.clientOwner, clients: await clientsOf(me), host: !!me.host, hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty({ ...me, owner: false }), initials: me.initials || '', license: me.license || '', empId: await ensureEmpId(me), pin: pinState(me), pinRequired: PIN_REQUIRED, perms: effPerms(me), stores: await storesFor(me) };
 
   if(method === 'POST' && seg[0] === 'me' && seg[1] === 'pin' && seg.length === 2) return await setMyPin(me, body);
 
@@ -1167,6 +1438,7 @@ async function route(method, path, q, body, me, claims){
     if(!canUse(me, store)) throw forbidden();
     const exists = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: store } }));
     if(!exists.Item) throw new HttpError(404, 'No such store.');
+    me = asStore(me, store); me.pharm = pharmFn(me, { id: store, ownerIsPic: typeof exists.Item.ownerIsPic === 'boolean' ? exists.Item.ownerIsPic : null });
     const what = seg[2];
     if(what === 'documents') return await docsRoute(method, store, seg.slice(3), q, body, me, exists.Item);
     if(what === 'rx') return await rxRoute(method, store, seg.slice(3), body, me, exists.Item);
@@ -1176,6 +1448,7 @@ async function route(method, path, q, body, me, claims){
       if(method === 'POST' && seg[3] === 'commit') return await calCommit(store, me, body);
       throw new HttpError(404, 'Not found');
     }
+    if(exists.Item.reorder === false && ['lines', 'memory', 'archive', 'commit', 'export', 'import'].includes(what)) throw forbidden('The Reorder List is switched off for this pharmacy.');
     if(method === 'GET' && what === 'lines') return { lines: await lines(store) };
     if(method === 'GET' && what === 'memory') return { memory: await memory(store) };
     if(method === 'GET' && what === 'archive'){ need(me, 'archive', 'view the archive'); return await archivePage(store, q); }
@@ -1193,8 +1466,18 @@ async function route(method, path, q, body, me, claims){
   if(seg[0] === 'host-unlock' || seg[0] === 'host-lock' || seg[0] === 'host'){
     if(!me.host) throw new HttpError(404, 'Not found');
     seg[0] = seg[0].replace('host', 'owner');
-  } else if(seg[0] === 'owner-unlock' || seg[0] === 'owner-lock' || seg[0] === 'owner'){
+  } else if(seg[0] === 'owner'){
     if(!me.owner) throw forbidden('Only the Account Owner can do that.');
+  } else if(seg[0] === 'owner-unlock' || seg[0] === 'owner-lock'){
+    if(!(me.owner || me.clientOwner)) throw forbidden('Only the Account Owner can do that.');
+  }
+  // the client page: the owner of that client only (billing and invoices are read only here). Behind the same password step-up as the owner tab.
+  if(seg[0] === 'client'){
+    if(!seg[1] || !CLIENT_ID.test(String(seg[1])) || !ownsClient(me, seg[1])) throw forbidden('Only the client’s Account Owner can open this page.');
+    await requireUnlocked(me);
+    if(method === 'GET' && !seg[2]) return await clientPage(seg[1]);
+    if(method === 'GET' && seg[2] === 'billing') return await billingOf(seg[1]);
+    throw new HttpError(404, 'Not found');
   }
   if(method === 'POST' && seg[0] === 'owner-unlock') return await unlock(me, claims, body);
   if(method === 'POST' && seg[0] === 'owner-lock'){ await setUnlock(me.sk, 0); return { ok: true }; }
@@ -1208,7 +1491,7 @@ async function route(method, path, q, body, me, claims){
       const no = () => forbidden('An IronLedger rep can change the privileges of an existing, active user (and reset their password). Anything else goes to a supervisor.');
       if(seg[1] === 'import' || !seg[2]) throw no();
       const tp = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: String(seg[2]) } })), t = tp.Item;
-      if(!t || t.deleted || t.disabled || t.owner || t.host) throw no();
+      if(!t || t.deleted || t.disabled || isOwnerP(t) || isClientOwnerP(t) || t.host) throw no();
       if(seg[3] === 'reset-password') { /* allowed */ }
       else if(seg[3]) throw no();
       else { const ks = Object.keys(body); if(!ks.length || ks.some(k => k !== 'perms')) throw no(); }
@@ -1216,6 +1499,7 @@ async function route(method, path, q, body, me, claims){
     // bring in a pharmacy's old shared-drive file: adds only, never changes or removes anything already there
     if(method === 'POST' && seg[1] === 'import' && seg[2]){
       if(!okId(seg[2])) throw bad('Bad pharmacy');
+      if(!me.host && !mgrStore(me, seg[2])) throw forbidden();
       const ex = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: seg[2] } }));
       if(!ex.Item) throw new HttpError(404, 'No such pharmacy.');
       return await importData(seg[2], body);
@@ -1224,28 +1508,38 @@ async function route(method, path, q, body, me, claims){
     if(seg[1] === 'clients'){
       if(!me.host) throw forbidden('Clients are managed by IronLedger.');
       if(method === 'GET' && !seg[2]) return { clients: await listClients() };
-      if(method === 'POST' && !seg[2]) return await addClient(body, who(me));
+      if(method === 'POST' && !seg[2]){
+        const r = await addClient(body, who(me));
+        if(body.owner){ try{ const o = await setClientOwner(me, r.id, { owner: body.owner }); return { ...r, owner: o.owner, ...(o.tempPassword ? { tempPassword: o.tempPassword } : {}) }; }catch(e){ if(e instanceof HttpError) return { ...r, ownerError: e.message }; throw e; } }
+        return r;
+      }
       if(method === 'GET' && seg[2] && seg[3] === 'history') return await clientHistory(seg[2]);
       if(method === 'POST' && seg[2] && !seg[3]){ await updateClient(seg[2], body, who(me)); return { ok: true }; }
+      if(method === 'POST' && seg[2] && seg[3] === 'owner') return await setClientOwner(me, seg[2], body);
+      if(method === 'GET' && seg[2] && seg[3] === 'billing'){ await needClient(seg[2]); return await billingOf(seg[2]); }
+      if(method === 'POST' && seg[2] && seg[3] === 'invoices' && !seg[4]) return await addInvoice(me, seg[2], body);
+      if(method === 'POST' && seg[2] && seg[3] === 'invoices' && seg[4]) return await setInvoice(me, seg[2], seg[4], body);
     }
-    if(method === 'GET' && seg[1] === 'stores' && !seg[2]) return { stores: me.host ? await allStores() : (await allStores()).map(maskStore) };
+    if(method === 'GET' && seg[1] === 'stores' && !seg[2]) return { stores: me.host ? await allStores() : (await allStores()).filter(s => mgrStore(me, s.id)).map(maskStore) };
     if(method === 'POST' && seg[1] === 'stores' && !seg[2]){ if(!me.host) throw forbidden('New pharmacies are set up by IronLedger.'); return await addStore(body, who(me)); }
     if(method === 'POST' && seg[1] === 'stores' && seg[2] && seg[3] === 'drafts') return await createDraft(me, seg[2], body);
     if(method === 'GET' && seg[1] === 'drafts' && !seg[2]){ if(!me.host) throw forbidden('Drafts are handled by IronLedger.'); return await listDrafts(me); }
     if(method === 'POST' && seg[1] === 'drafts' && seg[2] && seg[3] && (seg[4] === 'approve' || seg[4] === 'reject')) return await decideDraft(me, seg[2], seg[3], seg[4], body);
     if(method === 'GET' && seg[1] === 'stores' && seg[2] && seg[3] === 'history'){ if(!me.host) throw forbidden('The change history is kept by IronLedger.'); return await storeHistory(seg[2]); }
-    if(method === 'POST' && seg[1] === 'stores' && seg[2] && seg[3] === 'logo'){ await setLogo(seg[2], body.dataUrl); return { ok: true }; }
-    if(method === 'POST' && seg[1] === 'stores' && seg[2]){ await updateStore(seg[2], body, who(me), !!me.host); return { ok: true }; }
-    if(method === 'GET' && seg[1] === 'users') return { users: await listPeople() };
+    if(method === 'POST' && seg[1] === 'stores' && seg[2] && seg[3] === 'owner') return await setStoreOwner(me, seg[2], body);
+    if(method === 'POST' && seg[1] === 'stores' && seg[2] && seg[3] === 'pic') return await setStorePic(me, seg[2], body);
+    if(method === 'POST' && seg[1] === 'stores' && seg[2] && seg[3] === 'logo'){ if(!me.host && !mgrStore(me, seg[2])) throw forbidden(); await setLogo(seg[2], body.dataUrl); return { ok: true }; }
+    if(method === 'POST' && seg[1] === 'stores' && seg[2]){ if(!me.host && !mgrStore(me, seg[2])) throw forbidden(); await updateStore(seg[2], body, who(me), !!me.host); return { ok: true }; }
+    if(method === 'GET' && seg[1] === 'users') return { users: scopePeople(me, await listPeople()) };
     if(method === 'POST' && seg[1] === 'users' && !seg[2]){
-      const stores = await cleanStoreToggles(body.stores), perms = Object.assign({}, DEFAULT_PERMS, cleanPerms(body.perms));
+      const stores = await cleanStoreToggles(body.stores, me), perms = Object.assign({}, DEFAULT_PERMS, cleanPerms(body.perms));
       if(body.smsConsent !== true) throw bad('Have the person sign the SMS consent form first, then tick the box.');
       const ini = cleanInitials(body.initials); if(ini && await initialsTaken(ini, '')) throw bad('Those initials are already used by someone else.');
       const lic = cleanLicense(body.license);
       const u = await createLogin(body);
       try{
         await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'USERS', sk: u.sub, login: u.login, name: u.name, phone: u.phone,
-          stores, perms, acctType: cleanType(body.acctType), initials: ini, license: lic, empId: await nextEmpNo(), owner: false, createdAt: now(), createdBy: who(me), tempIssuedAt: now(), smsConsentAt: now(), smsConsentRecordedBy: who(me) } }));
+          stores, perms, acctType: cleanType(body.acctType), initials: ini, license: lic, empId: await nextEmpNo(), owner: false, ownerMig: true, createdBySub: me.sk, createdAt: now(), createdBy: who(me), tempIssuedAt: now(), smsConsentAt: now(), smsConsentRecordedBy: who(me) } }));
       }catch(e){ await idp.send(new AdminDeleteUserCommand({ UserPoolId: POOL, Username: u.login })).catch(() => {}); throw e; }
       return { ok: true, user: { sub: u.sub, login: u.login, name: u.name, phone: u.phone, stores, perms }, tempPassword: u.tempPassword };
     }
@@ -1257,7 +1551,7 @@ async function route(method, path, q, body, me, claims){
 // Account Owner + first pharmacy, run once from the deploy script with `aws lambda invoke` (not reachable from the web)
 async function bootstrap(b){
   const people = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'USERS' } });
-  if(people.some(p => p.owner)) return { ok: false, message: 'The Account Owner login already exists. Add people from the Account Owner tab in the app.' };
+  if(people.some(p => p.owner || hasAny(p.ownerStores))) return { ok: false, message: 'The Account Owner login already exists. Add people from the Account Owner tab in the app.' };
   const stores = await allStores();
   const store = stores[0] || await addStore({ id: b.storeId, name: b.storeName, timezone: b.timezone || DEFAULT_TZ }, '', true);
   let u;
@@ -1272,7 +1566,7 @@ async function bootstrap(b){
     u = { sub: attr('sub'), login, name: attr('name') || b.name || '', phone: attr('phone_number'), tempPassword: pw };
   }
   await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'USERS', sk: u.sub, login: u.login, name: u.name, phone: u.phone,
-    owner: true, stores: {}, perms: {}, createdAt: now(), createdBy: 'setup' } }));
+    owner: false, ownerMig: true, ownerStores: { [store.id]: true }, stores: {}, perms: {}, createdAt: now(), createdBy: 'setup' } }));
   return { ok: true, message: `Account Owner login "${u.login}" created. Pharmacy ID: ${store.id} (${store.name}). Temporary password: ${u.tempPassword}`, store, tempPassword: u.tempPassword };
 }
 
@@ -1312,9 +1606,11 @@ export const handler = async (event) => {
       return json(200, await publicPharmacy(id)); }
     const claims = (((event.requestContext || {}).authorizer || {}).jwt || {}).claims || {};
     if(!claims.sub) throw new HttpError(401, 'Please sign in again.');
+    await migrateOwners();
     const me = await profileOf(claims.sub);
     if(!me || me.disabled || me.deleted) throw forbidden('Your login isn’t switched on for any pharmacy. Ask the Account Owner.');
     me.login = me.login || claims['cognito:username'];
+    me.owner = isOwnerP(me); me.clientOwner = isClientOwnerP(me);          // owner: manages at least one pharmacy; inside a pharmacy it is set for that pharmacy alone
     const method = event.requestContext.http.method, path = event.rawPath || '/';
     let body = {};
     if(event.body){

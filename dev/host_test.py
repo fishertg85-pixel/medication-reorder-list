@@ -47,7 +47,7 @@ check("host resets the Account Owner's password", s == 200 and r.get("tempPasswo
 OT, OA = login("owner", r["tempPassword"], "ownerpass77")
 check("Account Owner can sign in with it", bool(OT))
 check("host changes the AM's phone (with consent)", api(HT, "POST", f"/host/users/{amsub}", {"phone":"8175550001","smsConsent":True})[0] == 200)
-check("host can't change the AM's pharmacies", api(HT, "POST", f"/host/users/{amsub}", {"stores":{"NTX1":False}})[0] == 400)
+check("host can change which pharmacies an Account Owner also works at (one login, many roles)", api(HT, "POST", f"/host/users/{amsub}", {"stores":{"NTX1":True}})[0] == 200)
 check("host can't switch itself off", api(HT, "POST", f"/host/users/{hsub}", {"disabled":True})[0] == 400)
 check("host can't give itself a pharmacy", api(HT, "POST", f"/host/users/{hsub}", {"stores":{"NTX1":True}})[0] == 400)
 CL = lambda **k: dict({"legalName": "NorTex Holdings LLC", "entityType": "llc", "ein": "12-3456789", "address": "100 Main St", "city": "Haslet", "state": "TX", "zip": "76052"}, **k)

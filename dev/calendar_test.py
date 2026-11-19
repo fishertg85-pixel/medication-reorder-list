@@ -26,6 +26,7 @@ H, HA = login("neo", "hosttemp12a", "hostpass999"); api(H, "POST", "/host-unlock
 CL = lambda **k: dict({"legalName": "NorTex Holdings LLC", "entityType": "llc", "ein": "12-3456789", "address": "100 Main St", "city": "Haslet", "state": "TX", "zip": "76052"}, **k)
 client1 = api(H, "POST", "/host/clients", CL())[1]["id"]; ENT = {"clientId": client1, "entityLegalName": "Other Pharmacy LLC", "entityType": "llc", "ein": "98-7654321"}
 check("add NTX2 (host)", api(H, "POST", "/host/stores", {"id": "NTX2", "name": "Other Pharmacy", **ENT})[0], 200)
+check("host names the Account Owner of NTX2", api(H, "POST", "/host/stores/NTX2/owner", {"owner": {"login": "owner"}})[0], 200)
 check("Account Owner cannot switch the calendar on", api(O, "POST", "/owner/stores/NTX1", {"calendar": True})[0], 403)
 def mk(login_id, stores, cal):
     s, r = api(O, "POST", "/owner/users", {"login": login_id, "name": login_id.upper(), "phone": "(817) 555-%04d" % (abs(hash(login_id)) % 10000), "smsConsent": True,

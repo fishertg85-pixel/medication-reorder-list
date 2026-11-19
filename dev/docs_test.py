@@ -178,5 +178,5 @@ stu = [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "st
 check("rep cannot grant Documents or set a duty", (api(R, "POST", "/host/users/" + stu["sub"], {"perms": {"documents": True}})[0], api(R, "POST", "/host/users/" + stu["sub"], {"docDuty": "dp"})[0]), (403, 403))
 check("Account Owner can set Documents privilege", api(O, "POST", "/owner/users/" + stu["sub"], {"perms": {"documents": False}})[0], 200)
 check("access follows the switch immediately", api(ST, "GET", D)[0], 403)
-check("Account Owner duty cannot be set", api(O, "POST", "/owner/users/" + [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["owner"]][0]["sub"], {"docDuty": "dp"})[0], 400)
+check("Account Owner can hold a document duty (the document view still treats the owner as Owner)", api(O, "POST", "/owner/users/" + [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["owner"]][0]["sub"], {"docDuty": "dp"})[0], 200)
 print("\n%d failed" % len(fails) if fails else "\nall passed"); sys.exit(1 if fails else 0)

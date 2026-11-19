@@ -49,7 +49,7 @@ check("type listed", {u["login"]: u["acctType"] for u in api(O, "GET", "/owner/u
 check("bad type refused", api(O, "POST", "/owner/users/" + sub, {"acctType": "wizard"})[0], 400)
 check("clear type", api(O, "POST", "/owner/users/" + sub, {"acctType": ""})[0], 200)
 ownersub = [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["owner"]][0]["sub"]
-check("Account Owner has no type to set", api(O, "POST", "/owner/users/" + ownersub, {"acctType": "tech"})[0], 400)
+check("Account Owner can hold a job type (owner who is also the pharmacist)", api(O, "POST", "/owner/users/" + ownersub, {"acctType": "tech"})[0], 200)
 api(O, "POST", "/owner/users/" + sub, {"acctType": "tech"})
 check("Account Owner cannot change her OWN mobile number", api(O, "POST", "/owner/users/" + ownersub, {"phone": "8175550777", "smsConsent": True})[0], 403)
 check("her number is unchanged", [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["owner"]][0]["phone"] != "+18175550777", True)
