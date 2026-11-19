@@ -1,0 +1,254 @@
+
+
+<div class="wrap">
+  <header class="top">
+    <div class="sub"><span id="npiStatus" class="npistat off" hidden></span></div>
+    <div class="tgroup">
+      <div class="seg" role="radiogroup" aria-label="Order type">
+      <input type="radio" name="otype" id="t_tel" value="tel" checked><label for="t_tel">Telephone order</label>
+      <input type="radio" name="otype" id="t_xfer" value="xfer"><label for="t_xfer">Transfer in</label>
+    </div>
+    </div>
+  </header>
+
+  <div class="dirbar">
+    <span class="hint" id="dirCount"></span>
+    <span class="dirtools">
+      <button type="button" class="small" id="dirExport">Export directory backup</button>
+      <button type="button" class="small" id="dirImportBtn">Import directory</button>
+      <input type="file" id="dirImport" accept=".json,application/json" hidden>
+      <button type="button" class="small" id="staffBtn" hidden>Pharmacists</button>
+    </span>
+  </div>
+  <section class="card" id="staffCard" hidden>
+    <h2>Receiving pharmacists</h2>
+    <div class="body">
+      <div id="staffRows" class="staffrows"></div>
+      <div class="actions"><span class="msg" id="staffMsg"></span><button type="button" class="small" id="staffAdd">Add pharmacist</button><button type="button" class="small primary" id="staffSave">Save</button><button type="button" class="small" id="staffClose">Close</button></div>
+    </div>
+  </section>
+
+
+  <!-- Pharmacies -->
+  <div class="pair">
+    <section class="card">
+      <h2>Receiving pharmacy</h2>
+      <div class="body">
+        <div class="static">
+          <div><div class="k">Pharmacy</div><div class="v" id="rcv_name"></div></div>
+          <div><div class="k">Address</div><div class="v" id="rcv_addr"></div></div>
+          <div class="row">
+            <div class="c6"><div class="k">Phone</div><div class="v num" id="rcv_phone"></div></div>
+            <div class="c6"><div class="k">Fax</div><div class="v num" id="rcv_fax"></div></div>
+          </div>
+          <div class="row">
+            <div class="c4"><div class="k">TX license</div><div class="v num" id="rcv_lic"></div></div>
+            <div class="c4"><div class="k">DEA</div><div class="v num" id="rcv_dea"></div></div>
+            <div class="c4"><div class="k">NPI</div><div class="v num" id="rcv_npi"></div></div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="f c8"><label for="rp_rph">Receiving pharmacist</label><select id="rp_rph"><option value="">Select pharmacist</option></select></div>
+          <div class="f c4"><label for="rp_lic">RPh license #</label><input id="rp_lic" class="num" readonly tabindex="-1"></div>
+        </div>
+        <div class="row">
+          <div class="f c8"><label for="rp_pic">Pharmacist in charge (PIC)</label><input id="rp_pic" readonly tabindex="-1"></div>
+          <div class="f c4"><label for="rp_piclic">PIC license #</label><input id="rp_piclic" class="num" readonly tabindex="-1"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" data-only="xfer">
+      <h2>Transferring pharmacy <span class="tag" id="phTag"></span></h2>
+      <div class="body">
+        <div class="row">
+          <div class="f c12 lookup"><label for="ph_name">Pharmacy name</label><input id="ph_name" data-lookup="ph" autocomplete="off" placeholder="Search name, phone, or NPI"></div>
+        </div>
+        <div class="row">
+          <div class="f c12"><label for="ph_addr">Street address</label><input id="ph_addr" autocomplete="off" data-addr="ph" placeholder="Type number + street, then pause"></div>
+        </div>
+        <div class="row">
+          <div class="f c6"><label for="ph_city">City</label><input id="ph_city" autocomplete="off"></div>
+          <div class="f c2 h"><label for="ph_state">State</label><select id="ph_state"><option value=""></option><option>AL</option><option>AK</option><option>AZ</option><option>AR</option><option>CA</option><option>CO</option><option>CT</option><option>DE</option><option>DC</option><option>FL</option><option>GA</option><option>HI</option><option>ID</option><option>IL</option><option>IN</option><option>IA</option><option>KS</option><option>KY</option><option>LA</option><option>ME</option><option>MD</option><option>MA</option><option>MI</option><option>MN</option><option>MS</option><option>MO</option><option>MT</option><option>NE</option><option>NV</option><option>NH</option><option>NJ</option><option>NM</option><option>NY</option><option>NC</option><option>ND</option><option>OH</option><option>OK</option><option>OR</option><option>PA</option><option>RI</option><option>SC</option><option>SD</option><option>TN</option><option>TX</option><option>UT</option><option>VT</option><option>VA</option><option>WA</option><option>WV</option><option>WI</option><option>WY</option><option>PR</option><option>GU</option><option>VI</option><option>AS</option><option>MP</option><option>AA</option><option>AE</option><option>AP</option></select></div>
+          <div class="f c4 h"><label for="ph_zip">ZIP</label><input id="ph_zip" class="num" autocomplete="off"></div>
+        </div>
+        <div class="row">
+          <div class="f c6 h lookup"><label for="ph_phone">Phone</label><input id="ph_phone" class="num" data-lookup="ph" autocomplete="off"></div>
+          <div class="f c6 h"><label for="ph_fax">Fax</label><input id="ph_fax" class="num" autocomplete="off"></div>
+        </div>
+        <div class="row">
+          <div class="f c4 h"><label for="ph_lic">Pharmacy license #</label><input id="ph_lic" class="num" autocomplete="off"></div>
+          <div class="f c4 h lookup"><label for="ph_npi">NPI</label><input id="ph_npi" class="num" data-lookup="ph" autocomplete="off"></div>
+          <div class="f c4"><label for="ph_dea">DEA # (CIII–V)</label><input id="ph_dea" class="num" autocomplete="off"></div>
+        </div>
+        <div class="row">
+          <div class="f c8"><label for="ph_rph">Transferring pharmacist</label><input id="ph_rph" autocomplete="off"></div>
+          <div class="f c4"><label for="ph_rphlic">RPh license #</label><input id="ph_rphlic" class="num" autocomplete="off"></div>
+        </div>
+        <div class="tools">
+          <span class="msg" id="phMsg"></span>
+                    <button type="button" class="small" id="phSave">Save pharmacy to directory</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Patient + prescriber, side by side -->
+  <div class="pair">
+  <section class="card">
+    <h2>Patient information</h2>
+    <div class="body">
+      <div class="row">
+        <div class="f c6"><label for="pt_last">Last name</label><input id="pt_last" autocomplete="off"></div>
+        <div class="f c6"><label for="pt_first">First name</label><input id="pt_first" autocomplete="off"></div>
+      </div>
+      <div class="row">
+        <div class="f c4 h"><label for="pt_dob">Date of birth</label><input id="pt_dob" class="num" placeholder="00/00/0000" autocomplete="off"></div>
+        <div class="f c3 h"><label for="pt_sex">Sex</label><select id="pt_sex"><option value=""></option><option value="M">MALE</option><option value="F">FEMALE</option><option value="U">UNKNOWN</option></select></div>
+        <div class="f c5"><label for="pt_phone">Phone</label><input id="pt_phone" class="num" autocomplete="off"></div>
+      </div>
+      <div class="row">
+        <div class="f c12"><label for="pt_addr">Street address</label><input id="pt_addr" autocomplete="off" data-addr="pt" placeholder="Type number + street, then pause"></div>
+      </div>
+      <div class="row">
+        <div class="f c6"><label for="pt_city">City</label><input id="pt_city" autocomplete="off"></div>
+        <div class="f c3 h"><label for="pt_state">State</label><select id="pt_state"><option value=""></option><option>AL</option><option>AK</option><option>AZ</option><option>AR</option><option>CA</option><option>CO</option><option>CT</option><option>DE</option><option>DC</option><option>FL</option><option>GA</option><option>HI</option><option>ID</option><option>IL</option><option>IN</option><option>IA</option><option>KS</option><option>KY</option><option>LA</option><option>ME</option><option>MD</option><option>MA</option><option>MI</option><option>MN</option><option>MS</option><option>MO</option><option>MT</option><option>NE</option><option>NV</option><option>NH</option><option>NJ</option><option>NM</option><option>NY</option><option>NC</option><option>ND</option><option>OH</option><option>OK</option><option>OR</option><option>PA</option><option>RI</option><option>SC</option><option>SD</option><option>TN</option><option>TX</option><option>UT</option><option>VT</option><option>VA</option><option>WA</option><option>WV</option><option>WI</option><option>WY</option><option>PR</option><option>GU</option><option>VI</option><option>AS</option><option>MP</option><option>AA</option><option>AE</option><option>AP</option></select></div>
+        <div class="f c3 h"><label for="pt_zip">ZIP</label><input id="pt_zip" class="num" autocomplete="off"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Prescriber information <span class="tag" id="prTag"></span></h2>
+    <div class="body">
+      <div class="row">
+        <div class="f c6 lookup"><label for="pr_last">Last name</label><input id="pr_last" data-lookup="pr" autocomplete="off" placeholder="Search"></div>
+        <div class="f c6"><label for="pr_first">First name</label><input id="pr_first" data-lookup="pr" autocomplete="off"></div>
+      </div>
+      <div class="row">
+        <div class="f c6"><label for="pr_cred">Credentials / specialty</label><input id="pr_cred" autocomplete="off"></div>
+        <div class="f c6 lookup"><label for="pr_npi">NPI</label><input id="pr_npi" class="num" data-lookup="pr" autocomplete="off"></div>
+      </div>
+      <div class="row">
+        <div class="f c6"><label for="pr_dea">DEA #</label><input id="pr_dea" class="num" autocomplete="off"></div>
+        <div class="f c6"><label for="pr_lic">TX license #</label><input id="pr_lic" class="num" autocomplete="off"></div>
+      </div>
+      <div class="row">
+        <div class="f c12"><label for="pr_addr">Practice street address</label><input id="pr_addr" autocomplete="off" data-addr="pr" placeholder="Type number + street, then pause"></div>
+      </div>
+      <div class="row">
+        <div class="f c6"><label for="pr_city">City</label><input id="pr_city" autocomplete="off"></div>
+        <div class="f c3 h"><label for="pr_state">State</label><select id="pr_state"><option value=""></option><option>AL</option><option>AK</option><option>AZ</option><option>AR</option><option>CA</option><option>CO</option><option>CT</option><option>DE</option><option>DC</option><option>FL</option><option>GA</option><option>HI</option><option>ID</option><option>IL</option><option>IN</option><option>IA</option><option>KS</option><option>KY</option><option>LA</option><option>ME</option><option>MD</option><option>MA</option><option>MI</option><option>MN</option><option>MS</option><option>MO</option><option>MT</option><option>NE</option><option>NV</option><option>NH</option><option>NJ</option><option>NM</option><option>NY</option><option>NC</option><option>ND</option><option>OH</option><option>OK</option><option>OR</option><option>PA</option><option>RI</option><option>SC</option><option>SD</option><option>TN</option><option>TX</option><option>UT</option><option>VT</option><option>VA</option><option>WA</option><option>WV</option><option>WI</option><option>WY</option><option>PR</option><option>GU</option><option>VI</option><option>AS</option><option>MP</option><option>AA</option><option>AE</option><option>AP</option></select></div>
+        <div class="f c3 h"><label for="pr_zip">ZIP</label><input id="pr_zip" class="num" autocomplete="off"></div>
+      </div>
+      <div class="row">
+        <div class="f c6 h lookup"><label for="pr_phone">Phone</label><input id="pr_phone" class="num" data-lookup="pr" autocomplete="off"></div>
+        <div class="f c6 h"><label for="pr_fax">Fax</label><input id="pr_fax" class="num" autocomplete="off"></div>
+      </div>
+      <div class="row" data-only="tel">
+        <div class="f c7"><label for="pr_caller">Person calling (name / title if agent)</label><input id="pr_caller" autocomplete="off"></div>
+        <div class="f c5"><label for="pr_callback">Call-back number</label><input id="pr_callback" class="num" autocomplete="off"></div>
+      </div>
+      <div class="tools">
+        <span class="msg" id="prMsg"></span>
+                <button type="button" class="small" id="prSave">Save prescriber to directory</button>
+      </div>
+    </div>
+  </section>
+  </div>
+
+  <!-- Prescriptions (one card per Rx) -->
+  <section class="card" id="rxSection">
+    <h2>Prescriptions <span class="tag" id="rxCount"></span></h2>
+    <div id="rxList"></div>
+    <div class="rxaddbar"><button type="button" id="rxAdd" class="small">+ Add another prescription</button></div>
+  </section>
+  <template id="rxTpl"><div class="rxcard"><div class="rxhead"><span class="rxnum">Prescription</span><button type="button" class="small rxremove">Remove</button></div>
+<div class="body">
+      <div class="row">
+        <div class="f c5"><label for="rx__N__-drug">Drug name</label><input id="rx__N__-drug" data-f="drug" autocomplete="off" placeholder="Type 3+ letters"></div>
+        <div class="f c2 h"><label for="rx__N__-str">Strength</label><input id="rx__N__-str" data-f="str" class="num" autocomplete="off" placeholder="e.g. 500"></div>
+        <div class="f c2 h"><label for="rx__N__-unit">Units</label><select id="rx__N__-unit" data-f="unit"><option value=""></option><option>MG</option><option>MCG</option><option>G</option><option>MG/ML</option><option>MCG/ML</option><option>MG/5 ML</option><option>MG/G</option><option>%</option><option>UNITS</option><option>UNITS/ML</option><option>MEQ</option><option>MEQ/ML</option><option>MMOL</option><option>IU</option><option>MCG/HR</option><option>MG/24 HR</option><option>MG/ACTUATION</option><option>MCG/ACTUATION</option><option>MG/DOSE</option><option>ML</option><option>OTHER</option></select></div>
+        <div class="f c3"><label for="rx__N__-form">Dosage form</label><select id="rx__N__-form" data-f="form"><option value=""></option><option>TABLET</option><option>TABLET, EXTENDED RELEASE</option><option>TABLET, DELAYED RELEASE</option><option>TABLET, CHEWABLE</option><option>TABLET, ODT</option><option>TABLET, SUBLINGUAL</option><option>CAPSULE</option><option>CAPSULE, EXTENDED RELEASE</option><option>CAPSULE, DELAYED RELEASE</option><option>SOLUTION, ORAL</option><option>SUSPENSION, ORAL</option><option>SYRUP</option><option>ELIXIR</option><option>DROPS, ORAL</option><option>INJECTION, VIAL</option><option>INJECTION, PEN</option><option>INJECTION, PREFILLED SYRINGE</option><option>INJECTION, AMPULE</option><option>CREAM</option><option>OINTMENT</option><option>GEL</option><option>LOTION</option><option>FOAM</option><option>SOLUTION, TOPICAL</option><option>PATCH, TRANSDERMAL</option><option>INHALER, MDI</option><option>INHALER, DPI</option><option>SOLUTION, NEBULIZER</option><option>SPRAY, NASAL</option><option>DROPS, OPHTHALMIC</option><option>OINTMENT, OPHTHALMIC</option><option>DROPS, OTIC</option><option>SUPPOSITORY, RECTAL</option><option>SUPPOSITORY, VAGINAL</option><option>CREAM, VAGINAL</option><option>TROCHE / LOZENGE</option><option>FILM</option><option>POWDER</option><option>GRANULES</option><option>KIT</option><option>OTHER</option></select></div>
+      </div>
+      <div class="row" data-f="otherRow" hidden>
+        <div class="f c2 h"></div><div class="f c3" data-f="unitOtherBox" hidden><label for="rx__N__-unit_other">Other units</label><input id="rx__N__-unit_other" data-f="unit_other" autocomplete="off"></div>
+        <div class="f c4" data-f="formOtherBox" hidden><label for="rx__N__-form_other">Other dosage form</label><input id="rx__N__-form_other" data-f="form_other" autocomplete="off"></div>
+      </div>
+      <div class="row">
+        <div class="f c8"><label for="rx__N__-sig">Directions (sig)</label><input id="rx__N__-sig" data-f="sig" autocomplete="off"></div>
+        <div class="f c4"><label for="rx__N__-ndc">NDC <span class="tag" data-f="ndcTag"></span></label><input id="rx__N__-ndc" data-f="ndc" class="num" autocomplete="off" placeholder="Type NDC without dashes"></div>
+      </div>
+      <div class="row">
+        <div class="f c2 h"><label for="rx__N__-qty" data-lbl-tel="Quantity" data-lbl-xfer="Original quantity">Quantity</label><input id="rx__N__-qty" data-f="qty" class="num" autocomplete="off"></div>
+        <div class="f c2 h"><label for="rx__N__-ref" data-lbl-tel="Refills" data-lbl-xfer="Original refills">Refills</label><input id="rx__N__-ref" data-f="ref" class="num" autocomplete="off"></div>
+        <div class="f c2 h" data-only="xfer"><label for="rx__N__-date">Original Rx date</label><input id="rx__N__-date" data-f="date" class="num" placeholder="00/00/0000" autocomplete="off"></div>
+        <div class="f c2 h"><label for="rx__N__-days">Days supply</label><input id="rx__N__-days" data-f="days" class="num" autocomplete="off"></div>
+        <div class="f c4 h" data-only="xfer"><label for="rx__N__-daw">DAW / substitution</label><select id="rx__N__-daw" data-f="daw"><option value=""></option><option>SUBSTITUTION ALLOWED</option><option>BRAND MEDICALLY NECESSARY</option></select></div>
+        <div class="f c3" data-only="tel"><label for="rx__N__-daw_t">Substitution</label>
+          <select id="rx__N__-daw_t" data-f="daw_t"><option value=""></option><option>SUBSTITUTION ALLOWED</option><option>BRAND MEDICALLY NECESSARY</option></select></div>
+      </div>
+      <div class="row" data-only="xfer">
+        <div class="f c3 h"><label for="rx__N__-origno">Original Rx #</label><input id="rx__N__-origno" data-f="origno" class="num" autocomplete="off"></div>
+        <div class="f c2 h"><label for="rx__N__-qrem">Remaining quantity</label><input id="rx__N__-qrem" data-f="qrem" class="num" autocomplete="off"></div>
+        <div class="f c2 h"><label for="rx__N__-rrem">Remaining refills</label><input id="rx__N__-rrem" data-f="rrem" class="num" autocomplete="off"></div>
+        <div class="f c2 h"><label for="rx__N__-first">Date of first fill</label><input id="rx__N__-first" data-f="first" class="num" placeholder="00/00/0000" autocomplete="off"></div>
+        <div class="f c3 h"><label for="rx__N__-last">Date of last fill</label><input id="rx__N__-last" data-f="last" class="num" placeholder="00/00/0000" autocomplete="off"></div>
+      </div>
+      <div class="row" data-only="xfer">
+        <label class="chk c12" for="rx__N__-never"><input type="checkbox" id="rx__N__-never" data-f="never"> Never filled at pharmacy of origin</label>
+      </div>
+      <div class="row">
+        <div class="f c4"><label for="rx__N__-sched">Schedule</label>
+          <select id="rx__N__-sched" data-f="sched">
+            <option value="Non-controlled">Non-controlled</option>
+            <option value="CII" data-tel-only>CII (emergency telephone order only)</option>
+            <option value="CIII">CIII</option><option value="CIV">CIV</option><option value="CV">CV</option>
+          </select></div>
+        <div class="c8" style="align-self:end"><div data-f="schedNote" class="notice" hidden></div></div>
+      </div>
+    </div></div></template>
+
+  <div id="printChoice" class="choice" hidden>
+    <div><strong><span id="choiceCount"></span> prescriptions.</strong> How do you want the paperwork?</div>
+    <div class="copyactions">
+      <button type="button" class="small primary" id="choiceOne">One form</button>
+      <button type="button" class="small primary" id="choiceSep">Separate forms</button>
+      <button type="button" class="small" id="choiceCancel">Cancel</button>
+    </div>
+  </div>
+  <div id="keepPr" class="choice" hidden>
+    <div><strong>Keep the prescriber for the next patient?</strong><div class="hint">Keeps the prescriber, caller and call-back number. Everything else is cleared.</div></div>
+    <div class="copyactions">
+      <button type="button" class="small primary" id="keepPrYes">Keep prescriber</button>
+      <button type="button" class="small" id="keepPrNo">Clear everything</button>
+      <button type="button" class="small" id="keepPrCancel">Cancel</button>
+    </div>
+  </div>
+  <div id="copyBar" class="copybar" hidden>
+    <div><strong>Your PDF copies</strong><div class="hint">Open to print or fax to 817-549-8796, or download to upload to the eFax portal. To add another prescription, use + Add another prescription, then click Update PDF. When the fax is sent, click Done to clear the form. Nothing is stored; closing this page discards everything.</div>
+      <div class="notice" id="staleNote" hidden>The form has changed since this PDF was made. Click Update PDF.</div></div>
+    <div id="layoutBar" class="copyactions" hidden>
+      <button type="button" class="small" id="layOne">One form, all prescriptions</button>
+      <button type="button" class="small" id="laySep">Separate form for each prescription</button>
+    </div>
+    <div id="copyList" class="copylist"></div>
+    <div class="copyactions">
+      <a id="copyAll" class="btnlink" target="_blank" rel="noopener" hidden>Print all consecutively (one print job)</a>
+      <button type="button" class="small" id="copyDlAll" hidden>Download all</button>
+      <button type="button" class="small primary" id="copyUpdate">Update PDF</button>
+      <button type="button" class="small primary" id="copyDone">Done, clear form</button>
+      <button type="button" class="small" id="copyKeep">Keep form</button>
+    </div>
+  </div>
+
+
+  <div class="actions">
+    <span class="msg" id="mainMsg"></span>
+    <span class="hint" id="faxTo"></span>
+    <button type="button" id="clearBtn">Clear form</button>
+    <button type="button" id="clearConfirm" hidden>Confirm clear</button>
+    <button type="button" class="primary" id="pdfBtn">Create PDF for fax</button>
+  </div>
+</div>
+

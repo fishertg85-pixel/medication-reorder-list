@@ -159,7 +159,7 @@ async function allStores(){
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 const maskStore = s => ({ ...s, ein: '', einMasked: maskEin(s.ein) });      // only IronLedger sees a full EIN
-async function storesFor(me){ const all = await allStores(); const mine = me.owner ? all : all.filter(s => (me.stores || {})[s.id] === true); return me.host ? mine : mine.map(maskStore).map(s => suiteStore(s.id) ? { ...s, calendar: suiteUser(me, s.id), documents: suiteUser(me, s.id) } : s); }
+async function storesFor(me){ const all = await allStores(); const mine = me.owner ? all : all.filter(s => (me.stores || {})[s.id] === true); return me.host ? mine : mine.map(maskStore).map(s => suiteStore(s.id) ? { ...s, calendar: suiteUser(me, s.id), documents: suiteUser(me, s.id), rx: suiteUser(me, s.id) } : s); }
 function canUse(me, store){ return !!me.owner || (me.stores || {})[store] === true; }
 function permsOf(me){ const o = {}; for(const p of PERMS) o[p] = me.owner ? true : ((me.perms || {})[p] ?? DEFAULT_PERMS[p]); return o; }
 // ---------- Calendar + Documents suite access: a fixed list of logins per pharmacy (SUITE_USERS in template.yaml, "NTX1:login,login;..."),
@@ -952,6 +952,76 @@ function cleanDocDate(v, what, { notFuture = false, max = null } = {}, today){
   return v;
 }
 const addMonthsIso = (s, n) => { const [y, m, d] = s.split('-').map(Number); const dt = new Date(Date.UTC(y, m - 1 + n, 1)); const last = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0)).getUTCDate(); dt.setUTCDate(Math.min(d, last)); return dt.toISOString().slice(0, 10); };
+// ---------- Rx Intake (suite tab): same named-user list as Calendar and Documents. The page itself runs only in the browser: patient fields, Rx data
+// and PDFs never reach this server. The server keeps only (1) the pharmacy's shared directory of pharmacies and prescribers, (2) the receiving pharmacists
+// list, and (3) a lookup relay for the NPI Registry and the Census address service, which web pages cannot call directly (GET, https, four fixed addresses).
+const RX_ALLOW = ['https://npiregistry.cms.hhs.gov/api/', 'https://geocoding.geo.census.gov/geocoder/', 'https://clinicaltables.nlm.nih.gov/api/', 'https://rxnav.nlm.nih.gov/REST/'];
+const RX_FIELDS = { ph: ['name', 'addr', 'city', 'state', 'zip', 'phone', 'fax', 'license', 'npi', 'dea'], pr: ['name', 'last', 'first', 'cred', 'addr', 'city', 'state', 'zip', 'phone', 'fax', 'license', 'npi', 'dea'] };
+const RX_STAFF_SEED = { NTX1: { pharmacists: [{ name: 'THOMAS FISHER', license: '59985' }, { name: 'MARIAMME FERREIRO', license: '40291' }], pic: { name: 'MARIAMME FERREIRO', license: '40291' } } };
+function rxGate(me, storeItem){ if(!suiteStore(storeItem.sk) || !suiteUser(me, storeItem.sk)) throw forbidden('Rx Intake is limited to the named users for this pharmacy.'); }
+function rxCleanRec(kind, r){
+  if(!r || typeof r !== 'object') throw bad('Bad record.');
+  const o = {};
+  for(const f of RX_FIELDS[kind]){ let v = r[f]; if(v === undefined || v === null) v = ''; v = String(v).trim().slice(0, f === 'addr' || f === 'name' || f === 'cred' ? 160 : 60); if(f === 'phone' || f === 'fax') v = v.replace(/\D/g, '').slice(0, 11); o[f] = v; }
+  if(!o.name) throw bad('A saved record needs a name.');
+  let id = String(r._id || '').trim(); if(!/^[A-Za-z0-9_-]{1,40}$/.test(id)) id = '';
+  if(/^\d{10}$/.test(o.npi)) id = 'npi_' + o.npi; else if(!id) id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  o._id = id; return o;
+}
+async function rxLoad(store, storeItem){
+  const items = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'RXDIR#' + store } });
+  const ph = [], pr = [];
+  for(const it of items){ const { pk, sk, ...rec } = it; (sk.startsWith('PH#') ? ph : pr).push(rec); }
+  const cfg = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'RXCFG#' + store, sk: 'STAFF' } }))).Item;
+  const staff = cfg ? { pharmacists: cfg.pharmacists || [], pic: cfg.pic || null } : (RX_STAFF_SEED[store] || { pharmacists: [], pic: null });
+  const s = storeItem;
+  return { pharmacy: { name: s.name || '', address: s.address || '', suite: s.suite || '', city: s.city || '', state: s.state || '', zip: s.zip || '', phone: s.phone || '', fax: s.fax || '', license: s.license || '', dea: s.dea || '', npi: s.npi || '' }, staff, dir: { ph, pr } };
+}
+async function rxLookup(url){
+  let u; try { u = new URL(String(url || '')); } catch(e){ throw bad('Bad address.'); }
+  if(u.protocol !== 'https:' || u.username || u.password || u.port) throw bad('That address is not allowed.');
+  const base = u.origin + u.pathname;
+  if(!RX_ALLOW.some(a => base.startsWith(a))) throw bad('That address is not allowed.');
+  let r; try { r = await fetch(u.href, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(9000), headers: { accept: 'application/json' } }); } catch(e){ throw new HttpError(502, 'The lookup service did not answer.'); }
+  if(r.status >= 300 && r.status < 400) throw new HttpError(502, 'The lookup service redirected; refused.');
+  if(!r.ok) throw new HttpError(502, 'The lookup service answered with an error (' + r.status + ').');
+  const t = await r.text(); if(t.length > 1500000) throw new HttpError(502, 'The lookup answer was too large.');
+  try { return { data: JSON.parse(t) }; } catch(e){ throw new HttpError(502, 'The lookup service sent something unreadable.'); }
+}
+async function rxRoute(method, store, seg, body, me, storeItem){
+  rxGate(me, storeItem);
+  if(method === 'GET' && seg[0] === 'config' && !seg[1]) return await rxLoad(store, storeItem);
+  if(method === 'POST' && seg[0] === 'lookup' && !seg[1]) return await rxLookup(body.url);
+  if(method === 'POST' && seg[0] === 'dir' && seg[1] === 'save'){
+    const kind = body.kind === 'pr' ? 'pr' : body.kind === 'ph' ? 'ph' : ''; if(!kind) throw bad('Bad kind.');
+    const o = rxCleanRec(kind, body.rec); o.updatedAt = now();
+    await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'RXDIR#' + store, sk: kind.toUpperCase() + '#' + o._id, ...o, by: who(me) } }));
+    return { rec: o };
+  }
+  if(method === 'POST' && seg[0] === 'dir' && seg[1] === 'delete'){
+    const kind = body.kind === 'pr' ? 'pr' : body.kind === 'ph' ? 'ph' : ''; const id = String(body.id || ''); if(!kind || !/^[A-Za-z0-9_-]{1,40}$/.test(id)) throw bad('Bad request.');
+    await ddb.send(new DeleteCommand({ TableName: MAIN, Key: { pk: 'RXDIR#' + store, sk: kind.toUpperCase() + '#' + id } }));
+    return { ok: true };
+  }
+  if(method === 'POST' && seg[0] === 'dir' && seg[1] === 'import'){
+    const out = { ph: 0, pr: 0 };
+    for(const kind of ['ph', 'pr']){
+      const arr = Array.isArray(body[kind]) ? body[kind].slice(0, 3000) : [];
+      const recs = []; for(const r of arr){ try { recs.push(rxCleanRec(kind, r)); } catch(e){} }
+      for(let i = 0; i < recs.length; i += 25) await Promise.all(recs.slice(i, i + 25).map(o => ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'RXDIR#' + store, sk: kind.toUpperCase() + '#' + o._id, ...o, updatedAt: now(), by: who(me) } }))));
+      out[kind] = recs.length;
+    }
+    return out;
+  }
+  if(method === 'POST' && seg[0] === 'staff' && !seg[1]){
+    if(!me.owner) throw forbidden('Only the Account Owner changes the receiving pharmacists.');
+    const cp = p => { if(!p || typeof p !== 'object') return null; const name = String(p.name || '').trim().toUpperCase().slice(0, 80), license = String(p.license || '').trim().slice(0, 20); return name ? { name, license } : null; };
+    const pharmacists = (Array.isArray(body.pharmacists) ? body.pharmacists : []).slice(0, 30).map(cp).filter(Boolean), pic = cp(body.pic);
+    await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'RXCFG#' + store, sk: 'STAFF', pharmacists, pic, updatedAt: now(), by: who(me) } }));
+    return { staff: { pharmacists, pic } };
+  }
+  throw new HttpError(404, 'Not found');
+}
 async function docsRoute(method, store, seg, q, body, me, storeItem){
   docGate(me, storeItem);
   const duty = docDuty(me), m = DOC_MANAGE.includes(duty), a = DOC_APPROVE.includes(duty), today = todayIn(storeItem.timezone);
@@ -1096,6 +1166,7 @@ async function route(method, path, q, body, me, claims){
     if(!exists.Item) throw new HttpError(404, 'No such store.');
     const what = seg[2];
     if(what === 'documents') return await docsRoute(method, store, seg.slice(3), q, body, me, exists.Item);
+    if(what === 'rx') return await rxRoute(method, store, seg.slice(3), body, me, exists.Item);
     if(what === 'calendar'){
       calGate(me, exists.Item);
       if(method === 'GET' && !seg[3]) return await calLoad(store);

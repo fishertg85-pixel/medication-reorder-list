@@ -198,6 +198,7 @@ cut('<header>', '<nav id="tabs">', '''<div id="login">
 cut('<nav id="tabs">', '</nav>', '''<nav id="tabs">
   <button data-tab="calendar" style="display:none;">Calendar</button>
   <button data-tab="documents" style="display:none;">Documents</button>
+  <button data-tab="rx" style="display:none;">Rx Intake</button>
   <button data-tab="list" class="active">Reorder List</button>
   <button data-tab="archive" class="tabx">Archive</button>
   <button data-tab="owner" class="tabx">Account</button>
@@ -234,6 +235,11 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
   <!-- ======================= CALENDAR ======================= -->
   <section id="panel-calendar" class="panel" style="padding:0;">
     <iframe id="calFrame" title="Compliance Calendar" style="width:100%;height:calc(100vh - 120px);min-height:620px;border:0;background:#fff;display:block;"></iframe>
+  </section>
+
+  <!-- ======================= RX INTAKE ======================= -->
+  <section id="panel-rx" class="panel" style="padding:0;">
+    <iframe id="rxFrame" title="Rx Intake" style="width:100%;height:calc(100vh - 120px);min-height:620px;border:0;background:transparent;display:block;"></iframe>
   </section>
 
   <!-- ======================= DOCUMENTS ======================= -->
@@ -332,7 +338,7 @@ rep('''/* ======================================================================
    Drug search: NLM RxTerms / RxNav live, FDA NDC Directory backup. DailyMed links open labels.
    ======================================================================= */''')
 cut('/* ---------------- shared state ---------------- */', '/* ---------------- drug search:', open(P + 'state.js').read() + '\n' + open(P + 'login.js').read() + '\n')
-cut('/* ---------------- safety net:', '</script>', open(P + 'layout_engine.js').read() + '\n' + open(P + 'pharm_panels.js').read() + '\n' + open(P + 'owner.js').read() + '\n' + open(P + 'calendar.js').read() + '\n' + open(P + 'documents_panels.js').read() + '\n' + open(P + 'start.js').read())
+cut('/* ---------------- safety net:', '</script>', open(P + 'layout_engine.js').read() + '\n' + open(P + 'pharm_panels.js').read() + '\n' + open(P + 'owner.js').read() + '\n' + open(P + 'calendar.js').read() + '\n' + open(P + 'documents_panels.js').read() + '\n' + open(P + 'rx.js').read() + '\n' + open(P + 'start.js').read())
 # remove the old tabs/start (now in start.js) — it was after the safety-net block, so already cut
 
 # ---------- list rows: who added it, labels for phone layout, remove only with permission
@@ -456,6 +462,14 @@ cal = cal.replace('</head>', '<style>header.top .brand .mark{display:none}</styl
 assert cal.startswith('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">')
 cal = cal.replace('<meta charset="utf-8">', '<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="%s"><link rel="stylesheet" href="fonts.css">' % CAL_CSP, 1)
 open(OUT.replace('index.html', 'calendar.html'), 'w', encoding='utf-8').write(cal)
+# the Rx Intake page (rx/ folder: the handoff form, adapted): runs in the browser only; nothing about a patient reaches the server
+RXD = os.path.join(HERE, 'rx'); rd = lambda n: open(os.path.join(RXD, n), encoding='utf-8').read()
+RX_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src 'self'; connect-src https://clinicaltables.nlm.nih.gov https://rxnav.nlm.nih.gov; base-uri 'none'; form-action 'none'"   # drug-name lookups (NLM) go straight from the browser, as before; everything else is relayed by the suite
+rxhtml = ('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="%s">'
+          '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Rx Intake</title><link rel="stylesheet" href="fonts.css"><style>\n' % RX_CSP
+          + rd('rx_intake.css') + '</style></head>\n<body>\n' + rd('rx_intake_body.html') + '<script>\n' + rd('vendor_jspdf.js') + '</script>\n<script>\n'
+          + rd('rx_zip_data.js') + '</script>\n<script>\n' + rd('rx_intake_app.js') + '</script>\n</body>\n</html>\n')
+open(OUT.replace('index.html', 'rx.html'), 'w', encoding='utf-8').write(rxhtml)
 s = s[:m.start()] + '<script src="app.js"></script>' + s[m.end():]
 th = re.search(r'<script>([\s\S]*?)</script>', s).group(1)
 h = b64.b64encode(hashlib.sha256(th.encode()).digest()).decode()

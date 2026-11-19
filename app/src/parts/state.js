@@ -215,7 +215,7 @@ function paintStore(){
   $('submitOff').style.display = ME && !PERM('submit') ? '' : 'none';
   $('exportCard').style.display = PERM('export') ? '' : 'none';
   renderStoreInfo();
-  calPaint(); docsPaintTab();
+  calPaint(); docsPaintTab(); rxPaint();
   $('archOpen').style.display = PERM('archive') ? '' : 'none';
   $('acctBtn').style.display = ME && ME.owner ? '' : 'none';
   if(!LANDED && ME && STORE){ LANDED = true;                  // first screen after sign-in = the first tab the person has (Calendar, Documents, Reorder List)

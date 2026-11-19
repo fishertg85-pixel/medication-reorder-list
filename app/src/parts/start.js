@@ -8,6 +8,7 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   if(b.dataset.tab === 'archive') loadArchive(false).catch(() => {});
   if(b.dataset.tab === 'calendar') calShow();
   if(b.dataset.tab === 'documents') docsShow();
+  if(b.dataset.tab === 'rx') rxShow();
 });
 $('acctBtn').onclick = () => document.querySelector('#tabs [data-tab="owner"]').click();                 // Account: by the pharmacy name, not a tab
 $('archOpen').onclick = () => document.querySelector('#tabs [data-tab="archive"]').click();             // Archive: from the Reorder List page
