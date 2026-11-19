@@ -413,20 +413,20 @@ rep('</style>\n</head>', """</style>
   td.chk input{accent-color:var(--ok);}
   #listBody tr.is-ordered td{background:color-mix(in srgb, var(--ok) 14%, var(--panel)) !important;}
   .card,.li-card{box-shadow:var(--shadow);}
-  .li-il{display:flex;align-items:center;gap:9px;margin-bottom:14px;color:var(--muted);font-size:13px;font-weight:600;letter-spacing:.02em;}
-  .li-il img{width:26px;height:26px;border-radius:6px;}
+  .li-il{display:flex;align-items:center;gap:10px;margin-bottom:14px;color:var(--text);font-size:20px;font-weight:700;letter-spacing:.2px;}.li-il b{color:var(--accent);}
+  .li-il img{width:32px;height:32px;border-radius:7px;}
   .brandfoot img{height:20px;width:20px;border-radius:5px;}
 </style>
 <link rel="stylesheet" href="suite.css">
 </head>""")
-rep('  <img id="storeLogo" alt="" style="display:none;">\n', '  <img class="ilmark" src="mark.svg" alt="" width="30" height="30"><span class="ilword">Iron<b>Ledger</b></span>\n  <img id="storeLogo" alt="" style="display:none;">\n')
+rep('  <img id="storeLogo" alt="" style="display:none;">\n', '  <img class="ilmark" src="mark.svg" alt="" width="36" height="36"><span class="ilword">Iron<b>Ledger</b></span>\n  <img id="storeLogo" alt="" style="display:none;">\n')
 rep('  <div class="spacer"></div>\n  <select class="hsel" id="storeSel"', '  <button class="hbtn" id="acctBtn" style="display:none;" title="Pharmacy account details, people and backup">Account</button>\n  <div class="spacer"></div>\n  <select class="hsel" id="storeSel"')
 rep('<meta name="theme-color" content="#1f3864">', '<meta name="theme-color" content="#ffffff">')
 rep('<meta name="apple-mobile-web-app-title" content="Reorder">', '<meta name="apple-mobile-web-app-title" content="IronLedger Reorder">')
 rep('<link rel="icon" href="icon-192.png">', '<link rel="icon" href="mark.svg" type="image/svg+xml">\n<link rel="alternate icon" href="icon-192.png">')
 rep("""  <div class="li-card">
     <div id="liBrand"></div>""", """  <div class="li-card">
-    <div class="li-il"><img src="mark.svg" alt=""><span>IronLedger</span></div>
+    <div class="li-il"><img src="mark.svg" alt=""><span>Iron<b>Ledger</b></span></div>
     <div id="liBrand"></div>""")
 rep('<img id="ilLogo" src="ironledger-logo.png" alt="" hidden>', '<img id="ilLogo" src="mark.svg" alt="" hidden>')
 
@@ -452,6 +452,7 @@ HOOK = ("window.IL_BLANK=true;\n"
 assert cal.count('window.IL_BLANK=true;\n') == 1
 CAL_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'"
 cal = cal.replace('window.IL_BLANK=true;\n', HOOK, 1)
+cal = cal.replace('</head>', '<style>header.top .brand .mark{display:none}</style></head>', 1)   # the suite header above already shows the IronLedger name
 assert cal.startswith('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">')
 cal = cal.replace('<meta charset="utf-8">', '<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="%s"><link rel="stylesheet" href="fonts.css">' % CAL_CSP, 1)
 open(OUT.replace('index.html', 'calendar.html'), 'w', encoding='utf-8').write(cal)
