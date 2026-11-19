@@ -219,6 +219,15 @@
 .lockhint.warn{color:#9c4221;font-weight:600;}
 .pfields>label,.pidbox,.pidbox>*{min-width:0;} .pfields select{text-overflow:ellipsis;}
 .hdrop{margin:8px 0;} .hdrop summary{cursor:pointer;font-size:13px;font-weight:600;padding:6px 9px;border:1px solid var(--line,#ccc);border-radius:6px;} .hdlist{padding:6px 4px;display:grid;gap:4px;}
+
+/* client page, contacts: the list and the add form take the full panel width (the fields above them sit two to a row, these must not) */
+.pfields .clh,.pfields>.hint,.pfields [data-ctlist],.pfields .ctadd{grid-column:1/-1;}
+[data-ctlist] .clrow{flex-wrap:wrap;align-items:flex-start;gap:0 10px;padding:6px 0;border-bottom:1px solid var(--line-soft,var(--line));}
+[data-ctlist] .clrow .cld{flex:0 0 100%;min-width:0;font-size:11px;text-transform:uppercase;letter-spacing:.04em;}
+[data-ctlist] .clrow .cln{flex:1;min-width:0;overflow-wrap:anywhere;}
+.ctadd{display:grid;grid-template-columns:1fr;gap:8px;}
+.ctadd select,.ctadd input{width:100%;min-width:0;}
+.ctadd button{justify-self:start;}
 /* ---- Documents tab ---- */
 #panel-documents{position:relative;}
 #panel-documents .pgrid{margin-top:2px;}
