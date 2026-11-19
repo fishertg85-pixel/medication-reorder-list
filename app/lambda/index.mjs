@@ -159,7 +159,7 @@ async function allStores(){
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 const maskStore = s => ({ ...s, ein: '', einMasked: maskEin(s.ein) });      // only IronLedger sees a full EIN
-async function storesFor(me){ const all = await allStores(); const mine = me.owner ? all : all.filter(s => (me.stores || {})[s.id] === true); return me.host ? mine : mine.map(maskStore).map(s => suiteStore(s.id) ? { ...s, calendar: suiteUser(me, s.id), documents: suiteUser(me, s.id), rx: suiteUser(me, s.id) } : s); }
+async function storesFor(me){ const all = await allStores(); const mine = me.owner ? all : all.filter(s => (me.stores || {})[s.id] === true); return me.host ? mine : mine.map(maskStore).map(s => suiteStore(s.id) ? { ...s, calendar: suiteUser(me, s.id), documents: suiteUser(me, s.id), rx: suiteUser(me, s.id) && rxPharmacist(me) } : s); }
 function canUse(me, store){ return !!me.owner || (me.stores || {})[store] === true; }
 function permsOf(me){ const o = {}; for(const p of PERMS) o[p] = me.owner ? true : ((me.perms || {})[p] ?? DEFAULT_PERMS[p]); return o; }
 // ---------- Calendar + Documents suite access: a fixed list of logins per pharmacy (SUITE_USERS in template.yaml, "NTX1:login,login;..."),
@@ -561,7 +561,7 @@ async function listPeople(){
     for(const u of r.Users || []){ const sub = (u.Attributes || []).find(a => a.Name === 'sub'); if(sub) status[sub.Value] = { status: u.UserStatus, enabled: u.Enabled, created: u.UserCreateDate }; }
     PaginationToken = r.PaginationToken; } while(PaginationToken);
   for(const p of profiles) if(!p.deleted && !p.empId) await ensureEmpId(p);
-  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host, hostRole: p.host ? (p.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: p.host ? (p.repStores || {}) : {}, acctType: p.acctType || '', docDuty: DOC_DUTIES.includes(p.docDuty) ? p.docDuty : '', initials: p.initials || '', empId: p.empId || '', pin: pinState(p),
+  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: !!p.owner, host: !!p.host, hostRole: p.host ? (p.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: p.host ? (p.repStores || {}) : {}, acctType: p.acctType || '', docDuty: DOC_DUTIES.includes(p.docDuty) ? p.docDuty : '', initials: p.initials || '', license: p.license || '', empId: p.empId || '', pin: pinState(p),
     stores: p.stores || {}, perms: effPerms(p), disabled: status[p.sk] ? !status[p.sk].enabled : !!p.disabled,
     status: (status[p.sk] || {}).status || 'UNKNOWN', ...pendingOf(p, status[p.sk]) }))
     // Account Owner, host, then people still waiting to sign in for the first time, then everyone else
@@ -680,6 +680,7 @@ async function resetPin(me, p){                          // a temporary PIN, han
   return { ok: true, tempPin: t };
 }
 // initials (2 to 3 letters) stamp printed copies; unique across all logins so two people never share them
+const cleanLicense = v => { v = String(v == null ? '' : v).trim().toUpperCase(); if(v && !/^[A-Z0-9-]{1,20}$/.test(v)) throw bad('A license number uses letters, digits and dashes only (up to 20).'); return v; };
 const cleanInitials = v => { const t = String(v == null ? '' : v).trim().toUpperCase(); if(t === '') return ''; if(!/^[A-Z]{2,3}$/.test(t)) throw bad('Initials are 2 or 3 letters.'); return t; };
 async function initialsTaken(ini, exceptSub){
   const all = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'USERS' } });
@@ -741,6 +742,7 @@ async function updatePerson(me, sub, seg3, body){
   if(body.acctType !== undefined){ if(p.owner || p.host) throw bad('The Account Owner and host logins have their own account type.'); upd.acctType = cleanType(body.acctType); }
   if(body.docDuty !== undefined){ if(p.owner || p.host) throw bad('The Account Owner and host logins have their own document duty.'); const dd = String(body.docDuty || ''); if(dd !== '' && !DOC_DUTIES.includes(dd)) throw bad('Pick the document duty from the list.'); upd.docDuty = dd; }
   if(body.initials !== undefined){ const ini = cleanInitials(body.initials); if(ini && await initialsTaken(ini, sub)) throw bad('Those initials are already used by someone else.'); upd.initials = ini; }
+  if(body.license !== undefined) upd.license = cleanLicense(body.license);
   if(body.repStores !== undefined){ if(!isSupervisor(me)) throw forbidden('A supervisor assigns reps to pharmacies.'); if(!(p.host && p.hostRole === 'rep')) throw bad('Only rep logins have assigned pharmacies.'); upd.repStores = Object.assign({}, p.repStores || {}, await cleanStoreToggles(body.repStores)); }
   if(body.stores !== undefined) upd.stores = Object.assign({}, p.stores || {}, await cleanStoreToggles(body.stores));
   if(body.perms !== undefined) upd.perms = Object.assign({}, p.perms || {}, cleanPerms(body.perms));
@@ -953,12 +955,12 @@ function cleanDocDate(v, what, { notFuture = false, max = null } = {}, today){
 }
 const addMonthsIso = (s, n) => { const [y, m, d] = s.split('-').map(Number); const dt = new Date(Date.UTC(y, m - 1 + n, 1)); const last = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 0)).getUTCDate(); dt.setUTCDate(Math.min(d, last)); return dt.toISOString().slice(0, 10); };
 // ---------- Rx Intake (suite tab): same named-user list as Calendar and Documents. The page itself runs only in the browser: patient fields, Rx data
-// and PDFs never reach this server. The server keeps only (1) the pharmacy's shared directory of pharmacies and prescribers, (2) the receiving pharmacists
-// list, and (3) a lookup relay for the NPI Registry and the Census address service, which web pages cannot call directly (GET, https, four fixed addresses).
+// and PDFs never reach this server. The server keeps only (1) the pharmacy's shared directory of pharmacies and prescribers, (2) nothing about people (the receiving pharmacist and PIC come from login records), and (3) a lookup relay for the NPI Registry and the Census address service, which web pages cannot call directly (GET, https, four fixed addresses).
 const RX_ALLOW = ['https://npiregistry.cms.hhs.gov/api/', 'https://geocoding.geo.census.gov/geocoder/', 'https://clinicaltables.nlm.nih.gov/api/', 'https://rxnav.nlm.nih.gov/REST/'];
 const RX_FIELDS = { ph: ['name', 'addr', 'city', 'state', 'zip', 'phone', 'fax', 'license', 'npi', 'dea'], pr: ['name', 'last', 'first', 'cred', 'addr', 'city', 'state', 'zip', 'phone', 'fax', 'license', 'npi', 'dea'] };
-const RX_STAFF_SEED = { NTX1: { pharmacists: [{ name: 'THOMAS FISHER', license: '59985' }, { name: 'MARIAMME FERREIRO', license: '40291' }], pic: { name: 'MARIAMME FERREIRO', license: '40291' } } };
-function rxGate(me, storeItem){ if(!suiteStore(storeItem.sk) || !suiteUser(me, storeItem.sk)) throw forbidden('Rx Intake is limited to the named users for this pharmacy.'); }
+// Only a pharmacist (job type on the login: Staff Pharmacist or Pharmacist-In-Charge; the Account Owner counts as PIC) can take or receive a prescription, so Rx Intake is hidden from everyone else.
+const rxPharmacist = me => !me.host && (!!me.owner || me.acctType === 'pharmacist' || me.acctType === 'pic');
+function rxGate(me, storeItem){ if(!suiteStore(storeItem.sk) || !suiteUser(me, storeItem.sk)) throw forbidden('Rx Intake is limited to the named users for this pharmacy.'); if(!rxPharmacist(me)) throw forbidden('Only a pharmacist can use Rx Intake.'); }
 function rxCleanRec(kind, r){
   if(!r || typeof r !== 'object') throw bad('Bad record.');
   const o = {};
@@ -968,14 +970,22 @@ function rxCleanRec(kind, r){
   if(/^\d{10}$/.test(o.npi)) id = 'npi_' + o.npi; else if(!id) id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   o._id = id; return o;
 }
-async function rxLoad(store, storeItem){
+// Receiving pharmacist = the signed-in person (name and RPh license from their login record); PIC = the pharmacy's Pharmacist-In-Charge (account type PIC;
+// otherwise the Account Owner). Nothing here is typed on the form, and neither can be changed from it. When the PIC is the one signed in, both show the same person.
+const RX_NAME = p => String(p.name || p.login || '').trim().toUpperCase();
+async function rxLoad(store, storeItem, me){
   const items = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'RXDIR#' + store } });
   const ph = [], pr = [];
   for(const it of items){ const { pk, sk, ...rec } = it; (sk.startsWith('PH#') ? ph : pr).push(rec); }
-  const cfg = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'RXCFG#' + store, sk: 'STAFF' } }))).Item;
-  const staff = cfg ? { pharmacists: cfg.pharmacists || [], pic: cfg.pic || null } : (RX_STAFF_SEED[store] || { pharmacists: [], pic: null });
+  const people = (await listPeople()).filter(p => !p.host && (p.owner || (p.stores || {})[store] === true));
+  const isRph = p => p.acctType === 'pharmacist' || p.acctType === 'pic' || p.owner;
+  const me2 = people.find(p => p.sub === me.sk) || {};
+  const receiving = isRph(me2) && me2.license ? { name: RX_NAME(me2), license: me2.license } : null;
+  const picP = people.find(p => p.acctType === 'pic' && p.license) || people.find(p => p.owner && p.license) || null;
+  const pic = picP ? { name: RX_NAME(picP), license: picP.license } : null;
+  const notes = []; if(!receiving) notes.push(isRph(me2) ? 'Your RPh license number is not set. Ask the Account Owner to add it to your login.' : 'Only a pharmacist can take or receive a prescription. Your login is not set up as a pharmacist.'); if(!pic) notes.push('The Pharmacist-In-Charge name and license number are not set. Ask the Account Owner.');
   const s = storeItem;
-  return { pharmacy: { name: s.name || '', address: s.address || '', suite: s.suite || '', city: s.city || '', state: s.state || '', zip: s.zip || '', phone: s.phone || '', fax: s.fax || '', license: s.license || '', dea: s.dea || '', npi: s.npi || '' }, staff, dir: { ph, pr } };
+  return { pharmacy: { name: s.name || '', address: s.address || '', suite: s.suite || '', city: s.city || '', state: s.state || '', zip: s.zip || '', phone: s.phone || '', fax: s.fax || '', license: s.license || '', dea: s.dea || '', npi: s.npi || '' }, receiving, pic, notes, dir: { ph, pr } };
 }
 async function rxLookup(url){
   let u; try { u = new URL(String(url || '')); } catch(e){ throw bad('Bad address.'); }
@@ -990,7 +1000,7 @@ async function rxLookup(url){
 }
 async function rxRoute(method, store, seg, body, me, storeItem){
   rxGate(me, storeItem);
-  if(method === 'GET' && seg[0] === 'config' && !seg[1]) return await rxLoad(store, storeItem);
+  if(method === 'GET' && seg[0] === 'config' && !seg[1]) return await rxLoad(store, storeItem, me);
   if(method === 'POST' && seg[0] === 'lookup' && !seg[1]) return await rxLookup(body.url);
   if(method === 'POST' && seg[0] === 'dir' && seg[1] === 'save'){
     const kind = body.kind === 'pr' ? 'pr' : body.kind === 'ph' ? 'ph' : ''; if(!kind) throw bad('Bad kind.');
@@ -1012,13 +1022,6 @@ async function rxRoute(method, store, seg, body, me, storeItem){
       out[kind] = recs.length;
     }
     return out;
-  }
-  if(method === 'POST' && seg[0] === 'staff' && !seg[1]){
-    if(!me.owner) throw forbidden('Only the Account Owner changes the receiving pharmacists.');
-    const cp = p => { if(!p || typeof p !== 'object') return null; const name = String(p.name || '').trim().toUpperCase().slice(0, 80), license = String(p.license || '').trim().slice(0, 20); return name ? { name, license } : null; };
-    const pharmacists = (Array.isArray(body.pharmacists) ? body.pharmacists : []).slice(0, 30).map(cp).filter(Boolean), pic = cp(body.pic);
-    await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'RXCFG#' + store, sk: 'STAFF', pharmacists, pic, updatedAt: now(), by: who(me) } }));
-    return { staff: { pharmacists, pic } };
   }
   throw new HttpError(404, 'Not found');
 }
@@ -1154,7 +1157,7 @@ async function route(method, path, q, body, me, claims){
   if(seg[0] === 'api') seg.shift();                    // works with or without an /api prefix
 
   if(method === 'GET' && seg[0] === 'me' && seg.length === 1)
-    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty(me), initials: me.initials || '', empId: await ensureEmpId(me), pin: pinState(me), pinRequired: PIN_REQUIRED, perms: effPerms(me), stores: await storesFor(me) };
+    return { name: me.name || '', login: me.login, owner: !!me.owner, host: !!me.host, hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty(me), initials: me.initials || '', license: me.license || '', empId: await ensureEmpId(me), pin: pinState(me), pinRequired: PIN_REQUIRED, perms: effPerms(me), stores: await storesFor(me) };
 
   if(method === 'POST' && seg[0] === 'me' && seg[1] === 'pin' && seg.length === 2) return await setMyPin(me, body);
 
@@ -1238,10 +1241,11 @@ async function route(method, path, q, body, me, claims){
       const stores = await cleanStoreToggles(body.stores), perms = Object.assign({}, DEFAULT_PERMS, cleanPerms(body.perms));
       if(body.smsConsent !== true) throw bad('Have the person sign the SMS consent form first, then tick the box.');
       const ini = cleanInitials(body.initials); if(ini && await initialsTaken(ini, '')) throw bad('Those initials are already used by someone else.');
+      const lic = cleanLicense(body.license);
       const u = await createLogin(body);
       try{
         await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'USERS', sk: u.sub, login: u.login, name: u.name, phone: u.phone,
-          stores, perms, acctType: cleanType(body.acctType), initials: ini, empId: await nextEmpNo(), owner: false, createdAt: now(), createdBy: who(me), tempIssuedAt: now(), smsConsentAt: now(), smsConsentRecordedBy: who(me) } }));
+          stores, perms, acctType: cleanType(body.acctType), initials: ini, license: lic, empId: await nextEmpNo(), owner: false, createdAt: now(), createdBy: who(me), tempIssuedAt: now(), smsConsentAt: now(), smsConsentRecordedBy: who(me) } }));
       }catch(e){ await idp.send(new AdminDeleteUserCommand({ UserPoolId: POOL, Username: u.login })).catch(() => {}); throw e; }
       return { ok: true, user: { sub: u.sub, login: u.login, name: u.name, phone: u.phone, stores, perms }, tempPassword: u.tempPassword };
     }

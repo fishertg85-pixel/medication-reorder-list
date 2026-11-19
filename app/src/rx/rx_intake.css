@@ -130,4 +130,3 @@ button:disabled{opacity:.5;cursor:default}
 [data-only]{}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 
-.staffrow{align-items:end}.staffrow .chk{height:30px}

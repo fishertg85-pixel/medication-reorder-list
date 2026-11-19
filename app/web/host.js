@@ -180,7 +180,7 @@ const STAGED = {};
 function effUser(u){
   const s = STAGED[u.sub]; if(!s) return u;
   return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}),
-    disabled:s.disabled !== undefined ? s.disabled : u.disabled, initials:s.initials !== undefined ? s.initials : u.initials});
+    disabled:s.disabled !== undefined ? s.disabled : u.disabled, initials:s.initials !== undefined ? s.initials : u.initials, license:s.license !== undefined ? s.license : u.license});
 }
 function stageChange(u, c){
   const s = STAGED[u.sub] || (STAGED[u.sub] = {});
@@ -233,6 +233,7 @@ function render(){
         </div>
         <div class="upriv"><span class="plabel">Pharmacies</span><span class="pgroup">${pharm}</span></div>
         <div class="upriv"><span class="plabel">Privileges</span><span class="pgroup">${privs}</span></div>
+        <div class="upriv"><span class="plabel">RPh license #</span><input type="text" data-ulic maxlength="20" value="${esc(u.license || '')}" style="width:130px;text-transform:uppercase;" aria-label="RPh license number"> <span class="hint">Pharmacists only. Prints on Rx Intake forms; the Pharmacist-In-Charge's number prints as PIC.</span></div>
         <div class="upriv"><span class="plabel">Signing</span><input type="text" data-uini maxlength="3" value="${esc(u.initials || '')}" style="width:70px;text-transform:uppercase;" aria-label="Initials" placeholder="Initials">
           <span class="hint">Employee ID <b>${esc(u.empId || '-')}</b>${ME && ME.pinRequired ? ` · PIN: ${({none:'Not set', set:'Set', temp:'Temporary', locked:'Locked'})[u.pin || 'none']}` : ''}</span>
           ${ME && ME.pinRequired && !self && ME.hostRole !== 'rep' ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="One-time temporary PIN to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}</div>
@@ -306,6 +307,14 @@ $('people').addEventListener('change', async e => {
     const sub = ini.closest('[data-sub]').dataset.sub, u = DATA.users.find(x => x.sub === sub); if(!u) return;
     const v = ini.value.trim().toUpperCase(), stg = STAGED[sub] || (STAGED[sub] = {});
     if(v === (u.initials || '')) delete stg.initials; else stg.initials = v;
+    if(!Object.keys(stg).length) delete STAGED[sub];
+    $('peopleMsg').textContent = ''; render(); return;
+  }
+  const lic = e.target.closest('input[data-ulic]');
+  if(lic){
+    const sub = lic.closest('[data-sub]').dataset.sub, u = DATA.users.find(x => x.sub === sub); if(!u) return;
+    const v = lic.value.trim().toUpperCase(), stg = STAGED[sub] || (STAGED[sub] = {});
+    if(v === (u.license || '')) delete stg.license; else stg.license = v;
     if(!Object.keys(stg).length) delete STAGED[sub];
     $('peopleMsg').textContent = ''; render(); return;
   }

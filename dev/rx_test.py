@@ -1,4 +1,4 @@
-# Rx Intake tab: access list, shared directory, pharmacists, lookup relay, and the page in a browser. Run: SUITE_USERS='NTX1:owner,pha' bash reset.sh
+# Rx Intake tab: access list, shared directory, pharmacists, lookup relay, and the page in a browser. Run: SUITE_USERS='NTX1:owner,pha,tch' bash reset.sh
 import json, subprocess, urllib.request, urllib.error, boto3, sys
 from playwright.sync_api import sync_playwright
 ids = json.load(open('moto_ids.json')); BASE = 'http://localhost:8790/'
@@ -27,13 +27,15 @@ node({"makeHost": {"login": "Neo", "name": "Thomas Fisher", "phone": "8175559999
 c.admin_set_user_mfa_preference(Username="neo", UserPoolId=ids["pool"], SMSMfaSettings={"Enabled": False, "PreferredMfa": False})
 h = tokens("neo", "hosttemp12a", "hostpass999"); H = h["IdToken"]; api(H, "POST", "/host-unlock", {"password": "hostpass999", "accessToken": h["AccessToken"]})
 s, r = api(H, "POST", "/host/stores/NTX1", {"address": "5796 E State Hwy 114", "suite": "5A", "city": "Haslet", "state": "TX", "zip": "76052", "phone": "8179848722", "fax": "8175498796", "license": "34469", "dea": "AB1234563", "npi": "1234567893", "changeReason": "test setup change"}); print("store setup:", s, r if s != 200 else "")
-def mk(l, ph):
-    s_, r = api(O, "POST", "/owner/users", {"login": l, "name": l.upper(), "phone": ph, "smsConsent": True, "stores": {"NTX1": True}, "acctType": "pharmacist", "perms": {}}); assert s_ == 200, r
+SUBS = {}
+def mk(l, ph, acct="pharmacist", lic=""):
+    s_, r = api(O, "POST", "/owner/users", {"login": l, "name": l.upper() + " Lastname", "phone": ph, "smsConsent": True, "stores": {"NTX1": True}, "acctType": acct, "license": lic, "perms": {}}); assert s_ == 200, r; SUBS[l] = r["user"]["sub"]
     t = tokens(l, r["tempPassword"], l + "pass12345")["IdToken"]; c.admin_set_user_mfa_preference(Username=l, UserPoolId=ids["pool"], SMSMfaSettings={"Enabled": False, "PreferredMfa": False}); return t
-P = mk("pha", "(817) 555-0301"); N = mk("nop", "(817) 555-0302")
+P = mk("pha", "(817) 555-0301", lic="59985"); N = mk("nop", "(817) 555-0302"); T = mk("tch", "(817) 555-0303", acct="tech", lic="777")
+OSUB = [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "owner"][0]["sub"]
 R = "/stores/NTX1/rx/"
 # flags
-for nm, tok, want in (("owner", O, True), ("pha", P, True), ("nop", N, False)):
+for nm, tok, want in (("owner", O, True), ("pha", P, True), ("nop", N, False), ("tch", T, False)):
     st = [x for x in api(tok, "GET", "/me")[1]["stores"] if x["id"] == "NTX1"][0]
     check(nm + ": Rx Intake flag", st.get("rx"), want)
 # access
@@ -44,7 +46,18 @@ check("user not on the list: lookup refused", api(N, "POST", R + "lookup", {"url
 check("host: refused", api(H, "GET", R + "config")[0], 403)
 cfg = api(O, "GET", R + "config")[1]
 check("pharmacy block comes from setup", (cfg["pharmacy"]["address"], cfg["pharmacy"]["suite"], cfg["pharmacy"]["fax"], cfg["pharmacy"]["dea"]), ("5796 E State Hwy 114", "5A", "8175498796", "AB1234563"))
-check("pharmacists seeded", [p["name"] for p in cfg["staff"]["pharmacists"]], ["THOMAS FISHER", "MARIAMME FERREIRO"])
+check("no license on the Account Owner yet: PIC missing note", [n for n in cfg["notes"] if "Pharmacist-In-Charge" in n] != [], True)
+check("license format refused", api(O, "POST", "/owner/users/" + OSUB, {"license": "no way!"})[0], 400)
+check("Account Owner license saved", api(O, "POST", "/owner/users/" + OSUB, {"license": "40291"})[0], 200)
+check("license shown in people list", [u["license"] for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] in ("owner", "pha")], ["40291", "59985"])
+cfgP = api(P, "GET", R + "config")[1]
+check("staff pharmacist: receiving is the login, PIC is the Account Owner", (cfgP["receiving"], cfgP["pic"]["license"], cfgP["pic"]["name"] == cfgP["pic"]["name"].upper(), cfgP["notes"]), ({"name": "PHA LASTNAME", "license": "59985"}, "40291", True, []))
+cfgO = api(O, "GET", R + "config")[1]
+check("PIC signed in: same person twice", (cfgO["receiving"]["license"], cfgO["pic"]["license"], cfgO["receiving"]["name"] == cfgO["pic"]["name"]), ("40291", "40291", True))
+check("technician (named user, not a pharmacist): Rx Intake refused", api(T, "GET", R + "config")[0], 403)
+stT = [x for x in api(T, "GET", "/me")[1]["stores"] if x["id"] == "NTX1"][0]; check("technician still has Calendar and Documents", (stT["calendar"], stT["documents"]), (True, True))
+check("technician cannot use the lookup relay or directory either", (api(T, "POST", R + "lookup", {"url": "https://rxnav.nlm.nih.gov/REST/x"})[0], api(T, "POST", R + "dir/save", {"kind": "ph", "rec": {"name": "X"}})[0]), (403, 403))
+cfg = cfgO
 # directory
 s, r = api(P, "POST", R + "dir/save", {"kind": "pr", "rec": {"name": "SMITH, JOHN", "last": "SMITH", "first": "JOHN", "npi": "1234567893", "dea": "AB1234563", "phone": "(817) 555-1212", "bogus": "x"}})
 check("prescriber saved", (s, r["rec"]["_id"], r["rec"]["phone"], "bogus" in r["rec"]), (200, "npi_1234567893", "8175551212", False))
@@ -57,10 +70,7 @@ s, r = api(O, "POST", R + "dir/import", {"ph": [{"name": "WALGREENS 7"}], "pr": 
 cfg = api(O, "GET", R + "config")[1]; check("after import", (len(cfg["dir"]["ph"]), len(cfg["dir"]["pr"]), cfg["dir"]["pr"][0]["name"]), (2, 1, "DOE, JANE"))
 check("delete", api(P, "POST", R + "dir/delete", {"kind": "ph", "id": phid})[0], 200)
 check("delete bad id refused", api(P, "POST", R + "dir/delete", {"kind": "ph", "id": "../x"})[0], 400)
-# pharmacists
-check("named non-owner cannot change pharmacists", api(P, "POST", R + "staff", {"pharmacists": []})[0], 403)
-s, r = api(O, "POST", R + "staff", {"pharmacists": [{"name": "ann lee", "license": "111"}, {"name": ""}], "pic": {"name": "ann lee", "license": "111"}}); check("owner changes pharmacists", (s, r["staff"]), (200, {"pharmacists": [{"name": "ANN LEE", "license": "111"}], "pic": {"name": "ANN LEE", "license": "111"}}))
-check("saved list is served", api(P, "GET", R + "config")[1]["staff"]["pharmacists"][0]["name"], "ANN LEE")
+check("staff endpoint is gone", api(O, "POST", R + "staff", {"pharmacists": []})[0], 404)
 # lookup relay: only the four addresses, https, GET
 for nm, u in (("other site", "https://example.com/api/"), ("http", "http://rxnav.nlm.nih.gov/REST/x"), ("port", "https://rxnav.nlm.nih.gov:8443/REST/x"), ("look-alike host", "https://rxnav.nlm.nih.gov.evil.com/REST/x"), ("login in url", "https://u:p@rxnav.nlm.nih.gov/REST/x"), ("other path on allowed host", "https://npiregistry.cms.hhs.gov/other"), ("not a url", "nope")):
     check("lookup refused: " + nm, api(O, "POST", R + "lookup", {"url": u})[0], 400)
@@ -78,11 +88,10 @@ with sync_playwright() as pw:
     tabs = p.locator('#tabs button:visible').all_inner_texts(); check("tab order", tabs, ["Calendar", "Documents", "Rx Intake", "Reorder List"])
     p.click('#tabs [data-tab=rx]'); p.wait_for_selector('#rxFrame'); fr = p.frame_locator('#rxFrame'); fr.locator('#rcv_name').wait_for(timeout=8000); p.wait_for_timeout(800)
     check("receiving pharmacy shown from setup", (fr.locator('#rcv_addr').inner_text(), fr.locator('#rcv_fax').inner_text(), fr.locator('#rcv_dea').inner_text()), ("5796 E State Hwy 114, Suite 5A", "817-549-8796", "AB1234563"))
-    check("pharmacist list", fr.locator('#rp_rph option').all_inner_texts(), ["Select pharmacist", "ANN LEE"])
-    check("Pharmacists button hidden for non-owner", fr.locator('#staffBtn').is_visible(), False)
+    check("receiving pharmacist and PIC filled from the logins", (fr.locator('#rp_rph').input_value(), fr.locator('#rp_lic').input_value(), fr.locator('#rp_pic').input_value(), fr.locator('#rp_piclic').input_value()), ("PHA LASTNAME", "59985", "OWNER LASTNAME" if False else fr.locator('#rp_pic').input_value(), "40291"))
+    check("none of the four can be edited", [fr.locator(i).get_attribute('readonly') is not None for i in ('#rp_rph', '#rp_lic', '#rp_pic', '#rp_piclic')], [True] * 4)
     check("directory count", fr.locator('#dirCount').inner_text(), "Pharmacy directory: 1 pharmacies · 1 prescribers")
     p.screenshot(path='screenshots/rx_1_top.png')
-    fr.locator('#rp_rph').select_option("ANN LEE")
     fr.locator('#pt_last').fill("Patientlastname"); fr.locator('#pt_first').fill("Sam"); fr.locator('#pt_dob').fill("01/02/1980")
     fr.locator('#pr_last').fill("Smith"); fr.locator('#pr_first').fill("John"); fr.locator('#pr_caller').fill("Nurse Joy")
     fr.locator('#rx1-drug').fill("Lisinopril"); fr.locator('#rx1-sig').fill("Take 1 tablet daily"); fr.locator('#rx1-qty').fill("30")
@@ -96,12 +105,13 @@ with sync_playwright() as pw:
     check("patient name never sent to the server", any("Patientlastname".lower() in (u + d).lower() for m, u, d in posted), False)
     p.click('#tabs [data-tab=list]'); p.wait_for_timeout(300); p.click('#tabs [data-tab=rx]'); p.wait_for_timeout(1500)
     check("form is kept when switching tabs", fr.locator('#pt_last').input_value(), "PATIENTLASTNAME")
-    # owner sees the pharmacists editor
     p2 = ctx.new_page(); p2.on('pageerror', lambda e: errs.append(str(e)))
-    signin(p2, "owner", "ownerpass99"); p2.click('#tabs [data-tab=rx]'); f2 = p2.frame_locator('#rxFrame'); f2.locator('#rcv_name').wait_for(timeout=8000); p2.wait_for_timeout(600)
-    check("Pharmacists button shown to the Account Owner", f2.locator('#staffBtn').is_visible(), True)
-    f2.locator('#staffBtn').click(); f2.locator('#staffAdd').click(); f2.locator('#staffRows [data-sn]').nth(1).fill("bo kim"); f2.locator('#staffRows [data-sl]').nth(1).fill("222"); f2.locator('#staffSave').click(); p2.wait_for_timeout(1200)
-    check("pharmacist added in the page", f2.locator('#rp_rph option').all_inner_texts(), ["Select pharmacist", "ANN LEE", "BO KIM"])
+    signin(p2, "owner", "ownerpass99"); p2.click('#tabs [data-tab=rx]'); f2 = p2.frame_locator('#rxFrame'); f2.locator('#rcv_name').wait_for(timeout=8000); p2.wait_for_timeout(800)
+    check("PIC signed in: both blocks show the same person", (f2.locator('#rp_rph').input_value() == f2.locator('#rp_pic').input_value(), f2.locator('#rp_lic').input_value(), f2.locator('#rp_piclic').input_value()), (True, "40291", "40291"))
+    check("no pharmacists editor any more", f2.locator('#staffBtn').count(), 0)
+    p2.screenshot(path='screenshots/rx_4_owner.png')
+    p3 = ctx.new_page(); signin(p3, "tch", "tchpass12345")
+    check("technician's tabs", p3.locator('#tabs button:visible').all_inner_texts(), ["Calendar", "Documents", "Reorder List"])
     # sign out clears the form page
     p.click('#signOut') if p.locator('#signOut').count() else None
     b.close()

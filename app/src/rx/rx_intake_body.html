@@ -17,17 +17,12 @@
       <button type="button" class="small" id="dirExport">Export directory backup</button>
       <button type="button" class="small" id="dirImportBtn">Import directory</button>
       <input type="file" id="dirImport" accept=".json,application/json" hidden>
-      <button type="button" class="small" id="staffBtn" hidden>Pharmacists</button>
     </span>
   </div>
-  <section class="card" id="staffCard" hidden>
-    <h2>Receiving pharmacists</h2>
-    <div class="body">
-      <div id="staffRows" class="staffrows"></div>
-      <div class="actions"><span class="msg" id="staffMsg"></span><button type="button" class="small" id="staffAdd">Add pharmacist</button><button type="button" class="small primary" id="staffSave">Save</button><button type="button" class="small" id="staffClose">Close</button></div>
-    </div>
-  </section>
 
+
+
+  <div id="setupNote" class="notice" hidden></div>
 
   <!-- Pharmacies -->
   <div class="pair">
@@ -48,7 +43,7 @@
           </div>
         </div>
         <div class="row">
-          <div class="f c8"><label for="rp_rph">Receiving pharmacist</label><select id="rp_rph"><option value="">Select pharmacist</option></select></div>
+          <div class="f c8"><label for="rp_rph">Receiving pharmacist</label><input id="rp_rph" readonly tabindex="-1"></div>
           <div class="f c4"><label for="rp_lic">RPh license #</label><input id="rp_lic" class="num" readonly tabindex="-1"></div>
         </div>
         <div class="row">

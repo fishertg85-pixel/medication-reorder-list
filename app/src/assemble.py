@@ -270,6 +270,7 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
       <div class="formgrid">
         <label><span>Name</span><input type="text" id="npName"></label>
         <label><span>Initials</span><input type="text" id="npIni" maxlength="3" autocapitalize="characters" spellcheck="false" style="max-width:90px;text-transform:uppercase;" placeholder="e.g. TF"></label>
+        <label><span>RPh license # (pharmacists)</span><input type="text" id="npLic" maxlength="20" autocapitalize="characters" spellcheck="false" style="max-width:150px;text-transform:uppercase;"></label>
         <label><span>Login ID</span><input type="text" id="npLogin" autocapitalize="none" spellcheck="false" placeholder="e.g. maria.t"></label>
         <label><span>Mobile number (for sign-in codes)</span><input type="tel" id="npPhone" placeholder="817-555-1234"></label>
         <label><span>Temporary password</span><input type="text" id="npPass" class="mono" spellcheck="false"></label>

@@ -8,7 +8,6 @@ let dbReady = false;
    Patient fields, Rx data and PDFs stay in this page: nothing about a patient is ever sent to the server. */
 const HOST = window.parent && window.parent.ILRX_HOST;
 ["keydown","pointerdown","wheel","input","touchstart"].forEach(t => document.addEventListener(t, () => { try { window.parent.markUse(); } catch(e){} }, { capture: true, passive: true }));   // typing here counts as use for the suite's idle sign-out
-let STAFF = { pharmacists: [], pic: null };
 let FAX_NUMBER = "";
 const RCV = { name: "", addr: "", phone: "", fax: "", lic: "", dea: "", npi: "" };   // receiving pharmacy, from pharmacy setup
 
@@ -92,23 +91,13 @@ function applyType(){
 }
 document.querySelectorAll('input[name="otype"]').forEach(r => r.addEventListener("change", applyType));
 
-/* ---------- receiving RPh convenience ---------- */
-let staff = { pharmacists: [], pic: null };
-function applyRph(){
-  const p = staff.pharmacists.find(x => x.name === $("rp_rph").value);
-  $("rp_lic").value = p ? p.license : "";
-  $("rp_pic").value = p && staff.pic ? staff.pic.name : "";
-  $("rp_piclic").value = p && staff.pic ? staff.pic.license : "";
-  try { localStorage.setItem("nortex_rph", $("rp_rph").value); } catch(e){}
+/* ---------- receiving pharmacist and PIC: the signed-in login and the pharmacy's PIC, filled by the suite; not editable here ---------- */
+function loadPeople(c){
+  const r = c.receiving || {}, p = c.pic || {};
+  $("rp_rph").value = r.name || ""; $("rp_lic").value = r.license || ""; $("rp_pic").value = p.name || ""; $("rp_piclic").value = p.license || "";
+  const n = $("setupNote"), notes = c.notes || [];
+  n.textContent = notes.join(" "); n.hidden = !notes.length;
 }
-function loadStaff(cfg){
-  staff = cfg || staff;
-  const sel = $("rp_rph");
-  staff.pharmacists.forEach(p => { const o = document.createElement("option"); o.value = p.name; o.textContent = p.name; sel.appendChild(o); });
-  try { const last = localStorage.getItem("nortex_rph"); if (last && staff.pharmacists.some(p => p.name===last)) sel.value = last; } catch(e){}
-  applyRph();
-}
-$("rp_rph").addEventListener("change", applyRph);
 
 /* ---------- stamp ---------- */
 function nowStamp(){
@@ -1030,38 +1019,6 @@ function syncTheme(){
 syncTheme();
 try { new MutationObserver(syncTheme).observe(window.parent.document.documentElement, { attributes: true, attributeFilter: ["data-theme"] }); } catch(e){}
 
-/* ---------- receiving pharmacists (Account Owner only) ---------- */
-function staffRow(p, isPic){
-  const d = document.createElement("div"); d.className = "row staffrow";
-  d.innerHTML = '<div class="f c6"><label>Name</label><input data-sn autocomplete="off"></div><div class="f c3"><label>RPh license #</label><input data-sl class="num" autocomplete="off"></div><div class="f c2"><label>PIC</label><label class="chk"><input type="checkbox" data-sp></label></div><div class="f c1"><label>&nbsp;</label><button type="button" class="small" data-sx aria-label="Remove">×</button></div>';
-  d.querySelector("[data-sn]").value = p.name || ""; d.querySelector("[data-sl]").value = p.license || ""; d.querySelector("[data-sp]").checked = !!isPic;
-  d.querySelector("[data-sx]").addEventListener("click", () => d.remove());
-  d.querySelector("[data-sp]").addEventListener("change", e => { if (e.target.checked) document.querySelectorAll("#staffRows [data-sp]").forEach(x => { if (x !== e.target) x.checked = false; }); });
-  return d;
-}
-function openStaff(){
-  const box = $("staffRows"); box.innerHTML = "";
-  staff.pharmacists.forEach(p => box.appendChild(staffRow(p, staff.pic && staff.pic.name === p.name)));
-  $("staffMsg").textContent = ""; $("staffCard").hidden = false;
-}
-$("staffBtn").addEventListener("click", () => { if ($("staffCard").hidden) openStaff(); else $("staffCard").hidden = true; });
-$("staffClose").addEventListener("click", () => $("staffCard").hidden = true);
-$("staffAdd").addEventListener("click", () => $("staffRows").appendChild(staffRow({}, false)));
-$("staffSave").addEventListener("click", async () => {
-  const msg = $("staffMsg"); msg.className = "msg";
-  const rows = [...document.querySelectorAll("#staffRows .staffrow")].map(r => ({ name: r.querySelector("[data-sn]").value.trim().toUpperCase(), license: r.querySelector("[data-sl]").value.trim(), pic: r.querySelector("[data-sp]").checked })).filter(r => r.name);
-  const pic = rows.find(r => r.pic);
-  try {
-    const r = await HOST.staffSave({ pharmacists: rows.map(r => ({ name: r.name, license: r.license })), pic: pic ? { name: pic.name, license: pic.license } : null });
-    staff = r.staff; const sel = $("rp_rph"), cur = sel.value;
-    while (sel.options.length > 1) sel.remove(1);
-    staff.pharmacists.forEach(p => { const o = document.createElement("option"); o.value = p.name; o.textContent = p.name; sel.appendChild(o); });
-    sel.value = staff.pharmacists.some(p => p.name === cur) ? cur : ""; applyRph();
-    msg.textContent = "Saved."; msg.className = "msg ok";
-  } catch(e){ msg.textContent = "Not saved: " + (e && e.message || "try again"); msg.className = "msg err"; }
-});
-if (HOST && HOST.canEditStaff) $("staffBtn").hidden = false;
-
 /* ---------- start ---------- */
 npiStatus();
 addRx();
@@ -1075,7 +1032,7 @@ $("dirCount").textContent = "Loading directory…";
     FAX_NUMBER = RCV.fax;
     $("rcv_name").textContent = RCV.name; $("rcv_addr").textContent = RCV.addr; $("rcv_phone").textContent = fmtPhone(RCV.phone); $("rcv_fax").textContent = fmtPhone(RCV.fax);
     $("rcv_lic").textContent = RCV.lic; $("rcv_dea").textContent = RCV.dea; $("rcv_npi").textContent = RCV.npi;
-    loadStaff(c.staff || STAFF);
+    loadPeople(c);
     dir.ph = (c.dir && c.dir.ph || []).sort((x,y) => (x.name||"").localeCompare(y.name||"")); dir.pr = (c.dir && c.dir.pr || []).sort((x,y) => (x.name||"").localeCompare(y.name||""));
     $("faxTo").textContent = "Fax to " + fmtPhone(FAX_NUMBER);
     updateCount(); dbReady = true;

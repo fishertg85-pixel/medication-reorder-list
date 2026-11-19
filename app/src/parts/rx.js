@@ -6,11 +6,9 @@ const RX = {loadedAt: 0};
 const rxOK = () => !!(ME && STORE && STORE.rx === true);
 const rxPath = tail => '/stores/' + encodeURIComponent(STORE.id) + '/rx/' + tail;
 window.ILRX_HOST = {
-  get canEditStaff(){ return !!(ME && ME.owner); },
   async config(){ if(!rxOK()) throw new Error('Rx Intake is not available for this login at this pharmacy.'); return await api('GET', rxPath('config')); },
   async dirSave(kind, rec){ const r = await api('POST', rxPath('dir/save'), {kind, rec}); return r.rec; },
   async dirImport(d){ return await api('POST', rxPath('dir/import'), {ph: d.ph || [], pr: d.pr || []}); },
-  async staffSave(s){ return await api('POST', rxPath('staff'), s); },
   async lookup(url){ const r = await api('POST', rxPath('lookup'), {url}); return r.data; }
 };
 function rxShow(){                                                // called when the Rx Intake tab is opened

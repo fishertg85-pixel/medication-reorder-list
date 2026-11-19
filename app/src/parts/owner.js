@@ -50,7 +50,7 @@ const TEMPS = {};
 const STAGED = {};
 function effUser(u){
   const s = STAGED[u.sub]; if(!s) return u;
-  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}), acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty, initials:s.initials !== undefined ? s.initials : u.initials,
+  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}), acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty, initials:s.initials !== undefined ? s.initials : u.initials, license:s.license !== undefined ? s.license : u.license,
     disabled:s.disabled !== undefined ? s.disabled : u.disabled});
 }
 const PIN_LABEL = {none:'Not set', set:'Set', temp:'Temporary (they must choose their own)', locked:'Locked'};
@@ -119,6 +119,7 @@ function renderOwnPeople(){
          <div class="upriv"><span class="plabel">Account type</span><span class="hint">Account Owner · primary account holder</span></div>
          <div class="upriv"><span class="plabel">Pharmacies</span><span class="hint">All pharmacies</span></div>
          <div class="upriv"><span class="plabel">Privileges</span><span class="hint">Full access</span></div>
+         <div class="upriv"><span class="plabel">RPh license #</span><input type="text" data-ulic maxlength="20" value="${esc(u.license || '')}" style="width:130px;text-transform:uppercase;" aria-label="RPh license number"> <span class="hint">Pharmacists only. Prints on Rx Intake forms; the Pharmacist-In-Charge's number prints as PIC.</span></div>
          <div class="upriv"><span class="plabel">Signing</span>${pinLine(u)}</div></div>`
       : u.host
       ? `<div class="${rowCls(u)}" data-sub="${esc(u.sub)}"><div class="ucols">${head(u)}<div class="ucell acts">${STAGED[u.sub] ? stageBtns(u.sub) : ''}</div><div class="ucell copycell"></div></div>
@@ -154,7 +155,7 @@ $('npAdd').onclick = async () => {
   const stores = {}; document.querySelectorAll('[data-npst]').forEach(c => stores[c.dataset.npst] = c.checked);
   const perms = {}; document.querySelectorAll('[data-npperm]').forEach(c => perms[c.dataset.npperm] = c.checked);
   const acctType = $('npType').value;
-  const body = {name:$('npName').value.trim(), initials:$('npIni').value.trim().toUpperCase(), login:$('npLogin').value.trim().toLowerCase(), phone:$('npPhone').value.trim(), tempPassword:$('npPass').value.trim() || undefined, stores, perms, acctType, smsConsent:$('npConsent').checked};
+  const body = {name:$('npName').value.trim(), initials:$('npIni').value.trim().toUpperCase(), license:$('npLic').value.trim().toUpperCase(), login:$('npLogin').value.trim().toLowerCase(), phone:$('npPhone').value.trim(), tempPassword:$('npPass').value.trim() || undefined, stores, perms, acctType, smsConsent:$('npConsent').checked};
   const say = (m, ok) => { $('npMsg').textContent = m; $('npMsg').className = 'npmsg' + (ok ? ' ok' : ''); };
   say('');
   if(!body.name || !body.login || !body.phone) return say('Name, Login ID and mobile number are all needed.');
@@ -167,7 +168,7 @@ $('npAdd').onclick = async () => {
     showPassBox(`<b>${esc(body.name)} can sign in now.</b> Give them:<br>Pharmacy ID: <b class="mono">${esc(ids.join(' or ') || '(switch one on first)')}</b><br>
       Login ID: <b class="mono">${esc(r.user.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b><br>
       <span class="hint">They choose their own password the first time they sign in. The temporary password works for 3 days and isn’t shown again.</span>`);
-    ['npName','npIni','npLogin','npPhone'].forEach(k => $(k).value = ''); $('npPass').value = genTemp(); $('npConsent').checked = false;
+    ['npName','npIni','npLic','npLogin','npPhone'].forEach(k => $(k).value = ''); $('npPass').value = genTemp(); $('npConsent').checked = false;
     say(`Added ${body.name}. They are at the top of the list as Pending until they sign in for the first time. The form is clear for the next user.`, true);
     paintNewPerson(); $('npName').focus({preventScroll: true});      // pharmacies and permissions back to their defaults too, straight away
     await loadOwner();
@@ -191,6 +192,14 @@ $('ownPeople').addEventListener('change', async e => {
     const sub = ini.closest('[data-sub]').dataset.sub, u = OWN.users.find(x => x.sub === sub); if(!u) return;
     const v = ini.value.trim().toUpperCase(), stg = STAGED[sub] || (STAGED[sub] = {});
     if(v === (u.initials || '')) delete stg.initials; else stg.initials = v;
+    if(!Object.keys(stg).length) delete STAGED[sub];
+    peopleMsg(''); renderOwnPeople(); return;
+  }
+  const lic = e.target.closest('input[data-ulic]');
+  if(lic){                                                        // RPh license number: staged like the initials
+    const sub = lic.closest('[data-sub]').dataset.sub, u = OWN.users.find(x => x.sub === sub); if(!u) return;
+    const v = lic.value.trim().toUpperCase(), stg = STAGED[sub] || (STAGED[sub] = {});
+    if(v === (u.license || '')) delete stg.license; else stg.license = v;
     if(!Object.keys(stg).length) delete STAGED[sub];
     peopleMsg(''); renderOwnPeople(); return;
   }
