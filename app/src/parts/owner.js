@@ -13,13 +13,39 @@ function ownerLockNow(msg, serverSaid){
   const was = OWN_UNTIL > 0; OWN_UNTIL = 0;
   if(was && !serverSaid) api('POST', '/owner-lock', {}).catch(() => {});
   for(const k in STAGED) delete STAGED[k]; peopleMsg('');
-  OWN = {stores:[], users:[]}; $('ownPeople').innerHTML = ''; $('ownStores').innerHTML = '';   // nothing left on screen
+  OWN = {stores:[], users:[]}; $('ownPeople').innerHTML = ''; $('ownStores').innerHTML = ''; $('ownClientView').innerHTML = ''; CLI = null;   // nothing left on screen
   if(ownerTabActive()) showOwnLock(msg);
 }
+// Client page (the client's Account Owner only): setup information, pharmacies, billing and invoices, read-only. Same password step-up as the rest of this tab.
+let OWN_VIEW = 'pharm', CLI = null;
+function ownShowView(v){
+  const onlyClient = !(STORE && STORE.owner);                                        // a Client Account Owner who owns no pharmacy here sees just the client page
+  OWN_VIEW = onlyClient ? 'client' : v;
+  $('ownSwitch').style.display = ME && ME.clientOwner && !onlyClient ? '' : 'none';
+  $('ownPharmView').style.display = OWN_VIEW === 'pharm' ? '' : 'none'; $('ownClientView').style.display = OWN_VIEW === 'client' ? '' : 'none';
+  $('ownSwPharm').className = OWN_VIEW === 'pharm' ? 'btn small' : 'btn2 small'; $('ownSwClient').className = OWN_VIEW === 'client' ? 'btn small' : 'btn2 small';
+  if(OWN_VIEW === 'client') loadClientPage(); else loadOwner();
+}
+async function loadClientPage(){
+  const list = (ME && ME.clients) || []; if(!list.length){ $('ownClientView').innerHTML = '<div class="hint">No client account.</div>'; return; }
+  const id = (CLI && CLI.id && list.some(c => c.id === CLI.id) ? CLI.id : list[0].id);
+  $('ownClientView').innerHTML = '<div class="hint"><span class="spin"></span>Loading…</div>';
+  try{
+    const r = await api('GET', '/client/' + encodeURIComponent(id));
+    CLI = { id, data: r };
+    const people = r.pharmacies.filter(p => p.owner).map(p => ({ name: p.owner, login: p.owner, ownerStores: { [p.id]: true } })).concat(r.owner ? [{ name: r.owner.name, login: r.owner.login, ownerClients: { [id]: true } }] : []);
+    r.client.pharmacies = r.pharmacies.map(p => p.id);
+    const pick = list.length > 1 ? `<div class="toolbar" style="margin-bottom:8px;"><select id="cliPick">${list.map(c => `<option value="${esc(c.id)}"${c.id === id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>` : '';
+    $('ownClientView').innerHTML = pick + `<div class="pcard" data-client="${esc(id)}">${clientCardHtml(r.client, { ro: true, host: false, stores: r.pharmacies, people, billing: r.billing })}</div>`;
+    clientFreeze($('ownClientView').querySelector('.pcard'));
+    const sel = $('cliPick'); if(sel) sel.onchange = () => { CLI = { id: sel.value }; loadClientPage(); };
+  }catch(e){ if(!e.auth) $('ownClientView').innerHTML = `<div class="hint">Couldn’t open the client page: ${esc(e.message)}</div>`; }
+}
+$('ownSwPharm').onclick = () => ownShowView('pharm'); $('ownSwClient').onclick = () => ownShowView('client');
 function openOwnerTab(){
   if(!(OWN_UNTIL > Date.now())) return showOwnLock('');
   $('ownLock').style.display = 'none'; $('ownBody').style.display = '';
-  ownLastAct = Date.now(); loadOwner();
+  ownLastAct = Date.now(); ownShowView(OWN_VIEW);
 }
 $('ownUnlock').onclick = async () => {
   const pw = $('ownPw').value; if(!pw) return showOwnLock('Enter your password.');
@@ -50,11 +76,15 @@ const TEMPS = {};
 const STAGED = {};
 function effUser(u){
   const s = STAGED[u.sub]; if(!s) return u;
-  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}), acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty, initials:s.initials !== undefined ? s.initials : u.initials, license:s.license !== undefined ? s.license : u.license,
+  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}), adminStores:Object.assign({}, u.adminStores, s.adminStores || {}), acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty, initials:s.initials !== undefined ? s.initials : u.initials, license:s.license !== undefined ? s.license : u.license,
     disabled:s.disabled !== undefined ? s.disabled : u.disabled});
 }
+// owner of at least one of the pharmacies this page covers (a login can own one pharmacy and still be staff at another)
+const OWN_IS_OWNER = id => !!(ME && ME.stores || []).find(x => x.id === id && x.isOwner);
+const ownsHere = u => !u.host && !!u.owner && (OWN.stores || []).some(s => u.ownerStores && u.ownerStores[s.id] === true);
+const ownedList = u => (OWN.stores || []).filter(s => u.ownerStores && u.ownerStores[s.id] === true).map(s => s.id);
 const PIN_LABEL = {none:'Not set', set:'Set', temp:'Temporary (they must choose their own)', locked:'Locked'};
-const canIssuePin = u => !!ME && u.login !== ME.login && (ME.host ? ME.hostRole !== 'rep' : (ME.owner && !u.owner && !u.host));
+const canIssuePin = u => !!ME && u.login !== ME.login && (ME.host ? ME.hostRole !== 'rep' : (STORE && STORE.owner && !ownsHere(u) && !u.host));
 const pinLine = u => `<span class="hint">Employee ID <b>${esc(u.empId || '-')}</b>${ME && ME.pinRequired ? ` · PIN: ${PIN_LABEL[u.pin || 'none']}` : ''}</span> ${ME && ME.pinRequired && canIssuePin(u) ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="Makes a one-time temporary PIN for you to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}`;
 const stageBtns = sub => `<button class="btn small" data-upd="${esc(sub)}">Update</button> <button class="btn2 small" data-undo="${esc(sub)}">Undo</button>`;
 function peopleMsg(m){ $('ownPeopleMsg').textContent = m || ''; }
@@ -70,7 +100,7 @@ async function copyText(t){
     let ok = false; try{ ok = document.execCommand('copy'); }catch(e2){} a.remove(); return ok; }
 }
 async function loadOwner(){
-  if(!ME || !ME.owner) return;
+  if(!ME || !STORE || !STORE.owner) return;
   $('ownStores').innerHTML = $('ownPeople').innerHTML = '<div class="hint"><span class="spin"></span>Loading…</div>';
   try{
     const [s, u] = await Promise.all([api('GET', '/owner/stores'), api('GET', '/owner/users')]);
@@ -86,13 +116,13 @@ function renderOwner(){ renderOwnStores(); renderOwnPeople();
   const sig = OWN.stores.map(s => s.id + ':' + s.name).join('|');
   if(sig !== npStoresSig || !$('npPerms').innerHTML){ npStoresSig = sig; paintNewPerson(); }   // don't undo switches someone is setting for the next person
   $('impStore').innerHTML = OWN.stores.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join(''); }
-const ACCT_LABELS = {pic:'Pharmacist-in-Charge', pharmacist:'Staff Pharmacist', tech:'Pharmacy Technician', staff:'Other Staff'};
+const ACCT_LABELS = {pic:'Pharmacist-in-Charge', pharmacist:'Staff Pharmacist', tech:'Pharmacy Technician', staff:'Pharmacy Associate'};
 // choosing a type switches these on or off (the Calendar privilege is never changed by a type; it is set on its own)
 const ACCT_PRESETS = {pic:{submit:true, archive:true, remove:true, export:true}, pharmacist:{submit:true, archive:true, remove:true, export:false},
   tech:{submit:true, archive:true, remove:true, export:false}, staff:{submit:true, archive:false, remove:false, export:false}};
 function renderOwnStores(){
-  const holder = (OWN.users || []).find(u => u.owner), hn = holder ? (holder.name || holder.login) + ' (' + holder.login + ')' : '';
-  $('ownStores').innerHTML = OWN.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, { logo: LOGOS[s.id], holder: hn })}</div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
+  const holderOf = s => { const h = (OWN.users || []).find(u => u.ownerStores && u.ownerStores[s.id] === true); return h ? (h.name || h.login) + ' (' + h.login + ')' : ''; };
+  $('ownStores').innerHTML = OWN.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, { logo: LOGOS[s.id], holder: holderOf(s), people: OWN.users, picInfo: true, stores: OWN.stores })}</div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
 }
 const fmtDay = iso => { try{ return new Date(iso).toLocaleDateString('en-US', {month:'short', day:'numeric'}); }catch(e){ return ''; } };
 function statusBadge(u){
@@ -105,19 +135,19 @@ function renderOwnPeople(){
   const st = OWN.stores, P = Object.keys(PERM_LABELS);
   const priv = (sw_, label, title) => `<span class="priv" title="${esc(title || label)}">${sw_}<span>${esc(label)}</span></span>`;
   const head = u => `
-      <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${u.initials ? ` <span class="hint" title="Initials on printed copies">(${esc(u.initials)})</span>` : ''}${u.owner ? '<span class="urole">Account Owner</span>' : u.host ? '<span class="urole">Host (IronLedger)</span>' : ''}</div>
+      <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${u.initials ? ` <span class="hint" title="Initials on printed copies">(${esc(u.initials)})</span>` : ''}${ownsHere(u) ? '<span class="urole">Account Owner</span>' : u.host ? '<span class="urole">Host (IronLedger)</span>' : ''}</div>
       <div class="ucell mono" data-l="Username">${esc(u.login)}</div>
-      <div class="ucell" data-l="Mobile">${esc(u.phone)}${u.owner ? ' <span class="hint" title="Sign-in codes are texted here, so only IronLedger changes it. Contact IronLedger.">🔒</span>' : u.host ? '' : ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>`}</div>
+      <div class="ucell" data-l="Mobile">${esc(u.phone)}${ownsHere(u) ? ' <span class="hint" title="Sign-in codes are texted here, so only IronLedger changes it. Contact IronLedger.">🔒</span>' : u.host ? '' : ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>`}</div>
       <div class="ucell" data-l="Status">${statusBadge(u)}</div>`;
   const acts = u => `<div class="ucell acts">${STAGED[u.sub] ? stageBtns(u.sub) : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button> <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`}</div>
       <div class="ucell copycell">${u.pending && TEMPS[u.sub] ? `<button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${COPY_SVG}</button>` : ''}</div>`;
   const rowCls = u => `urow${u.disabled ? ' off' : ''}${STAGED[u.sub] ? ' dirty' : ''}`;
   $('ownPeople').innerHTML = `<div class="ulist">
     <div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div><div></div></div>
-    ${OWN.users.map(effUser).map(u => u.owner
+    ${OWN.users.map(effUser).map(u => ownsHere(u)
       ? `<div class="urow"><div class="ucols">${head(u)}<div class="ucell acts"></div><div class="ucell copycell"></div></div>
          <div class="upriv"><span class="plabel">Account type</span><span class="hint">Account Owner · primary account holder</span></div>
-         <div class="upriv"><span class="plabel">Pharmacies</span><span class="hint">All pharmacies</span></div>
+         <div class="upriv"><span class="plabel">Pharmacies</span><span class="hint">Account Owner of ${esc(ownedList(u).join(', '))}</span></div>
          <div class="upriv"><span class="plabel">Privileges</span><span class="hint">Full access</span></div>
          <div class="upriv"><span class="plabel">RPh license #</span><input type="text" data-ulic maxlength="20" value="${esc(u.license || '')}" style="width:130px;text-transform:uppercase;" aria-label="RPh license number"> <span class="hint">Pharmacists only. Prints on Rx Intake forms; the Pharmacist-In-Charge's number prints as PIC.</span></div>
          <div class="upriv"><span class="plabel">Signing</span>${pinLine(u)}</div></div>`
@@ -139,7 +169,10 @@ function renderOwnPeople(){
            <span class="pgroup">${st.map(s => priv(sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('')}</span></div>
          <div class="upriv"><span class="plabel">Privileges</span>
            <span class="pgroup">${P.map(p => priv(sw(`data-uperm="${p}"`, u.perms[p], PERM_LABELS[p]), PERM_LABELS[p], PERM_LABELS[p])).join('')}
-           ${priv(sw('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on')}</span></div></div>`).join('')}
+           ${priv(sw('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on')}</span></div>
+         ${u.acctType === 'pic' && (ME.stores || []).some(x => x.isOwner) ? `<div class="upriv"><span class="plabel">Super user</span>
+           <span class="pgroup">${st.filter(s => u.stores[s.id] === true && OWN_IS_OWNER(s.id)).map(s => priv(sw(`data-uadm="${esc(s.id)}"`, (u.adminStores || {})[s.id] === true, 'All administrator privileges at ' + s.name + ' except billing, the client page and ownership'), s.id, 'All administrator privileges at ' + s.name + ' except billing, the client page and ownership')).join('')}</span>
+           <span class="hint">All administrator privileges except billing, the client page and ownership.</span></div>` : ''}</div>`).join('')}
   </div>`;
 }
 function fitPeople(){}   // the two-line layout fits any width; nothing to switch
@@ -221,6 +254,7 @@ function stageChange(staged, u, c){
   const put = (grp, k, v, was) => { s[grp] = s[grp] || {}; if(v === was) delete s[grp][k]; else s[grp][k] = v; if(!Object.keys(s[grp]).length) delete s[grp]; };
   if(c.dataset.ust) put('stores', c.dataset.ust, c.checked, (u.stores || {})[c.dataset.ust] === true);
   else if(c.dataset.uperm) put('perms', c.dataset.uperm, c.checked, !!(u.perms || {})[c.dataset.uperm]);
+  else if(c.dataset.uadm) put('adminStores', c.dataset.uadm, c.checked, (u.adminStores || {})[c.dataset.uadm] === true);
   else if(c.dataset.uon){ if(!c.checked === !!u.disabled) delete s.disabled; else s.disabled = !c.checked; }
   if(!Object.keys(s).length) delete staged[u.sub];
 }

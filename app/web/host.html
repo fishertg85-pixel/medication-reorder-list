@@ -56,6 +56,16 @@
     .ucell.uname, .ucell.acts { grid-column: 1 / -1; } .ucell.acts { text-align: left; } .ucell.copycell:empty { display: none; }
     .ucell.uname, .ucell.mono { white-space: normal; }
   }
+  .crumb { font-size: 14px; margin: 0 0 10px; color: var(--muted); } .crumb a, .crumb button.lk { background: none; border: 0; padding: 0; min-height: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; } .crumb b { color: var(--ink); }
+  .cw { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+  .cq { position: sticky; top: 8px; max-height: calc(100vh - 24px); overflow: auto; } .cqh { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; } .cqh h2 { margin: 0; }
+  #qFind { width: 100%; box-sizing: border-box; margin-bottom: 8px; font: inherit; border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; background: var(--bg); color: var(--ink); }
+  .qrow { display: block; width: 100%; text-align: left; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); padding: 7px 10px; margin-bottom: 6px; cursor: pointer; min-height: 0; }
+  .qrow b { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .qrow span { font-size: 12px; color: var(--muted); } .qrow.on { border-color: var(--accent); background: var(--accent-soft); } .qrow:hover { border-color: var(--accent); }
+  @media (max-width: 1100px) { .cw { grid-template-columns: 1fr; } .cq { position: static; max-height: none; order: -1; } }
+  .modal { position: fixed; inset: 0; background: rgba(10, 20, 35, .55); z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding: 3vh 2vw; overflow: auto; } .modal[hidden] { display: none; }
+  .mbox { background: var(--bg); border-radius: 10px; width: min(1500px, 96vw); padding: 12px 14px 4px; box-shadow: 0 16px 48px rgba(0, 0, 0, .4); } .mhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .bgrid { display: grid; gap: 8px; } .brow { display: grid; grid-template-columns: minmax(160px, 1.4fr) repeat(4, minmax(90px, 1fr)); gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; text-align: left; font: inherit; color: var(--ink); width: 100%; } .brow:hover { border-color: var(--accent); } .brow .bad { color: var(--bad); font-weight: 700; } .brow em { font-style: normal; color: var(--muted); font-size: 12px; display: block; }
   table.cards thead { display: none; }
   table.cards, table.cards tbody { display: block; }
   table.cards tr { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px 12px; padding: 10px 0; border-bottom: 2px solid var(--line); }
@@ -143,18 +153,34 @@
     </div>
     <div class="pass" id="passBox"></div>
     <nav class="tabs" id="hTabs" role="tablist">
-      <button type="button" data-tab="clients" class="on">Clients</button><button type="button" data-tab="pharmacies">Pharmacies</button><button type="button" data-tab="users">Users</button><button type="button" data-tab="billing">Billing</button>
+      <button type="button" data-tab="clients" class="on">Clients</button><button type="button" data-tab="users">Users</button><button type="button" data-tab="billing">Billing</button>
     </nav>
 
     <div data-pane="clients">
-    <section class="card">
-      <h2>Clients</h2>
-      <div class="msg ok" id="clientMsg" role="status" style="margin:0 0 8px"></div>
-      <div id="clients"><div class="hint">Loading…</div></div>
+    <div class="crumb" id="crumb"></div>
+    <div class="cw">
+      <div class="cmain">
+        <div class="msg ok" id="clientMsg" role="status" style="margin:0 0 8px"></div>
+        <div id="cview"><div class="hint">Pick a client from the list on the right, or add one.</div></div>
+        <div id="pview"></div>
+      </div>
+      <aside class="cq card" aria-label="Clients">
+        <div class="cqh"><h2>Clients</h2><button type="button" class="btn small" id="qNew">Add client</button></div>
+        <input type="text" id="qFind" placeholder="Find a client or pharmacy" autocomplete="off" maxlength="60">
+        <div id="cqueue"><div class="hint">Loading…</div></div>
+      </aside>
+    </div>
+    <section class="card" id="reviewCard" hidden>
+      <h2 id="reviewTitle">Rep drafts waiting for review</h2>
+      <div class="hint" style="margin-bottom:8px">A rep drafts changes for the pharmacies assigned to them; nothing is applied until a supervisor approves it. Services, the Calendar switch and DEA checks are never drafted.</div>
+      <div id="reviews"></div><div id="repAssign"></div>
     </section>
     <section class="card">
-      <h2>Add a client</h2>
-      <div id="newClient"></div>
+      <h2>Import a pharmacy's old reorder file</h2>
+      <div class="hint">The <span class="mono">nortex_reorder_data.json</span> file from the shared-drive version: open orders, archive and remembered items.
+        It only adds. Nothing already in the cloud is changed or removed, and running it twice adds nothing twice.</div>
+      <div class="row"><select id="impStore"></select><input type="file" id="impFile" accept=".json,application/json"><button class="btn" id="impGo">Import</button></div>
+      <div class="msg ok" id="impMsg"></div>
     </section>
     </div>
 
@@ -181,43 +207,16 @@
     </section>
     </div>
 
-    <div data-pane="pharmacies" hidden>
-    <section class="card">
-      <h2>Pharmacies</h2>
-      <div class="hint" style="margin-bottom:8px">You set each pharmacy’s license, identifiers, services and Calendar switch here. The pharmacy’s Account Owner can see them but not change them.</div>
-      <div class="msg ok" id="storeMsg" role="status" style="margin:0 0 8px"></div>
-      <div id="stores"><div class="hint">Loading…</div></div>
-    </section>
-
-    <section class="card" id="reviewCard" hidden>
-      <h2 id="reviewTitle">Rep drafts waiting for review</h2>
-      <div class="hint" style="margin-bottom:8px">A rep drafts changes for the pharmacies assigned to them; nothing is applied until a supervisor approves it. Services, the Calendar switch and DEA checks are never drafted.</div>
-      <div id="reviews"></div><div id="repAssign"></div>
-    </section>
-
-    <section class="card">
-      <h2>Set up a new pharmacy</h2>
-      <div class="hint" style="margin-bottom:8px">Fill in what you know, then press <b>Create pharmacy</b>. Add the pharmacy’s Account Owner and staff under <b>Add a user</b> above afterwards.</div>
-      <div id="newStore"></div>
-    </section>
-
-    <section class="card">
-      <h2>Import a pharmacy's old reorder file</h2>
-      <div class="hint">The <span class="mono">nortex_reorder_data.json</span> file from the shared-drive version: open orders, archive and remembered items.
-        It only adds. Nothing already in the cloud is changed or removed, and running it twice adds nothing twice.</div>
-      <div class="row"><select id="impStore"></select><input type="file" id="impFile" accept=".json,application/json"><button class="btn" id="impGo">Import</button></div>
-      <div class="msg ok" id="impMsg"></div>
-    </section>
-    </div>
-
     <div data-pane="billing" hidden>
     <section class="card">
       <h2>Billing</h2>
-      <div class="hint">Not built yet. Billing and invoices will be visible only to the Account Owner (read-only) and the IronLedger host.</div>
+      <div class="hint" style="margin-bottom:8px">Every client at a glance. Open a client to add or update invoices. Only the client’s own Account Owner (read only) and IronLedger can see a client’s billing.</div>
+      <div id="billAll"><div class="hint">Open this tab to load.</div></div>
     </section>
     </div>
   </div>
 </main>
+<div class="modal" id="pmodal" hidden role="dialog" aria-modal="true" aria-label="Add a pharmacy"><div class="mbox"><div class="mhead"><b>Add a pharmacy</b><button type="button" class="btn2 small" id="pmClose">Close</button></div><div id="newStore"></div></div></div>
 <footer class="foot"><img src="mark.svg" alt=""><span>2026 IronLedger LLC</span></footer>
 <script src="config.js"></script>
 <script src="layout_engine.js"></script>

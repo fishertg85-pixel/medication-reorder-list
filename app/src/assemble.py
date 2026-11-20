@@ -257,6 +257,9 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
       <div class="li-msg" id="ownLockMsg"></div>
     </div>
     <div id="ownBody" style="display:none;">
+    <div class="toolbar" id="ownSwitch" style="display:none;margin-bottom:8px;"><button class="btn small" id="ownSwPharm">Pharmacy and users</button><button class="btn2 small" id="ownSwClient">Client</button></div>
+    <div id="ownClientView" style="display:none;"></div>
+    <div id="ownPharmView">
     <div class="banner info" id="passBox"></div>
     <div class="card">
       <h2>Users</h2>
@@ -317,6 +320,7 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
       </ol>
       <div class="hint">Barcode scanning is for computers with a USB barcode scanner: click in the search box and scan the bottle or box.</div>
     </div>
+    </div><!-- #ownPharmView -->
     </div><!-- #ownBody -->
   </section>
 ''')
@@ -338,7 +342,7 @@ rep('''/* ======================================================================
    Drug search: NLM RxTerms / RxNav live, FDA NDC Directory backup. DailyMed links open labels.
    ======================================================================= */''')
 cut('/* ---------------- shared state ---------------- */', '/* ---------------- drug search:', open(P + 'state.js').read() + '\n' + open(P + 'login.js').read() + '\n')
-cut('/* ---------------- safety net:', '</script>', open(P + 'layout_engine.js').read() + '\n' + open(P + 'pharm_panels.js').read() + '\n' + open(P + 'owner.js').read() + '\n' + open(P + 'calendar.js').read() + '\n' + open(P + 'documents_panels.js').read() + '\n' + open(P + 'rx.js').read() + '\n' + open(P + 'start.js').read())
+cut('/* ---------------- safety net:', '</script>', open(P + 'layout_engine.js').read() + '\n' + open(P + 'pharm_panels.js').read() + '\n' + open(P + 'client_panels.js').read() + '\n' + open(P + 'owner.js').read() + '\n' + open(P + 'calendar.js').read() + '\n' + open(P + 'documents_panels.js').read() + '\n' + open(P + 'rx.js').read() + '\n' + open(P + 'start.js').read())
 # remove the old tabs/start (now in start.js) — it was after the safety-net block, so already cut
 
 # ---------- list rows: who added it, labels for phone layout, remove only with permission

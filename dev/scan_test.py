@@ -4,7 +4,7 @@ def upc(ndc10):
     d = '3' + ndc10; s = sum(int(c) * (3 if i % 2 == 0 else 1) for i, c in enumerate(d)); return d + str((10 - s % 10) % 10)
 with sync_playwright() as pw:
     b = pw.chromium.launch(); ctx = b.new_context(viewport={"width": 1300, "height": 800}); setup(ctx); p = page_for(ctx)
-    login(p, 'NTX1', 'owner', 'temp12345a')
+    login(p, 'NTX1', 'owner', 'temp12345a'); p.click('#tabs [data-tab=list]'); p.wait_for_timeout(300)
     # 1) someone searched atenolol (list on screen, nothing chosen) ... then scans an amphetamine bottle
     p.click('#search'); p.keyboard.type('ateno 25', delay=10); p.wait_for_timeout(900)
     p.fill('#search', ''); p.keyboard.type(upc('1671495301'), delay=2); p.keyboard.press('Enter'); p.wait_for_timeout(2500)

@@ -3,7 +3,7 @@ const CFG = window.NORTEX_CONFIG || {};
 const COG = CFG.cognitoEndpoint || `https://cognito-idp.${CFG.region}.amazonaws.com/`;
 let STATE = {reorder:[], archive:[], remember:{}};
 let ME = null, STORE = null;                       // ME: {name, login, owner, perms, stores}; STORE: {id, name, ...}
-const PERM = p => !!(ME && ME.perms && ME.perms[p]);
+const PERM = p => !!(ME && (STORE && STORE.perms ? STORE.perms[p] : ME.perms && ME.perms[p]));   // privileges are per pharmacy (an owner here may be staff elsewhere)
 const DISTRIBUTORS = ['Anda Inc','Auburn Pharmaceutical','Axia Medical','Blupax Pharmaceuticals, LLC','Capital Wholesale Drug Co','CityMedRX',
   'GRX / Greenhill','Independent Pharmacy Cooperative','Integral Rx / Smith Drug','KeySource Acquisition, LLC','Masters Pharmaceutical',
   'Mckesson Drug Company','Oak Drugs Inc','Paragon Enterprises','Parmed Pharmaceuticals','PBA Health','Pharmsource, LLC','Real Value Products',
@@ -91,7 +91,7 @@ async function api(method, path, body, retried){
   const j = await r.json().catch(() => ({}));
   if(r.status === 423 && j.locked){ ownerLockNow('Locked after 5 minutes without activity. Re-enter your password.', true); const e = new Error(j.error); e.auth = true; e.locked = true; throw e; }
   if(!r.ok){ const e = new Error(j.error || j.message || ('Server answered ' + r.status)); e.status = r.status; if(j.pin) e.pin = j.pin; throw e; }
-  if(/^\/owner\/|\/import$/.test(path)) OWN_UNTIL = Date.now() + OWN_MS;         // using the tab keeps it open
+  if(/^\/(owner|client)\/|\/import$/.test(path)) OWN_UNTIL = Date.now() + OWN_MS;         // using the tab keeps it open
   return j;
 }
 function setOnline(ok){ const b = $('offlineBanner'); if(b) b.style.display = ok ? 'none' : 'block'; }
@@ -199,6 +199,8 @@ async function loadLogo(id, fresh){
   if(STORE && STORE.id === id) paintStore();
 }
 let LANDED = false;
+// a tab went away (switched off, or another pharmacy): go to the first tab that is still there
+function homeTab(){ const b = [...document.querySelectorAll('#tabs button')].find(x => !x.classList.contains('tabx') && x.style.display !== 'none') || document.querySelector('#tabs [data-tab="owner"]:not([style*="none"])'); if(b) b.click(); }
 function paintStore(){
   $('storeName').textContent = STORE ? STORE.name : 'Reorder List';
   document.title = (STORE ? STORE.name + ' · ' : '') + 'Reorder List';
@@ -207,17 +209,19 @@ function paintStore(){
   const sel = $('storeSel');
   sel.style.display = ME && ME.stores.length > 1 ? '' : 'none';
   if(ME) sel.innerHTML = ME.stores.map(s => `<option value="${esc(s.id)}"${STORE && s.id === STORE.id ? ' selected' : ''}>${esc(s.id)} · ${esc(s.name)}</option>`).join('');
-  $('whoLabel').textContent = ME ? (ME.name || ME.login) + (ME.owner ? ' (Account Owner)' : '') : '';
+  $('whoLabel').textContent = ME ? (ME.name || ME.login) + (STORE && STORE.isOwner ? ' (Account Owner)' : STORE && STORE.owner ? ' (Administrator)' : '') : '';
   // what this login may do
-  document.querySelector('#tabs [data-tab="archive"]').style.display = PERM('archive') ? '' : 'none';
-  document.querySelector('#tabs [data-tab="owner"]').style.display = ME && ME.owner ? '' : 'none';
+  document.querySelector('#tabs [data-tab="archive"]').style.display = PERM('archive') && !(STORE && STORE.reorder === false) ? '' : 'none';
+  document.querySelector('#tabs [data-tab="owner"]').style.display = (STORE && STORE.owner) || (ME && ME.clientOwner) ? '' : 'none';
+  const lt = document.querySelector('#tabs [data-tab="list"]'); const noReo = !!(STORE && STORE.reorder === false); if(lt) lt.style.display = noReo ? 'none' : '';   // Reorder List switched off for this pharmacy
+  if(noReo && document.querySelector('#tabs [data-tab="list"].active, #tabs [data-tab="archive"].active')) homeTab();
   $('submitBtn').style.display = PERM('submit') ? '' : 'none';
   $('submitOff').style.display = ME && !PERM('submit') ? '' : 'none';
   $('exportCard').style.display = PERM('export') ? '' : 'none';
   renderStoreInfo();
   calPaint(); docsPaintTab(); rxPaint();
   $('archOpen').style.display = PERM('archive') ? '' : 'none';
-  $('acctBtn').style.display = ME && ME.owner ? '' : 'none';
+  $('acctBtn').style.display = (STORE && STORE.owner) || (ME && ME.clientOwner) ? '' : 'none';
   if(!LANDED && ME && STORE){ LANDED = true;                  // first screen after sign-in = the first tab the person has (Calendar, Documents, Reorder List)
     const first = [...document.querySelectorAll('#tabs button')].find(b => !b.classList.contains('tabx') && b.style.display !== 'none');
     if(first && first.dataset.tab !== 'list') first.click(); }

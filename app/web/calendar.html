@@ -633,7 +633,7 @@ const FEATURES=[['controlled','Dispenses Controlled Substances (DEA)'],['nonster
 
 /* ===== state ===== */
 const BLANK=(typeof window!=='undefined'&&window.IL_BLANK===true);
-let S=emptyState(); let D=null; let UI={tab:'dashboard',calMonth:null,selDay:null,calView:'month',fCat:'',fWho:'',showProj:true,showHol:true,showObs:true,site:'',auditRange:'12',loading:true};
+let S=emptyState(); let D=null; let UI={tab:'dashboard',calMonth:null,selDay:null,calView:'month',fCat:'',fWho:'',fMine:false,showProj:true,showHol:true,showObs:true,site:'',auditRange:'12',loading:true};
 let ME=''; try{ME=localStorage.getItem('ilcal.me')||'';}catch(e){}
 function emptyState(){ return {mode:'demo',profile:{name:'',state:'TX',features:{controlled:true,nonsterile:true,sterile:false,hazardous:false,bbp:false},trackingStart:localToday(),tz:'America/Chicago',hours:defHours(),holClosed:defHolClosed()},plans:{},work:{},reminders:{},rooms:[],sites:[],people:[],equipment:[],documents:[],tracks:{},obl:{},custom:[],records:[],events:[],log:[]}; }
 function obligations(){ return IL.mergeObligations(SEED,S.obl,S.custom); }
@@ -726,7 +726,8 @@ function changed(kind){ if(kind==='config')Store.saveConfig(); else if(!Store.db
 const subjName=t=>t.subj.name;
 const whoName=t=>t.who?t.who.name:'Unassigned';
 const inSite=t=>!UI.site||!t.subj.siteId||t.subj.siteId===UI.site;
-function passF(o){ const t=o.track; if(UI.fCat&&t.ob.cat!==UI.fCat)return false; if(UI.fWho&&(!t.who||t.who.id!==UI.fWho))return false; return true; }
+function mayDo(ob){ return !(window.ILHOST&&ILHOST.mayComplete)||ILHOST.mayComplete(ob.id); }
+function passF(o){ const t=o.track; if(UI.fMine&&!mayDo(t.ob))return false; if(UI.fCat&&t.ob.cat!==UI.fCat)return false; if(UI.fWho&&(!t.who||t.who.id!==UI.fWho))return false; return true; }
 function findOcc(tk,key){ return D.occs.find(o=>o.trackKey===tk&&o.key===key); }
 function whenCell(o){ if(o.done)return o.rec&&o.rec.status==='na'?'Not Applicable':'Done '+fmtS(o.rec.completedOn); if(o.days==null)return ''; return whenText(o.days); }
 function occRow(o,withAct){
@@ -738,7 +739,7 @@ function openOccs(){ return D.list.filter(o=>!o.done&&!o.projected&&passF(o)&&in
 function filtersHtml(){
   const cats=CATS_ORDER.concat(['Custom']);
   const who=S.people.filter(p=>!p.archived);
-  return '<div class="row"><span class="ctl">Category <select data-chg="fCat"><option value="">All</option>'+cats.map(c=>'<option'+(UI.fCat===c?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select></span><span class="ctl">Responsible <select data-chg="fWho"><option value="">All</option>'+who.map(p=>'<option value="'+esc(p.id)+'"'+(UI.fWho===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></span></div>';
+  return '<div class="row"><span class="ctl">Category <select data-chg="fCat"><option value="">All</option>'+cats.map(c=>'<option'+(UI.fCat===c?' selected':'')+'>'+esc(c)+'</option>').join('')+'</select></span><span class="ctl">Responsible <select data-chg="fWho"><option value="">All</option>'+who.map(p=>'<option value="'+esc(p.id)+'"'+(UI.fWho===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></span>'+((window.ILHOST&&ILHOST.mayComplete)?'<label class="ctl"><input type="checkbox" data-chg="fMine"'+(UI.fMine?' checked':'')+'> Only tasks I can complete</label>':'')+'</div>';
 }
 function empty(msg){ return '<div class="body mut">'+msg+'</div>'; }
 
@@ -1223,6 +1224,7 @@ const FORMS={
 const formOf=ob=>ob&&ob.form&&FORMS[ob.form]||null;
 
 function recModal(o){
+  if(!mayDo(o.track.ob)){ openModal('View Only','<p>'+esc(o.track.ob.title)+' is completed by the pharmacist in charge or the person responsible for it. You can see it on the calendar; your role can’t complete it.</p>','<span style="flex:1"></span><button class="btn" data-act="close">Close</button>'); return; }
   const t=o.track, ob=t.ob, k=ob.rec.kind, today=D.today, pk=o.trackKey+'|'+o.key; const W=(S.work||{})[pk]; const hasRes=!!(ob.res&&ob.res.length); const F=formOf(ob);
   const alsoIds=(ob.alsoSatisfies||[]).filter(id=>D.tracks.some(x=>x.key===id+'|'+t.subj.id&&!x.inactive));
   const alsoTitles=alsoIds.map(id=>(D.obs.find(x=>x.id===id)||{}).title).filter(Boolean);
@@ -1552,7 +1554,7 @@ const ACT={
 };
 document.addEventListener('click',e=>{ ctxClose(); const el=e.target.closest('[data-act]'); if(!el)return; if(el.dataset.act==='ovclose'&&e.target!==el)return; const f=ACT[el.dataset.act]; if(f){ if(el.tagName==='BUTTON'||el.tagName==='A')e.stopPropagation(); f(el,e); } });
 document.addEventListener('change',e=>{ const el=e.target.closest('[data-chg]'); if(!el)return; const c=el.dataset.chg; if(c==='attach'){ attachFiles(el); return; }
-  if(c==='fCat')UI.fCat=el.value; else if(c==='fWho')UI.fWho=el.value; else if(c==='showProj')UI.showProj=el.checked; else if(c==='auditRange')UI.auditRange=el.value; else if(c==='showHol')UI.showHol=el.checked; else if(c==='showObs')UI.showObs=el.checked;
+  if(c==='fMine')UI.fMine=el.checked; else if(c==='fCat')UI.fCat=el.value; else if(c==='fWho')UI.fWho=el.value; else if(c==='showProj')UI.showProj=el.checked; else if(c==='auditRange')UI.auditRange=el.value; else if(c==='showHol')UI.showHol=el.checked; else if(c==='showObs')UI.showObs=el.checked;
   else if(c==='calm'){ const y=UI.calMonth.slice(0,4); UI.calMonth=clampMonth(y+'-'+String(el.value).padStart(2,'0')); }
   else if(c==='caly'){ const y=parseInt(el.value,10); if(!(y>=1&&y<=2999)){ toast('Enter a year up to 2999.'); render(); return; } const nm=y+'-'+UI.calMonth.slice(5); if(nm<launchMonth())toast(launchNote()); UI.calMonth=clampMonth(nm); }
   else if(c==='dayset'){ if(el.value){ let v=el.value; if(v<launchDate()){ v=launchDate(); toast(launchNote()); } UI.selDay=v; UI.calMonth=v.slice(0,7); } }

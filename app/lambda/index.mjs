@@ -1419,7 +1419,8 @@ async function setInvoice(me, clientId, sk, b){
 // what the client's own Account Owner sees: the setup information entered for the client and the billing. Read only.
 async function clientPage(clientId){
   const c = await needClient(clientId), stores = await allStores(), all = await profilesAll();
-  return { client: clientView(c), pharmacies: stores.filter(s => s.clientId === clientId).map(s => ({ id: s.id, name: s.name, city: s.city || '', state: s.state || '', owner: ((all.find(p => ownsStore(p, s.id)) || {}).name) || ((all.find(p => ownsStore(p, s.id)) || {}).login) || '' })),
+  const co = all.find(p => !p.host && p.ownerClients && p.ownerClients[clientId] === true);
+  return { client: clientView(c), owner: co ? { name: co.name || co.login, login: co.login } : null, pharmacies: stores.filter(s => s.clientId === clientId).map(s => ({ id: s.id, name: s.name, city: s.city || '', state: s.state || '', owner: ((all.find(p => ownsStore(p, s.id)) || {}).name) || ((all.find(p => ownsStore(p, s.id)) || {}).login) || '' })),
     billing: await billingOf(clientId) };
 }
 // ---------- router

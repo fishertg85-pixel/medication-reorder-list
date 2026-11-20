@@ -228,6 +228,29 @@
 .ctadd{display:grid;grid-template-columns:1fr;gap:8px;}
 .ctadd select,.ctadd input{width:100%;min-width:0;}
 .ctadd button{justify-self:start;}
+
+/* holiday list: a floating popover, never pushes the page down */
+.hdrop{position:relative;} .hdrop[open] .hdlist{position:absolute;left:0;top:100%;z-index:40;min-width:270px;max-height:62vh;overflow:auto;margin-top:4px;padding:8px 12px;background:var(--panel,#fff);border:1px solid var(--line,#ccc);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.22);}
+/* NPI / DEA buttons sit next to their boxes; inline digit errors; state licenses; owner and PIC panel */
+.fbtn{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;} .fbtn>label{flex:1 1 160px;min-width:0;} .fbtn .btn2{white-space:nowrap;margin-bottom:1px;}
+.fe{grid-column:1/-1;margin:-4px 0 4px;font-size:12.5px;color:var(--bad,#a11);font-weight:600;} input.bad{border-color:var(--bad,#a11)!important;}
+.licbox{grid-column:1/-1;} .licbox .clh{display:block;margin-bottom:6px;}
+.licrow{display:grid;grid-template-columns:minmax(64px,.7fr) minmax(90px,1.2fr) minmax(120px,1.2fr) minmax(100px,1fr) auto;gap:6px 8px;align-items:end;margin-bottom:8px;} .licrow label{min-width:0;} .licrow .edit{margin-bottom:6px;}
+.licrow.ro{grid-template-columns:minmax(64px,.7fr) minmax(90px,1.2fr) minmax(120px,1.2fr) minmax(100px,1fr);}
+.ownbox{margin-top:12px;padding-top:10px;border-top:1px solid var(--line,#d9dee6);} .ownbox .clh{display:block;margin-bottom:6px;} .ownbox label{display:block;margin:6px 0;} .ownbox button{margin-top:6px;}
+.ownbox label.chk{display:flex;align-items:flex-start;gap:6px;}
+.pnl[data-pnl=id] .entity{flex:1 1 100%;}
+
+/* client page: pharmacies list and billing */
+.plist{margin-top:8px;display:grid;gap:4px;} .clrow2{display:grid;grid-template-columns:minmax(60px,auto) 1fr auto auto;gap:4px 12px;align-items:center;text-align:left;width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:7px;background:var(--panel,#fff);color:var(--ink,inherit);font:inherit;cursor:pointer;} .clrow2:hover{border-color:var(--accent);}
+.btiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:10px;} .bt{border:1px solid var(--line);border-radius:8px;padding:8px 10px;} .bt span{display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);} .bt b{font-size:20px;margin-right:8px;} .bt em{font-style:normal;color:var(--muted);font-size:13px;} .bt.bad{border-color:var(--bad,#a11);} .bt.bad b{color:var(--bad,#a11);} .bt.ok b{color:var(--ok,#1a7f37);}
+table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,table.invt td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line-soft,var(--line));white-space:nowrap;} table.invt .num{text-align:right;}
+.invadd{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);} .invadd button{margin-top:6px;}
+
+/* narrow panels (4 columns wide): nothing may push past the panel's edge */
+.pnl .pfields{grid-template-columns:repeat(auto-fill,minmax(min(210px,100%),1fr));min-width:0;} .pnl .entity{min-width:0;max-width:100%;}
+.licrow{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:flex-end;} .licrow label{flex:1 1 84px;min-width:0;} .licrow label:nth-child(3){flex-basis:128px;} .licrow label input,.licrow label select{width:100%;}
+.ownbox input[type=radio]{width:auto;flex:none;margin:3px 0 0;}
 /* ---- Documents tab ---- */
 #panel-documents{position:relative;}
 #panel-documents .pgrid{margin-top:2px;}
@@ -536,6 +559,9 @@
       <div class="li-msg" id="ownLockMsg"></div>
     </div>
     <div id="ownBody" style="display:none;">
+    <div class="toolbar" id="ownSwitch" style="display:none;margin-bottom:8px;"><button class="btn small" id="ownSwPharm">Pharmacy and users</button><button class="btn2 small" id="ownSwClient">Client</button></div>
+    <div id="ownClientView" style="display:none;"></div>
+    <div id="ownPharmView">
     <div class="banner info" id="passBox"></div>
     <div class="card">
       <h2>Users</h2>
@@ -596,6 +622,7 @@
       </ol>
       <div class="hint">Barcode scanning is for computers with a USB barcode scanner: click in the search box and scan the bottle or box.</div>
     </div>
+    </div><!-- #ownPharmView -->
     </div><!-- #ownBody -->
   </section>
 </main>

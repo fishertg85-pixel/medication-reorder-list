@@ -27,7 +27,7 @@ c.admin_set_user_mfa_preference(Username="neo", UserPoolId=ids["pool"], SMSMfaSe
 h = tokens("neo", "hosttemp12a", "hostpass999"); H = h["IdToken"]; api(H, "POST", "/host-unlock", {"password": "hostpass999", "accessToken": h["AccessToken"]})
 CL = lambda **k: dict({"legalName": "NorTex Holdings LLC", "entityType": "llc", "ein": "12-3456789", "address": "100 Main St", "city": "Haslet", "state": "TX", "zip": "76052"}, **k)
 client1 = api(H, "POST", "/host/clients", CL())[1]["id"]; ENT = {"clientId": client1, "entityLegalName": "Other Pharmacy LLC", "entityType": "llc", "ein": "98-7654321"}
-api(H, "POST", "/host/stores", {"id": "NTX2", "name": "Other Pharmacy", **ENT}); api(H, "POST", "/host/stores/NTX1", {"calendar": True})      # the host (IronLedger) switches the Calendar on and sets services
+api(H, "POST", "/host/stores", {"id": "NTX2", "name": "Other Pharmacy", **ENT}); api(H, "POST", "/host/stores/NTX2/owner", {"owner": {"login": "owner"}}); api(H, "POST", "/host/stores/NTX1", {"calendar": True})      # the host (IronLedger) switches the Calendar on and sets services
 api(H, "POST", "/host/stores/NTX1", {"services": ["controlled", "sterile", "immunizations"], "npi": "1234567893", "dea": "AB1234563", "hours": [None] + [{"o": "08:00", "c": "20:00"}] * 5 + [None]})
 def mk(l, stores, cal, ph):
     s, r = api(O, "POST", "/owner/users", {"login": l, "name": l.upper(), "phone": ph, "smsConsent": True, "stores": stores, "perms": {"calendar": cal}}); assert s == 200, r; return r["tempPassword"]

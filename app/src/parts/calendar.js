@@ -15,9 +15,21 @@ function calItems(st){                                           // the calendar
   add('obl', Object.values(st.obl || {}).concat(st.custom || []));
   return out;
 }
+// who may complete which built-in task (the server enforces the same table; this only keeps the screen honest)
+const CAL_ROLE = { 'dea-reg': 'Owner', 'dea-biennial': 'PIC', 'tx-cs-annual': 'PIC', 'cs-reconcile': 'PIC', 'cs-cycle': 'PIC', 'tx-pharmacy-license': 'Owner', 'tx-rph-license': 'PIC', 'tx-tech-reg': 'PIC', 'tx-pic-change': 'PIC', 'tx-pic-inventory': 'PIC', 'tx-officer-change': 'Owner', 'tx-location-change': 'Owner',
+  'u795-training': 'DP', 'u795-sop': 'DP', 'u797-cert-pec': 'DP', 'u797-cert-sec': 'DP', 'u797-air': 'DP', 'u797-surface': 'DP', 'u797-sop': 'DP', 'u797-qaqc': 'DP', 'u797-didactic': 'DP', 'u797-garb': 'DP', 'u797-media': 'DP', 'u797-sporicidal': 'DP', 'u797-monitor-cal': 'DP', 'u797-pressure': 'DP',
+  'u800-list': 'DP', 'u800-risk': 'DP', 'u800-sop': 'DP', 'u800-training': 'DP', 'u800-wipe': 'DP', 'osha-ecp': 'Owner', 'osha-training': 'Owner', 'hipaa-risk': 'Owner', 'hipaa-training': 'Owner', 'doc-review': 'PIC' };
+function calMayCompleteHere(obId){
+  const role = CAL_ROLE[obId]; if(!role || !ME || !STORE) return true;       // custom tasks: anyone with the calendar
+  if(STORE.pharm) return true;
+  if(role === 'Owner') return !!STORE.owner;
+  if(role === 'DP') return ME.docDuty === 'dp' || ME.docDuty === 'ctech';
+  return false;
+}
 window.ILCAL_HOST = {
+  mayComplete: obId => calMayCompleteHere(obId),
   get user(){ return ME ? {name: ME.name || ME.login, login: ME.login} : null; },
-  get canStart(){ return !!(ME && ME.owner); },
+  get canStart(){ return !!(STORE && STORE.owner); },
   get pharmacy(){                                                // what the account already knows, to pre-fill starting the calendar
     if(!STORE) return null;
     const map = {controlled:'controlled', nonsterile:'nonsterile', sterile:'sterile', hazardous:'hazardous', immunizations:'bbp'};
@@ -67,6 +79,6 @@ function calPaint(){                                             // called whene
   const f = $('calFrame');
   if(!ok || (f.dataset.store && STORE && f.dataset.store !== STORE.id)){
     f.removeAttribute('data-store'); f.src = 'about:blank'; CAL.sig = {}; CAL.store = null;
-    if(tab.classList.contains('active')) document.querySelector('#tabs [data-tab="list"]').click();
+    if(tab.classList.contains('active')) homeTab();
   }
 }

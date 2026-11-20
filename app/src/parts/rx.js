@@ -21,6 +21,6 @@ function rxPaint(){                                               // called when
   const f = $('rxFrame');
   if(!ok || (f.dataset.store && STORE && f.dataset.store !== STORE.id)){
     f.removeAttribute('data-store'); f.src = 'about:blank';       // closing the page discards any form and PDFs held in it
-    if(tab.classList.contains('active')) document.querySelector('#tabs [data-tab="list"]').click();
+    if(tab.classList.contains('active')) homeTab();
   }
 }

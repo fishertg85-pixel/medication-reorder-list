@@ -64,9 +64,11 @@ async function api(method, path, body, retried){
 
 /* ---- screens ---- */
 let ME = null, UNTIL = 0, lastAct = 0, pingAt = 0, DATA = {stores:[], users:[]}, LOGOS = {};
+const NAV = {client:null, pharm:null, find:''};          // client: null | 'new' | IL-id; pharm: a pharmacy ID inside that client
+let BILL = null;                                          // the open client's invoices
 const SIGN = {step:'start', session:null, user:'', pw:''};
 function only(id){ ['gSign', 'gLock', 'gBody'].forEach(k => $(k).style.display = k === id ? '' : 'none'); }
-function clearData(){ for(const k in STAGED) delete STAGED[k]; if($('peopleMsg')) $('peopleMsg').textContent = ''; DATA = {stores:[], users:[]}; LOGOS = {}; $('people').innerHTML = ''; $('stores').innerHTML = ''; $('passBox').style.display = 'none'; $('passBox').innerHTML = ''; }
+function clearData(){ for(const k in STAGED) delete STAGED[k]; if($('peopleMsg')) $('peopleMsg').textContent = ''; DATA = {stores:[], users:[]}; LOGOS = {}; BILL = null; NAV.client = NAV.pharm = null; NAV.find = ''; $('people').innerHTML = ''; $('cview').innerHTML = ''; $('pview').innerHTML = ''; $('cqueue').innerHTML = ''; $('pmodal').hidden = true; $('newStore').innerHTML = ''; $('passBox').style.display = 'none'; $('passBox').innerHTML = ''; }
 function showSign(msg, ok){
   ME = null; UNTIL = 0; clearData(); only('gSign');
   SIGN.step = 'start'; SIGN.pw = ''; $('sPass').value = '';
@@ -161,6 +163,9 @@ async function load(){
   try{
     const [s, u, me, dr, cl] = await Promise.all([api('GET', '/host/stores'), api('GET', '/host/users'), api('GET', '/me'), api('GET', '/host/drafts'), api('GET', '/host/clients')]);
     DATA = {stores:s.stores, users:u.users, me, drafts:dr.drafts, clients:cl.clients};
+    if(NAV.client && NAV.client !== 'new' && !DATA.clients.some(k => k.id === NAV.client)) NAV.client = NAV.pharm = null;
+    if(NAV.pharm && !DATA.stores.some(x => x.id === NAV.pharm)) NAV.pharm = null;
+    if(NAV.client && NAV.client !== 'new'){ try{ BILL = await api('GET', '/host/clients/' + encodeURIComponent(NAV.client) + '/billing'); }catch(e){ if(e.auth) throw e; BILL = null; } } else BILL = null;
     for(const k in TEMPS) if(!DATA.users.some(x => x.sub === k && x.pending)) delete TEMPS[k];
     for(const k in STAGED) if(!DATA.users.some(x => x.sub === k)) delete STAGED[k];
     render();
@@ -179,13 +184,14 @@ const TEMPS = {};
 const STAGED = {};
 function effUser(u){
   const s = STAGED[u.sub]; if(!s) return u;
-  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}),
+  return Object.assign({}, u, {adminStores:Object.assign({}, u.adminStores || {}, s.adminStores || {}), stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}),
     disabled:s.disabled !== undefined ? s.disabled : u.disabled, initials:s.initials !== undefined ? s.initials : u.initials, license:s.license !== undefined ? s.license : u.license});
 }
 function stageChange(u, c){
   const s = STAGED[u.sub] || (STAGED[u.sub] = {});
   const put = (grp, k, v, was) => { s[grp] = s[grp] || {}; if(v === was) delete s[grp][k]; else s[grp][k] = v; if(!Object.keys(s[grp]).length) delete s[grp]; };
   if(c.dataset.ust) put('stores', c.dataset.ust, c.checked, (u.stores || {})[c.dataset.ust] === true);
+  else if(c.dataset.uadm) put('adminStores', c.dataset.uadm, c.checked, (u.adminStores || {})[c.dataset.uadm] === true);
   else if(c.dataset.uperm) put('perms', c.dataset.uperm, c.checked, !!(u.perms || {})[c.dataset.uperm]);
   else if(c.dataset.uon){ if(!c.checked === !!u.disabled) delete s.disabled; else s.disabled = !c.checked; }
   if(!Object.keys(s).length) delete STAGED[u.sub];
@@ -193,7 +199,8 @@ function stageChange(u, c){
 const COPY_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
 function signInText(u, pw){
   const on = DATA.stores.filter(s => u.stores && u.stores[s.id] === true).map(s => s.id);
-  return `Pharmacy ID: ${u.owner ? (DATA.stores[0] || {}).id || '' : on.join(' or ') || '(switch a pharmacy on first)'}\nUser ID: ${u.login}\nTemporary Pass: ${pw}`;
+  const ownIds = Object.keys(u.ownerStores || {}).filter(k => u.ownerStores[k]);
+  return `Pharmacy ID: ${(ownIds.length ? ownIds : on).join(' or ') || '(switch a pharmacy on first)'}\nUser ID: ${u.login}\nTemporary Pass: ${pw}`;
 }
 async function copyText(t){
   try{ await navigator.clipboard.writeText(t); return true; }
@@ -213,15 +220,17 @@ function render(){
     <div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div><div></div></div>
     ${DATA.users.map(effUser).map(u => {
       const self = u.sub === (ME && ME.sub) || (u.host && u.login === ME.login);
-      const role = u.owner ? 'Account Owner' : u.host ? 'Host (IronLedger)' : '';
+      const own = Object.keys(u.ownerStores || {}).filter(k => u.ownerStores[k]), cown = Object.keys(u.ownerClients || {}).filter(k => u.ownerClients[k]);
+      const role = u.host ? 'Host (IronLedger)' : [own.length ? 'Account Owner' : '', cown.length ? 'Client Account Owner' : ''].filter(Boolean).join(' · ');
       const on = self ? '' : priv(box('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on');
-      const pharm = u.owner ? '<span class="hint">All pharmacies</span>'
-        : u.host ? `<span class="hint">${esc(st.filter(s => u.stores[s.id] === true).map(s => s.id).join(', ') || 'None')} (set by the Account Owner)</span>`
-        : st.map(s => priv(box(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('');
-      const privs = u.owner ? `<span class="hint">Full access</span>${on}` : u.host ? `<span class="hint">${esc(P.filter(p => u.perms[p]).map(p => PERMS[p]).join(', ') || 'None')} (set by the Account Owner)</span>${on}`
-        : P.map(p => priv(box(`data-uperm="${p}"`, u.perms[p], PERMS[p]), PERMS[p])).join('') + on;
+      const isOwn = id => u.ownerStores && u.ownerStores[id] === true;
+      const adm = (id) => (ME && ME.hostRole !== 'rep' && !u.host && (u.acctType === 'pic' || u.acctType === 'pharmacist') && !isOwn(id) && (u.stores[id] === true || (u.adminStores || {})[id] === true)) ? priv(box(`data-uadm="${esc(id)}"`, (u.adminStores || {})[id] === true, 'Super user: every Account Owner privilege at this pharmacy except billing, the client page and ownership'), 'Super user at ' + id) : '';
+      const pharm = u.host ? `<span class="hint">${esc(st.filter(s => u.stores[s.id] === true).map(s => s.id).join(', ') || 'None')} (set by the Account Owner)</span>`
+        : st.map(s => isOwn(s.id) ? `<span class="tag" title="Account Owner of ${esc(s.name)}">${esc(s.id)} · Owner</span>` : priv(box(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('');
+      const privs = u.host ? `<span class="hint">${esc(P.filter(p => u.perms[p]).map(p => PERMS[p]).join(', ') || 'None')} (set by the Account Owner)</span>${on}`
+        : P.map(p => priv(box(`data-uperm="${p}"`, u.perms[p], PERMS[p]), PERMS[p])).join('') + st.map(s => adm(s.id)).join('') + on;
       const acts = STAGED[u.sub] ? `<button class="btn small" data-upd="${esc(u.sub)}">Update</button> <button class="btn2 small" data-undo="${esc(u.sub)}">Undo</button>`
-        : (self ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`) + (u.owner || u.host ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`);
+        : (self ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`) + (u.owner || u.host || cown.length ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`);
       return `<div class="urow${u.disabled ? ' off' : ''}${STAGED[u.sub] ? ' dirty' : ''}" data-sub="${esc(u.sub)}">
         <div class="ucols">
           <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${role ? `<span class="urole">${role}</span>` : ''}</div>
@@ -244,14 +253,13 @@ function render(){
   $('nStores').innerHTML = st.map(s => `<label class="chk"><input type="checkbox" data-nst="${esc(s.id)}"${st.length === 1 ? ' checked' : ''}> ${esc(s.id)} · ${esc(s.name)}</label>`).join('') || '<span class="hint">Add a pharmacy first.</span>';
   $('nPerms').innerHTML = Object.entries(PERMS).map(([p, l]) => `<label class="chk"><input type="checkbox" data-nperm="${p}"${p !== 'export' ? ' checked' : ''}> ${l}</label>`).join('');
   if(!$('nPass').value) $('nPass').value = genTemp();
-  renderClients(); renderStores(); renderReviews();
+  renderNav(); renderReviews();
   const keep = $('impStore').value;
   $('impStore').innerHTML = st.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join('');
   if(keep && st.some(s => s.id === keep)) $('impStore').value = keep;
-  if(!$('newStore').innerHTML) renderNew();
   for(const s of st) if(s.hasLogo && LOGOS[s.id] === undefined) loadLogo(s.id);
 }
-const holderOf = () => { const h = (DATA.users || []).find(u => u.owner); return h ? (h.name || h.login) + ' (' + h.login + ')' : ''; };
+const holderOf = s => { const o = ownInfo(s, DATA.users).owner; return o ? ownLabel(o) : 'Not set yet'; };
 const isRepMe = () => !!(DATA.me && DATA.me.hostRole === 'rep');
 function renderReviews(){
   const d = DATA.drafts || [], sup = !isRepMe(), pend = d.filter(x => x.status === 'pending');
@@ -273,28 +281,72 @@ $('reviewCard').addEventListener('click', async e => {
     if(rj){ const n = prompt('Why is this rejected?'); if(!n) return; await api('POST', `/host/drafts/${encodeURIComponent(box.dataset.dstore)}/${encodeURIComponent(box.dataset.draft)}/reject`, {note:n}); await load(); }
   }catch(err){ if(!err.auth) alert(err.message); }
 });
-function renderStores(){
-  $('stores').innerHTML = DATA.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, {logo:LOGOS[s.id], host:true, rep:isRepMe(), holder:holderOf(), clients:DATA.clients})}</div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
+const sayStore = t => { $('clientMsg').textContent = t; };
+const sayClient = sayStore;
+const clientOf = id => (DATA.clients || []).find(k => k.id === id);
+const storeOf = id => DATA.stores.find(s => s.id === id);
+const clientLabel = k => k ? (k.dba || k.legalName) : '';
+function goto(client, pharm){ NAV.client = client || null; NAV.pharm = pharm || null; $('clientMsg').textContent = ''; document.querySelector('#hTabs [data-tab=clients]').click(); load(); }
+function renderNav(){
+  const rep_ = isRepMe(), clients = DATA.clients || [], q = NAV.find.trim().toLowerCase();
+  // the queue (right): one line per client, the selected one highlighted; typing finds a client by name, account number or one of its pharmacies
+  const hit = k => !q || [k.legalName, k.dba, k.id].some(x => String(x || '').toLowerCase().includes(q)) || (k.pharmacies || []).some(id => { const s = storeOf(id); return id.toLowerCase().includes(q) || (s && String(s.name || '').toLowerCase().includes(q)); });
+  $('cqueue').innerHTML = clients.filter(hit).map(k => `<button type="button" class="qrow${NAV.client === k.id ? ' on' : ''}" data-q="${esc(k.id)}"><b>${esc(clientLabel(k))}</b><span>${esc(k.id)} · ${(k.pharmacies || []).length} ${(k.pharmacies || []).length === 1 ? 'pharmacy' : 'pharmacies'}</span></button>`).join('') || `<div class="hint">${clients.length ? 'No match.' : 'No clients yet.'}</div>`;
+  $('qNew').style.display = rep_ ? 'none' : '';
+  // breadcrumb
+  const k = NAV.client && NAV.client !== 'new' ? clientOf(NAV.client) : null, s = NAV.pharm ? storeOf(NAV.pharm) : null;
+  $('crumb').innerHTML = !NAV.client ? '<b>Clients</b>' : NAV.client === 'new' ? '<button class="lk" data-crumb="home">Clients</button> › <b>New client</b>'
+    : `<button class="lk" data-crumb="home">Clients</button> › ${s ? `<button class="lk" data-crumb="client">${esc(clientLabel(k))}</button> › <b>${esc(s.name || s.id)}</b>` : `<b>${esc(clientLabel(k))}</b>`}`;
+  const cv = $('cview'), pv = $('pview'); cv.hidden = !!s; pv.hidden = !s;
+  if(s){
+    $('cview').innerHTML = '';
+    pv.innerHTML = `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, {logo:LOGOS[s.id], host:true, rep:rep_, holder:holderOf(s), clients:DATA.clients, people:DATA.users})}</div>`;
+    return;
+  }
+  pv.innerHTML = '';
+  if(NAV.client === 'new'){ if(rep_) cv.innerHTML = '<div class="hint">New clients are set up by an IronLedger supervisor.</div>'; else if(!cv.querySelector('[data-is-new]')) cv.innerHTML = `<div class="pcard" data-is-new="1"><h3 class="clt">New client</h3>${clientCardHtml({billingSame:true}, {host:true, isNew:true, stores:DATA.stores, people:DATA.users}, undefined)}</div>`; return; }
+  if(!k){ cv.innerHTML = '<div class="hint">Pick a client from the list on the right, or add one.</div>'; return; }
+  cv.innerHTML = `<div class="pcard" data-client="${esc(k.id)}"><h3 class="clt">${esc(k.legalName)}${k.dba ? ' <span class="hint">dba ' + esc(k.dba) + '</span>' : ''}</h3>${clientCardHtml(k, {host:true, stores:DATA.stores, people:DATA.users, billing:BILL, ro:rep_}, undefined)}</div>`;
 }
-function renderNew(){ if(isRepMe()){ $('newStore').innerHTML = '<div class="hint">New pharmacies are set up by an IronLedger supervisor.</div>'; return; } $('newStore').innerHTML = `<div class="pcard" data-is-new="1">${pharmCardHtml({}, {host:true, isNew:true, clients:DATA.clients})}</div>`; }
-function renderClients(){
-  const rep_ = isRepMe(), L = undefined;
-  $('clients').innerHTML = (DATA.clients || []).map(k => `<div class="pcard" data-client="${esc(k.id)}"><h3 class="clt">${esc(k.legalName)}${k.dba ? ' <span class="hint">dba ' + esc(k.dba) + '</span>' : ''}</h3>${clientCardHtml(k, {host:true, stores:DATA.stores, ro:rep_}, L)}</div>`).join('') || '<div class="hint">No clients yet.</div>';
-  if($('newClient').innerHTML && !rep_) return;
-  $('newClient').innerHTML = rep_ ? '<div class="hint">New clients are set up by an IronLedger supervisor.</div>' : `<div class="pcard" data-is-new="1">${clientCardHtml({billingSame:true}, {host:true, isNew:true, stores:DATA.stores}, L)}</div>`;
-}
-const sayClient = t => { $('clientMsg').textContent = t; };
-clientCardEvents($('clients'), {stores:() => DATA.stores, say:sayClient, after: async () => { await load(); }});
-clientCardEvents($('newClient'), {stores:() => DATA.stores, say:sayClient, after: async () => { $('newClient').innerHTML = ''; $('newStore').innerHTML = ''; await load(); }});
+$('cqueue').addEventListener('click', e => { const b = e.target.closest('[data-q]'); if(b) goto(b.dataset.q, null); });
+$('qNew').onclick = () => { NAV.client = 'new'; NAV.pharm = null; $('cview').innerHTML = ''; $('clientMsg').textContent = ''; renderNav(); };
+$('qFind').addEventListener('input', e => { NAV.find = e.target.value; renderNav(); });
+$('crumb').addEventListener('click', e => { const b = e.target.closest('[data-crumb]'); if(!b) return; if(b.dataset.crumb === 'home') goto(null, null); else goto(NAV.client, null); });
+// the client page (setup information, owner, pharmacies, billing) and its pharmacies' pages
+const clientEv = {stores:() => DATA.stores, say:sayClient, pass:showPass, openPharm:id => goto(NAV.client, id), addPharm:openAddPharm, after: async newId => { if(newId){ NAV.client = newId; NAV.pharm = null; $('cview').innerHTML = ''; } await load(); }};
+clientCardEvents($('cview'), clientEv);
 $('hTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if(!b) return;
   document.querySelectorAll('#hTabs button').forEach(x => x.classList.toggle('on', x === b));
-  document.querySelectorAll('[data-pane]').forEach(x => x.hidden = x.dataset.pane !== b.dataset.tab); });
-const sayStore = t => { $('storeMsg').textContent = t; };
-pharmCardEvents($('stores'), {base:'/host', stores:() => DATA.stores, clients:() => DATA.clients, say:sayStore, after: async () => { await load(); }});
-pharmCardEvents($('newStore'), {base:'/host', stores:() => DATA.stores, clients:() => DATA.clients, say:sayStore, after: async isNew => { if(isNew) renderNew(); await load(); }});
+  document.querySelectorAll('[data-pane]').forEach(x => x.hidden = x.dataset.pane !== b.dataset.tab);
+  if(b.dataset.tab === 'billing') loadBillAll(); });
+async function loadBillAll(){
+  const box = $('billAll'), cl = DATA.clients || []; if(!cl.length){ box.innerHTML = '<div class="hint">No clients yet.</div>'; return; }
+  box.innerHTML = '<div class="hint">Loading…</div>';
+  try{
+    const rs = await Promise.all(cl.map(k => api('GET', '/host/clients/' + encodeURIComponent(k.id) + '/billing')));
+    const t = (x, bad) => `<div${bad && x.count ? ' class="bad"' : ''}><b>${x.count}</b><em>${money(x.cents)}</em></div>`;
+    box.innerHTML = '<div class="bgrid"><div class="brow" style="cursor:default;border:0;background:none;font-size:11.5px;text-transform:uppercase;color:var(--muted)"><div>Client</div><div>New this month</div><div>Paid this month</div><div>Unpaid</div><div>Delinquent</div></div>' +
+      cl.map((k, i) => { const S = rs[i].summary; return `<button type="button" class="brow" data-bill="${esc(k.id)}"><div><b>${esc(clientLabel(k))}</b><em>${esc(k.id)}</em></div>${t(S.newThisMonth)}${t(S.paidThisMonth)}${t(S.unpaid)}${t(S.delinquent, true)}</button>`; }).join('') + '</div>';
+  }catch(e){ if(!e.auth) box.innerHTML = `<div class="msg">${esc(e.message)}</div>`; }
+}
+$('billAll').addEventListener('click', e => { const b = e.target.closest('[data-bill]'); if(b) goto(b.dataset.bill, null); });
+const pharmEv = {base:'/host', stores:() => DATA.stores, clients:() => DATA.clients, say:sayStore, pass:showPass, after: async () => { await load(); }};
+pharmCardEvents($('pview'), pharmEv);
+// Add pharmacy: a window over the page, the client already chosen
+function openAddPharm(clientId){
+  if(isRepMe()){ alert('New pharmacies are set up by an IronLedger supervisor.'); return; }
+  const k = clientOf(clientId) || {};
+  $('newStore').innerHTML = `<div class="pcard" data-is-new="1">${pharmCardHtml({clientId, entityLegalName:k.legalName || '', entityType:k.entityType || '', ein:k.ein || ''}, {host:true, isNew:true, clientFixed:true, clients:DATA.clients, people:DATA.users})}</div>`;
+  $('pmodal').hidden = false; $('pmodal').querySelector('.mbox').scrollTop = 0; const i = $('newStore').querySelector('[data-newid]'); if(i) i.focus();
+}
+const closeAddPharm = () => { $('pmodal').hidden = true; $('newStore').innerHTML = ''; };
+$('pmClose').onclick = closeAddPharm;
+$('pmodal').addEventListener('mousedown', e => { if(e.target === $('pmodal')) closeAddPharm(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && !$('pmodal').hidden && !document.querySelector('details.hdrop[open]')) closeAddPharm(); });
+pharmCardEvents($('newStore'), {base:'/host', stores:() => DATA.stores, clients:() => DATA.clients, say:sayStore, pass:showPass, after: async isNew => { if(isNew){ const id = ($('newStore').querySelector('[data-newid]') || {}).value; closeAddPharm(); await load(); const s = DATA.stores.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0]; if(id && storeOf(id.trim().toUpperCase())) NAV.pharm = id.trim().toUpperCase(); else if(s) NAV.pharm = s.id; renderNav(); } else await load(); }});
 async function loadLogo(id){
   LOGOS[id] = '';
-  try{ const r = await fetch(CFG.apiUrl.replace(/\/$/, '') + '/public/pharmacy/' + encodeURIComponent(id), {cache:'no-store'}); const j = await r.json(); LOGOS[id] = j.logo || ''; renderStores(); }catch(e){}
+  try{ const r = await fetch(CFG.apiUrl.replace(/\/$/, '') + '/public/pharmacy/' + encodeURIComponent(id), {cache:'no-store'}); const j = await r.json(); LOGOS[id] = j.logo || ''; renderNav(); }catch(e){}
 }
 function genTemp(){ const L = 'abcdefghjkmnpqrstuvwxyz', D = '23456789', A = L + D, R = n => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; };
   let p = L[R(23)] + D[R(8)]; while(p.length < 12) p += A[R(A.length)]; return p; }
@@ -402,9 +454,9 @@ function shrink(file){
     img.onerror = () => rej(new Error('That file isn’t a picture this browser can read.')); img.src = url;
   });
 }
-$('stores').addEventListener('change', async e => {
+$('pview').addEventListener('change', async e => {
   const f = e.target.closest('[data-logo]'); if(!f || !f.files[0]) return;
-  try{ const d = await shrink(f.files[0]); await api('POST', '/host/stores/' + encodeURIComponent(f.dataset.logo) + '/logo', {dataUrl:d}); LOGOS[f.dataset.logo] = d; renderStores(); }
+  try{ const d = await shrink(f.files[0]); await api('POST', '/host/stores/' + encodeURIComponent(f.dataset.logo) + '/logo', {dataUrl:d}); LOGOS[f.dataset.logo] = d; renderNav(); }
   catch(err){ if(!err.auth) alert(err.message); }
 });
 $('impGo').onclick = async () => {

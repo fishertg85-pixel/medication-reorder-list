@@ -186,7 +186,7 @@ function docsPaintTab(){                                         // called whene
   const tab = document.querySelector('#tabs [data-tab="documents"]'); if(!tab) return;
   const ok = docsOK(); tab.style.display = ok ? '' : 'none';
   if(!ok || (DOCS_STORE && STORE && DOCS_STORE !== STORE.id)){ DOCS = docsNewModel(); DOCS_STORE = ''; const r = $('docsRoot'); if(r) r.innerHTML = ''; docsCloseDrawer(); docsCloseModal();
-    if(!ok && tab.classList.contains('active')) document.querySelector('#tabs [data-tab="list"]').click(); }
+    if(!ok && tab.classList.contains('active')) homeTab(); }
 }
 const docsToast = t => { const e = $('docsToast'); e.textContent = t; e.style.display = ''; clearTimeout(docsToast.t); docsToast.t = setTimeout(() => e.style.display = 'none', 3200); };
 function docsModal(html, wide){ const o = $('docsOv'); o.innerHTML = `<div class="dov" data-dov><div class="dmodal${wide ? ' wide' : ''}" role="dialog" aria-modal="true">${html}</div></div>`; const f = o.querySelector('[autofocus],input:not([type=hidden]),select,textarea'); if(f) f.focus(); }

@@ -41,7 +41,7 @@ const CFG = window.NORTEX_CONFIG || {};
 const COG = CFG.cognitoEndpoint || `https://cognito-idp.${CFG.region}.amazonaws.com/`;
 let STATE = {reorder:[], archive:[], remember:{}};
 let ME = null, STORE = null;                       // ME: {name, login, owner, perms, stores}; STORE: {id, name, ...}
-const PERM = p => !!(ME && ME.perms && ME.perms[p]);
+const PERM = p => !!(ME && (STORE && STORE.perms ? STORE.perms[p] : ME.perms && ME.perms[p]));   // privileges are per pharmacy (an owner here may be staff elsewhere)
 const DISTRIBUTORS = ['Anda Inc','Auburn Pharmaceutical','Axia Medical','Blupax Pharmaceuticals, LLC','Capital Wholesale Drug Co','CityMedRX',
   'GRX / Greenhill','Independent Pharmacy Cooperative','Integral Rx / Smith Drug','KeySource Acquisition, LLC','Masters Pharmaceutical',
   'Mckesson Drug Company','Oak Drugs Inc','Paragon Enterprises','Parmed Pharmaceuticals','PBA Health','Pharmsource, LLC','Real Value Products',
@@ -129,7 +129,7 @@ async function api(method, path, body, retried){
   const j = await r.json().catch(() => ({}));
   if(r.status === 423 && j.locked){ ownerLockNow('Locked after 5 minutes without activity. Re-enter your password.', true); const e = new Error(j.error); e.auth = true; e.locked = true; throw e; }
   if(!r.ok){ const e = new Error(j.error || j.message || ('Server answered ' + r.status)); e.status = r.status; if(j.pin) e.pin = j.pin; throw e; }
-  if(/^\/owner\/|\/import$/.test(path)) OWN_UNTIL = Date.now() + OWN_MS;         // using the tab keeps it open
+  if(/^\/(owner|client)\/|\/import$/.test(path)) OWN_UNTIL = Date.now() + OWN_MS;         // using the tab keeps it open
   return j;
 }
 function setOnline(ok){ const b = $('offlineBanner'); if(b) b.style.display = ok ? 'none' : 'block'; }
@@ -237,6 +237,8 @@ async function loadLogo(id, fresh){
   if(STORE && STORE.id === id) paintStore();
 }
 let LANDED = false;
+// a tab went away (switched off, or another pharmacy): go to the first tab that is still there
+function homeTab(){ const b = [...document.querySelectorAll('#tabs button')].find(x => !x.classList.contains('tabx') && x.style.display !== 'none') || document.querySelector('#tabs [data-tab="owner"]:not([style*="none"])'); if(b) b.click(); }
 function paintStore(){
   $('storeName').textContent = STORE ? STORE.name : 'Reorder List';
   document.title = (STORE ? STORE.name + ' · ' : '') + 'Reorder List';
@@ -245,17 +247,19 @@ function paintStore(){
   const sel = $('storeSel');
   sel.style.display = ME && ME.stores.length > 1 ? '' : 'none';
   if(ME) sel.innerHTML = ME.stores.map(s => `<option value="${esc(s.id)}"${STORE && s.id === STORE.id ? ' selected' : ''}>${esc(s.id)} · ${esc(s.name)}</option>`).join('');
-  $('whoLabel').textContent = ME ? (ME.name || ME.login) + (ME.owner ? ' (Account Owner)' : '') : '';
+  $('whoLabel').textContent = ME ? (ME.name || ME.login) + (STORE && STORE.isOwner ? ' (Account Owner)' : STORE && STORE.owner ? ' (Administrator)' : '') : '';
   // what this login may do
-  document.querySelector('#tabs [data-tab="archive"]').style.display = PERM('archive') ? '' : 'none';
-  document.querySelector('#tabs [data-tab="owner"]').style.display = ME && ME.owner ? '' : 'none';
+  document.querySelector('#tabs [data-tab="archive"]').style.display = PERM('archive') && !(STORE && STORE.reorder === false) ? '' : 'none';
+  document.querySelector('#tabs [data-tab="owner"]').style.display = (STORE && STORE.owner) || (ME && ME.clientOwner) ? '' : 'none';
+  const lt = document.querySelector('#tabs [data-tab="list"]'); const noReo = !!(STORE && STORE.reorder === false); if(lt) lt.style.display = noReo ? 'none' : '';   // Reorder List switched off for this pharmacy
+  if(noReo && document.querySelector('#tabs [data-tab="list"].active, #tabs [data-tab="archive"].active')) homeTab();
   $('submitBtn').style.display = PERM('submit') ? '' : 'none';
   $('submitOff').style.display = ME && !PERM('submit') ? '' : 'none';
   $('exportCard').style.display = PERM('export') ? '' : 'none';
   renderStoreInfo();
   calPaint(); docsPaintTab(); rxPaint();
   $('archOpen').style.display = PERM('archive') ? '' : 'none';
-  $('acctBtn').style.display = ME && ME.owner ? '' : 'none';
+  $('acctBtn').style.display = (STORE && STORE.owner) || (ME && ME.clientOwner) ? '' : 'none';
   if(!LANDED && ME && STORE){ LANDED = true;                  // first screen after sign-in = the first tab the person has (Calendar, Documents, Reorder List)
     const first = [...document.querySelectorAll('#tabs button')].find(b => !b.classList.contains('tabx') && b.style.display !== 'none');
     if(first && first.dataset.tab !== 'list') first.click(); }
@@ -406,7 +410,7 @@ async function enterApp(pharm){
 document.addEventListener('visibilitychange', () => { if(!document.hidden && STORE) refreshLines().catch(() => {}); });
 async function signOut(quiet){
   LANDED = false;
-  if(ME && ME.owner && OWN_UNTIL > 0){ OWN_UNTIL = 0; await api('POST', '/owner-lock', {}).catch(() => {}); }
+  if(ME && (ME.owner || ME.clientOwner) && OWN_UNTIL > 0){ OWN_UNTIL = 0; await api('POST', '/owner-lock', {}).catch(() => {}); }
   if(SESSION && SESSION.refresh) cog('RevokeToken', {ClientId:CFG.clientId, Token:SESSION.refresh}).catch(() => {});
   SESSION = null; saveSession();
   if(typeof TEMPS !== 'undefined') for(const k in TEMPS) delete TEMPS[k];
@@ -1235,12 +1239,12 @@ function layoutGridHtml(page, L, body){
 /* ---------------- pharmacy setup page (host) and pharmacy account page (Account Owner): panels and their layout ----------------
    Built on the layout engine (layout_engine.js). PHARM_LAYOUT is set once by Neo with the layout editor and is the same for everyone. */
 const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
-const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['act', 'Calendar And Save']];
-const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,26],"contact":[4,1,4,36],"hrs":[8,1,5,43],"reg":[1,37,7,42],"svc":[1,79,12,19],"act":[8,44,5,23]}};
+const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['own', 'Account Owner And PIC'], ['act', 'Modules And Save']];
+const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,50],"contact":[5,1,4,36],"hrs":[9,1,4,50],"reg":[5,37,4,60],"own":[1,51,4,34],"act":[9,51,4,40],"svc":[1,98,12,19]}};
 const PHARM_PAGE = { id: 'pharm', title: 'Host Pharmacy Setup Page', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
   render: (sample, panels) => pharmCardHtml(sample, { logo: '', holder: 'Pat Owner (owner)', host: true, clients: [{ id: 'IL-000001', legalName: 'NorTex Holdings LLC', entityType: 'llc', ein: '12-3456789' }] }, { panels }) };
 // The Account Owner's version of the same page has its own layout (Neo arranges it separately in the layout editor: page key pharm_owner).
-const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,35],"contact":[4,1,4,35],"hrs":[8,1,5,55],"reg":[1,36,7,31],"svc":[1,67,12,16],"act":[8,56,5,11]}};
+const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,44],"contact":[5,1,4,35],"hrs":[9,1,4,55],"reg":[5,36,4,50],"own":[1,45,4,26],"act":[9,56,4,25],"svc":[1,87,12,16]}};
 const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_PANELS, layout: PHARM_OWNER_LAYOUT,
   render: (sample, panels) => pharmCardHtml(Object.assign({}, sample, { ein: '', einMasked: '••-•••4321' }), { logo: '', holder: 'Pat Owner (owner)' }, { panels }) };
 const pharmLayoutOk = L => layoutOk(PHARM_PAGE, L);
@@ -1251,7 +1255,7 @@ const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME M
 const stateSelect = (attrs, cur) => `<select ${attrs}><option value=""></option>${US_STATES.map(v => `<option${v === (cur || '') ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
 const tzSelect = (attrs, cur) => `<select ${attrs}>${Object.entries(TZ_NAMES).map(([v, l]) => `<option value="${v}"${v === (cur || 'America/Chicago') ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
 // license, identifiers, services and hours kept on each pharmacy (edit-only: the add-pharmacy form stays short)
-const SF2 = [['license','State pharmacy license #'],['licenseExpires','License expires','date'],['npi','NPI (10 digits)'],['ncpdp','NCPDP ID (7 digits)'],['dea','DEA number'],['deaExpires','DEA expires','date']];
+const SF2 = [['ncpdp','NCPDP ID (7 digits)'],['deaExpires','DEA expires','date']];
 const SVC_LABELS = {retail:'Retail dispensing', controlled:'Controlled substances (DEA)', nonsterile:'Nonsterile compounding', sterile:'Sterile compounding', hazardous:'Hazardous drug compounding',
   immunizations:'Immunizations', delivery:'Delivery', ltc:'Long-term care', specialty:'Specialty', infusion:'Home infusion'};
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -1275,6 +1279,35 @@ const roField = (s, k, l, t) => `<label><span>${l}</span>${roVal(s[k])}</label>`
 // c.host: the card is being used by IronLedger (the host login). Everyone else sees license, identifiers, services and the Calendar switch but cannot change them.
 // Identity (name, address, license, NPI, DEA, NCPDP) is set by IronLedger and locked once on file; the Account Owner keeps phone, fax, time zone, hours and the two expiration dates.
 const IDENT = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp', 'clientId', 'entityLegalName', 'entityType', 'ein'], AM_EDIT = ['phone', 'fax', 'email', 'timezone', 'licenseExpires', 'deaExpires'];
+// NPI: exactly 10 digits and a valid check digit; NCPDP: exactly 7 digits. The same rules run on the server; here they show under the box as you type.
+function npiProblem(v){
+  if(!v) return '';
+  if(!/^\d{10}$/.test(v)) return 'NPI must be exactly 10 digits.';
+  const d = ('80840' + v).split('').map(Number); let sum = 0, alt = false;
+  for(let i = d.length - 1; i >= 0; i--, alt = !alt){ let x = d[i]; if(alt){ x *= 2; if(x > 9) x -= 9; } sum += x; }
+  return sum % 10 === 0 ? '' : 'That NPI’s check digit doesn’t match. Re-check the number.';
+}
+const ncpdpProblem = v => v && !/^\d{7}$/.test(v) ? 'NCPDP ID must be exactly 7 digits.' : '';
+const digitField = (s, k, l, lim, lock) => `<div class="fbtn"><label><span>${l}</span><input type="text" inputmode="numeric" autocomplete="off" data-sf="${k}" data-dig="${lim}" maxlength="${lim}" value="${esc(s[k] || '')}"${lock ? ' readonly data-ident="1"' : ''}></label></div><div class="fe" data-err="${k}" hidden></div>`;
+// state licenses: one row per state (state, number, expiration, resident or non-resident). The resident (else first) license is also the pharmacy's main license number.
+const licRow = (l, lock, canEditExp) => `<div class="licrow" data-licrow>
+    <label><span>State</span>${stateSelect(`data-lic="state"${lock ? ' disabled data-ident="1"' : ''}`, l.state)}</label>
+    <label><span>License #</span><input type="text" data-lic="number" maxlength="20" value="${esc(l.number || '')}"${lock ? ' readonly data-ident="1"' : ''}></label>
+    <label><span>Expires</span><input type="date" data-lic="expires" value="${esc(l.expires || '')}"${canEditExp ? '' : ' disabled'}></label>
+    <label><span>Type</span><select data-lic="type"${lock ? ' disabled data-ident="1"' : ''}><option value="resident"${l.type !== 'nonresident' ? ' selected' : ''}>Resident</option><option value="nonresident"${l.type === 'nonresident' ? ' selected' : ''}>Non-resident</option></select></label>
+    <button type="button" class="edit" data-licdel="1" title="Remove this license">✕</button></div>`;
+const licList = (s, c) => { const lock = !c.isNew && !c.rep && !c.repView;
+  return `<div class="licbox"><b class="clh">State pharmacy licenses</b><div data-liclist>${(s.licenses || []).map(l => licRow(l, lock, true)).join('') || '<div class="hint" data-licnone>None yet. Add the license for each state the pharmacy is licensed in.</div>'}</div>
+    <button type="button" class="btn2 small" data-licadd="1">Add a state license</button></div>`; };
+const licRo = (s, c) => `<div class="licbox"><b class="clh">State pharmacy licenses</b>${(s.licenses || []).map(l => `<div class="licrow ro"><label><span>State</span>${roVal(l.state)}</label><label><span>License #</span>${roVal(l.number)}</label><label><span>Expires</span><input type="date" data-lic-exp="${esc(l.state)}" value="${esc(l.expires || '')}"></label><label><span>Type</span>${roVal(l.type === 'nonresident' ? 'Non-resident' : 'Resident')}</label></div>`).join('') || '<div class="hint">None set yet.</div>'}</div>`;
+const licsOfCard = card => [...card.querySelectorAll('[data-licrow]')].map(r => { const g = k => (r.querySelector(`[data-lic=${k}]`) || {}).value || ''; return { state: g('state'), number: g('number').trim().toUpperCase(), expires: g('expires'), type: g('type') || 'resident' }; }).filter(l => l.state || l.number);
+// who owns and who is the pharmacist in charge, from the people list (the host page and the Account Owner page both pass it in as c.people)
+function ownInfo(s, people){
+  const P = people || [], owner = P.find(u => u.ownerStores && u.ownerStores[s.id] === true) || null;
+  const pic = s.ownerIsPic === true ? owner : s.ownerIsPic === false ? (P.find(u => u.login === s.picLogin) || null) : null;
+  return { owner, pic, admins: P.filter(u => u.adminStores && u.adminStores[s.id] === true) };
+}
+const ownLabel = u => u ? (u.name || u.login) + ' (' + u.login + ')' : '';
 const cardField = (s, k, l, t, c) => IDENT.includes(k) ? (c.host ? field(s, k, l, t, !c.isNew && !!s[k] && !c.rep && !c.repView) : roField(s, k, l, t)) : (c.host || AM_EDIT.includes(k) ? field(s, k, l, t) : roField(s, k, l, t));
 const LOCKED = 'Set by IronLedger. Contact your IronLedger representative to change this.';
 const LOCKED_ID = 'Name, address, license and identifiers must match your license and billing, so IronLedger sets them. Phone, fax, email, time zone, hours and expiration dates are yours to keep current.';
@@ -1297,7 +1330,7 @@ const PHARM_BODY = {
   id: (s, c) => c.isNew
       ? `<div class="pidbox"><label class="pfields"><span>Pharmacy ID</span><input type="text" class="newid" data-newid="1" maxlength="20" autocapitalize="characters" spellcheck="false"></label>
         <div class="hint">What people type when they sign in (2–20 letters, numbers or dashes, like NTX1). It can’t be changed later. Add the logo after the pharmacy is created.</div>
-        <label class="pfields"><span>Client (bill-to account, required)</span>${clientSelect(c, '')}</label></div>`
+        <label class="pfields"><span>Client (bill-to account, required)</span>${clientSelect(c, s.clientId || '', c.clientFixed ? 'disabled' : '')}</label></div>${entityHost(s, c)}`
       : `<div class="plogo">${c.logo ? `<img src="${esc(c.logo)}" alt="">` : '<span class="hint">No logo</span>'}
         <label class="btn2 small">Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" data-logo="${esc(s.id)}" hidden></label>
         ${c.logo ? `<button class="btn2 small" data-nologo="${esc(s.id)}">Remove</button>` : ''}</div>
@@ -1305,15 +1338,23 @@ const PHARM_BODY = {
         <div class="pid">Primary account holder: <b>${esc(c.holder || 'Account Owner')}</b></div><div class="hint">(the Account Owner)</div>
         ${c.host
           ? `<label class="pfields"><span>Client (bill-to account)</span>${clientSelect(c, s.clientId, !!s.clientId && !c.rep && !c.repView ? 'disabled data-ident="1"' : '')}</label>${s.clientId ? '' : '<div class="lockhint warn">No client yet: pick one.</div>'}`
-          : `<div class="pid">Account number: <b>${s.clientId ? esc(s.clientId) : 'Not assigned yet'}</b></div><div class="hint">(generated once by IronLedger; never changes)</div>`}</div>`,
+          : `<div class="pid">Account number: <b>${s.clientId ? esc(s.clientId) : 'Not assigned yet'}</b></div><div class="hint">(generated once by IronLedger; never changes)</div>`}</div>
+      ${c.host ? entityHost(s, c) : entityRo(s)}`,
   contact: (s, c) => `<div class="pfields">${SF.map(([k, l]) => cardField(s, k, l, undefined, c)).join('')}${c.host ? '' : `<div class="lockhint">${LOCKED_ID}</div>`}</div>`,
-  reg: (s, c) => c.rep ? ((h) => h.slice(0, h.indexOf('<div class="pid npirow">')) + '<div class="lockhint">A rep drafts changes and a supervisor reviews them. The NPI registry lookup and the DEA check are done by a supervisor.</div></div>')(PHARM_BODY.reg(s, { ...c, rep: false, repView: true }))
-    : c.host
-    ? `<div class="pfields">${SF2.map(([k, l, t]) => cardField(s, k, l, t, c)).join('')}</div>${entityHost(s, c)}<div class="pfields">
-        <div class="pid npirow"><button class="btn2 small" data-npilook="1" title="Checks the NPI against the public registry. Nothing changes until you save.">Look up NPI in the federal registry</button><div data-npires></div></div>
-        <div class="pid npirow"><a class="btn2 small" href="https://apps.deadiversion.usdoj.gov/webforms2/spring/validationLogin" target="_blank" rel="noopener noreferrer">Open the DEA registration check</a>${c.isNew ? '' : ' <button class="btn2 small" data-deaok="1" data-deastat title="' + deaStat(s) + '">I checked this DEA number there</button>'}</div></div>`
-    : `<div class="pfields">${SF2.map(([k, l, t]) => cardField(s, k, l, t, c)).join('')}
-        <div class="lockhint">License number, NPI, DEA and NCPDP are set by IronLedger. Expiration dates are yours to keep current.</div><div class="pid npirow hint">DEA check: ${deaStat(s)}</div></div>${entityRo(s)}`,
+  reg: (s, c) => {
+    if(c.host){
+      const lock = (k) => !c.isNew && !!s[k] && !c.rep && !c.repView;
+      return `<div class="pfields">${licList(s, c)}
+        <div class="fbtn"><label><span>NPI (10 digits)</span><input type="text" inputmode="numeric" autocomplete="off" data-sf="npi" data-dig="10" maxlength="10" value="${esc(s.npi || '')}"${lock('npi') ? ' readonly data-ident="1"' : ''}></label>${c.rep ? '' : '<button class="btn2 small" type="button" data-npilook="1" title="Checks the NPI against the public registry. Nothing changes until you save.">Look up</button>'}</div><div class="fe" data-err="npi" hidden></div>
+        <div class="npirow" data-npires></div>
+        ${digitField(s, 'ncpdp', 'NCPDP ID (7 digits)', 7, lock('ncpdp'))}
+        <div class="fbtn"><label><span>DEA number</span><input type="text" data-sf="dea" maxlength="9" autocomplete="off" value="${esc(s.dea || '')}"${lock('dea') ? ' readonly data-ident="1"' : ''}></label>${c.rep ? '' : '<a class="btn2 small" href="https://apps.deadiversion.usdoj.gov/webforms2/spring/validationLogin" target="_blank" rel="noopener noreferrer" title="Opens the DEA registration check">DEA check</a>' + (c.isNew ? '' : '<button class="btn2 small" type="button" data-deaok="1" data-deastat title="' + deaStat(s) + '">I checked it</button>')}</div>
+        ${field(s, 'deaExpires', 'DEA expires', 'date')}
+        ${c.rep ? '<div class="lockhint">A rep drafts changes and a supervisor reviews them. The NPI registry lookup and the DEA check are done by a supervisor.</div>' : ''}</div>`;
+    }
+    return `<div class="pfields">${licRo(s, c)}${roField(s, 'npi', 'NPI')}${roField(s, 'ncpdp', 'NCPDP ID')}${roField(s, 'dea', 'DEA number')}${cardField(s, 'deaExpires', 'DEA expires', 'date', c)}
+        <div class="lockhint">License numbers, NPI, DEA and NCPDP are set by IronLedger. Expiration dates are yours to keep current.</div><div class="pid npirow hint">DEA check: ${deaStat(s)}</div></div>`;
+  },
   svc: (s, c) => c.host && !c.rep
     ? `<div class="pfields"><div class="svcs">${Object.entries(SVC_LABELS).map(([k, l]) => `<label class="chk">${sw(`data-svc="${k}"`, (s.services || []).includes(k))} ${l}</label>`).join('')}</div>
           ${field(s, 'servicesOther', 'Other services').replace('<label>', '<label class="oth">')}</div>`
@@ -1326,12 +1367,45 @@ const PHARM_BODY = {
             <div class="cllist" data-cllist>${closeRows(closuresOf(s).days)}</div>
             <div class="cladd"><input type="date" data-cld title="Date"><input type="text" data-cln maxlength="60" placeholder="Name, e.g. Mardi Gras"><label class="chk">${sw('data-cly')} Every year</label> <button type="button" class="btn2 small" data-cladd="1">Add</button></div>
           </div></div>`,
+  own: (s, c) => {
+    if(c.isNew) return '<div class="pfields"><div class="hint" style="grid-column:1/-1">Name the Account Owner after the pharmacy is created.</div></div>';
+    const I = ownInfo(s, c.people), asked = s.ownerIsPic === true || s.ownerIsPic === false;
+    const picTxt = s.ownerIsPic === true ? 'The Account Owner' : s.ownerIsPic === false ? (I.pic ? ownLabel(I.pic) : s.picLogin || 'Not set') : 'Not recorded yet';
+    const head = `<div class="pid">Account Owner: <b>${I.owner ? esc(ownLabel(I.owner)) : 'Not set'}</b></div>
+      <div class="pid">Pharmacist in charge: <b>${esc(picTxt)}</b></div>
+      ${I.admins.length ? `<div class="pid">Super user: <b>${esc(I.admins.map(ownLabel).join(', '))}</b></div>` : ''}`;
+    if(!c.host || c.rep) return `<div class="pfields" style="display:block">${head}<div class="lockhint">${LOCKED}</div></div>`;
+    const pool = (c.people || []).filter(u => !u.host && !u.disabled), clientOwner = (c.people || []).find(u => u.ownerClients && u.ownerClients[s.clientId] === true);
+    const pharmacists = (c.people || []).filter(u => !u.host && (u.acctType === 'pharmacist' || u.acctType === 'pic') && u.stores && u.stores[s.id] === true);
+    return `<div class="pfields" style="display:block">${head}
+      <div class="ownbox"><b class="clh">Change the Account Owner</b>
+        <label><span>Pick a login</span><select data-ownpick><option value="">—</option>${clientOwner ? `<option value="@client">Same as the client’s Account Owner: ${esc(ownLabel(clientOwner))}</option>` : ''}${pool.map(u => `<option value="${esc(u.login)}">${esc(ownLabel(u))}</option>`).join('')}<option value="@new">New login…</option></select></label>
+        <div data-ownnew hidden class="pfields"><label><span>Full name</span><input type="text" data-on="name" maxlength="120"></label><label><span>Login ID</span><input type="text" data-on="login" maxlength="32" autocapitalize="none" spellcheck="false"></label>
+          <label><span>Mobile number</span><input type="tel" data-on="phone" maxlength="20"></label><label><span>RPh license # (if a pharmacist)</span><input type="text" data-on="license" maxlength="20"></label>
+          <label class="chk" style="grid-column:1/-1"><input type="checkbox" data-on="consent"> They signed the SMS consent form for this mobile number.</label></div>
+        ${I.owner ? '<label><span>Reason for the change (required)</span><input type="text" data-ownreason maxlength="300"></label>' : ''}
+        <button type="button" class="btn2 small" data-ownsave="${esc(s.id)}">Save Account Owner</button></div>
+      <div class="ownbox"><b class="clh">Is the Account Owner the pharmacist in charge?</b>
+        <label class="chk"><input type="radio" name="pic-${esc(s.id)}" data-picyes value="yes"${s.ownerIsPic === true ? ' checked' : ''}> Yes. They get the pharmacist functions: Rx Intake, validations, EM logs.</label>
+        <label class="chk"><input type="radio" name="pic-${esc(s.id)}" data-picyes value="no"${s.ownerIsPic === false ? ' checked' : ''}> No. A licensed pharmacist is the PIC.</label>
+        <label data-picwho${s.ownerIsPic === false ? '' : ' hidden'}><span>Pharmacist in charge</span><select data-picpick><option value="">—</option>${pharmacists.map(u => `<option value="${esc(u.login)}"${u.login === s.picLogin ? ' selected' : ''}>${esc(ownLabel(u))}${u.license ? '' : ' (no RPh license #)'}</option>`).join('')}</select></label>
+        ${asked ? '<label><span>Reason for the change (required)</span><input type="text" data-picreason maxlength="300"></label>' : ''}
+        <div class="hint">The PIC must be a licensed pharmacist with an RPh license number on their login. Only IronLedger records or changes this; each change is kept in the history.</div>
+        <button type="button" class="btn2 small" data-picsave="${esc(s.id)}">Save</button></div></div>`;
+  },
   act: (s, c) => `<div class="pfields"><div class="calsw">${c.host && !c.rep
-        ? `<label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar switched on for this pharmacy</label> <span class="hint">(people also need the Calendar privilege)</span>`
-        : `Calendar: <b>${s.calendar ? 'On' : 'Off'}</b> <span class="hint">${LOCKED}</span>`}</div>
+        ? `<label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar</label> <span class="hint">(people also need the Calendar privilege)</span>`
+        : `Calendar: <b>${s.calendar ? 'On' : 'Off'}</b>`}</div>
         <div class="calsw">${c.host && !c.rep
-        ? `<label class="chk">${sw(`data-sfdocs="1"`, s.documents, 'Documents tab for this pharmacy')} Documents switched on for this pharmacy</label> <span class="hint">(people also need the Documents privilege)</span>`
-        : `Documents: <b>${s.documents ? 'On' : 'Off'}</b> <span class="hint">${LOCKED}</span>`}</div>
+        ? `<label class="chk">${sw(`data-sfdocs="1"`, s.documents, 'Documents tab for this pharmacy')} Documents</label> <span class="hint">(people also need the Documents privilege)</span>`
+        : `Documents: <b>${s.documents ? 'On' : 'Off'}</b>`}</div>
+        <div class="calsw">${c.host && !c.rep
+        ? `<label class="chk">${sw(`data-sfreo="1"`, s.reorder !== false, 'Reorder List tab for this pharmacy')} Reorder List</label>`
+        : `Reorder List: <b>${s.reorder !== false ? 'On' : 'Off'}</b>`}</div>
+        <div class="calsw">${c.host && !c.rep
+        ? `<label class="chk">${sw(`data-sfrx="1"`, s.rx !== false, 'Rx Intake tab for this pharmacy')} Rx Intake</label> <span class="hint">(pharmacists only)</span>`
+        : `Rx Intake: <b>${s.rx !== false ? 'On' : 'Off'}</b>`}</div>
+        ${c.host ? '' : `<div class="lockhint">${LOCKED}</div>`}
         <div style="margin-top:10px;">${c.rep ? `<label class="reason"><span>Why (required, the supervisor reads this)</span><input type="text" data-draftnote maxlength="300"></label> <button class="btn small" data-draftstore="${esc(s.id)}">Submit for review</button>`
           : c.isNew ? '<button class="btn small" data-createstore="1">Create pharmacy</button>' : `<button class="btn small" data-savestore="${esc(s.id)}">Save details</button>`}</div>
         ${c.host && !c.isNew && !c.rep ? `<div class="identbar"><button class="btn2 small" data-unlockident="1">Change name, address, license or identifiers…</button>
@@ -1345,10 +1419,64 @@ function pharmCardHtml(s, c, L){ return layoutGridHtml(c.host ? PHARM_PAGE : PHA
 // ---------------- behaviour shared by the Account Owner page and the host page ----------------
 // o = { base: '/owner' | '/host', stores: () => [store, …], say: text => …, after: async () => … }
 const normNm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+// the federal-holiday list is a floating popover: it opens over the page and never pushes anything down; a click elsewhere or Escape closes it
+document.addEventListener('click', e => document.querySelectorAll('details.hdrop[open]').forEach(d => { if(!d.contains(e.target)) d.open = false; }));
+document.addEventListener('keydown', e => { if(e.key === 'Escape') document.querySelectorAll('details.hdrop[open]').forEach(d => { d.open = false; }); });
+function showFieldErr(card, k, msg){ const el = card.querySelector(`[data-err=${k}]`); if(!el) return; el.textContent = msg || ''; el.hidden = !msg; const i = card.querySelector(`[data-sf=${k}]`); if(i) i.classList.toggle('bad', !!msg); }
 function pharmCardEvents(root, o){
-  root.addEventListener('change', e => { if(e.target.closest('[data-ho],[data-hc],[data-hx]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.hrTouched = '1'; }
+  root.addEventListener('input', e => {
+    const i = e.target.closest('[data-dig]'); if(!i) return;
+    const v = i.value.replace(/\D/g, '').slice(0, +i.dataset.dig); if(v !== i.value) i.value = v;
+    const k = i.dataset.sf, msg = k === 'npi' ? npiProblem(v) : k === 'ncpdp' ? ncpdpProblem(v) : '';
+    showFieldErr(i.closest('.pcard'), k, v && v.length < +i.dataset.dig && !i.dataset.touched ? '' : msg);
+  });
+  root.addEventListener('blur', e => { const i = e.target.closest && e.target.closest('[data-dig]'); if(!i) return; i.dataset.touched = '1';
+    const v = i.value, k = i.dataset.sf; showFieldErr(i.closest('.pcard'), k, k === 'npi' ? npiProblem(v) : ncpdpProblem(v)); }, true);
+  root.addEventListener('change', e => {
+    if(e.target.closest('[data-lic]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.licTouched = '1'; }
+    if(e.target.closest('[data-lic-exp]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.licTouched = '1'; }
+    const pk = e.target.closest('[data-ownpick]'); if(pk) pk.closest('.pcard').querySelector('[data-ownnew]').hidden = pk.value !== '@new';
+    const py = e.target.closest('[data-picyes]'); if(py) py.closest('.pcard').querySelector('[data-picwho]').hidden = py.value !== 'no'; if(e.target.closest('[data-ho],[data-hc],[data-hx]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.hrTouched = '1'; }
     if(e.target.closest('[data-hol]')){ const c = e.target.closest('.pcard'); if(c){ c.dataset.hcTouched = '1'; c.querySelector('[data-hsum]').textContent = holLabel(holOfCard(c).length); } } });
   root.addEventListener('click', async e => {
+    const la = e.target.closest('[data-licadd]'), ld = e.target.closest('[data-licdel]'), osv = e.target.closest('[data-ownsave]'), psv = e.target.closest('[data-picsave]');
+    if(la || ld){
+      const card = e.target.closest('.pcard'), list = card.querySelector('[data-liclist]');
+      if(ld){
+        const row = ld.closest('[data-licrow]');
+        if(row.querySelector('[data-ident]') && !card.dataset.unlocked){ alert('Licenses on file are locked. Press “Change name, address, license or identifiers…” first; a reason is required.'); return; }
+        row.remove(); card.dataset.licTouched = '1'; if(!list.querySelector('[data-licrow]')) list.innerHTML = '<div class="hint" data-licnone>None yet. Add the license for each state the pharmacy is licensed in.</div>'; return;
+      }
+      const none = list.querySelector('[data-licnone]'); if(none) none.remove();
+      list.insertAdjacentHTML('beforeend', licRow({ state: '', number: '', expires: '', type: list.querySelector('[data-licrow]') ? 'nonresident' : 'resident' }, false, true)); card.dataset.licTouched = '1'; return;
+    }
+    if(osv){
+      const card = osv.closest('.pcard'), pick = card.querySelector('[data-ownpick]').value, g = k => ((card.querySelector(`[data-on=${k}]`) || {}).value || '').trim();
+      if(!pick){ alert('Pick who will be the Account Owner.'); return; }
+      const body = { reason: (card.querySelector('[data-ownreason]') || {}).value || '' };
+      if(pick === '@client') body.sameAsClient = true;
+      else if(pick === '@new'){
+        if(!g('name') || !g('login') || !g('phone')){ alert('Name, Login ID and mobile number are all needed.'); return; }
+        if(!card.querySelector('[data-on=consent]').checked){ alert('Have them sign the SMS consent form first, then tick the box.'); return; }
+        body.owner = { create: { name: g('name'), login: g('login').toLowerCase(), phone: g('phone'), license: g('license'), smsConsent: true } };
+      } else body.owner = { login: pick };
+      busy(osv, true);
+      try{ const r = await api('POST', o.base + '/stores/' + encodeURIComponent(osv.dataset.ownsave) + '/owner', body);
+        if(o.pass && r.tempPassword) o.pass(`<b>${esc(r.owner.name || r.owner.login)} is the Account Owner.</b> Give them:<br>Pharmacy ID: <b class="mono">${esc(osv.dataset.ownsave)}</b><br>Login ID: <b class="mono">${esc(r.owner.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b>`);
+        o.say('Account Owner saved.'); await o.after(); }
+      catch(err){ if(!err.auth) alert(err.message); } finally{ busy(osv, false); }
+      return;
+    }
+    if(psv){
+      const card = psv.closest('.pcard'), yes = card.querySelector('[data-picyes]:checked');
+      if(!yes){ alert('Answer yes or no.'); return; }
+      const body = { ownerIsPic: yes.value === 'yes', picLogin: yes.value === 'no' ? card.querySelector('[data-picpick]').value : '', reason: (card.querySelector('[data-picreason]') || {}).value || '' };
+      if(yes.value === 'no' && !body.picLogin){ alert('Pick the pharmacist in charge.'); return; }
+      busy(psv, true);
+      try{ await api('POST', o.base + '/stores/' + encodeURIComponent(psv.dataset.picsave) + '/pic', body); o.say('Saved.'); await o.after(); }
+      catch(err){ if(!err.auth) alert(err.message); } finally{ busy(psv, false); }
+      return;
+    }
     const lk = e.target.closest('[data-npilook]'), us = e.target.closest('[data-npiuse]'), dk = e.target.closest('[data-deaok]');
     const dsub = e.target.closest('[data-draftstore]');
     const cla = e.target.closest('[data-cladd]'), cld = e.target.closest('[data-cldel]');
@@ -1371,6 +1499,7 @@ function pharmCardEvents(root, o){
       if(card.dataset.hrTouched) fields.hours = DAYS.map((_, i) => card.querySelector(`[data-hx="${i}"]`).checked ? null : {o: card.querySelector(`[data-ho="${i}"]`).value, c: card.querySelector(`[data-hc="${i}"]`).value});
       if(card.dataset.clTouched) fields.closures = closuresOfCard(card);
       if(card.dataset.hcTouched) fields.holClosed = holOfCard(card);
+      if(card.dataset.licTouched) fields.licenses = licsOfCard(card);
       if(!Object.keys(fields).length){ alert('Change something first.'); return; }
       busy(dsub, true);
       try{ await api('POST', o.base + '/stores/' + encodeURIComponent(dsub.dataset.draftstore) + '/drafts', {fields, note: card.querySelector('[data-draftnote]').value.trim()}); o.say('Submitted for review.'); await o.after(); }
@@ -1440,6 +1569,11 @@ function pharmCardEvents(root, o){
       const body = {}; card.querySelectorAll('[data-sf]').forEach(i => body[i.dataset.sf] = i.value.trim());
       const cal = card.querySelector('[data-sfcal]'); if(cal) body.calendar = cal.checked;
       const dcs = card.querySelector('[data-sfdocs]'); if(dcs) body.documents = dcs.checked;
+      const reo = card.querySelector('[data-sfreo]'); if(reo) body.reorder = reo.checked;
+      const rxs = card.querySelector('[data-sfrx]'); if(rxs) body.rx = rxs.checked;
+      if(card.querySelector('[data-liclist]')) body.licenses = licsOfCard(card);
+      else if(card.querySelector('[data-lic-exp]')){ const cur0 = o.stores().find(x => x.id === id) || {}; body.licenses = (cur0.licenses || []).map(l => ({ ...l, expires: (card.querySelector(`[data-lic-exp="${l.state}"]`) || {}).value || '' })); }
+      for(const [k, fn] of [['npi', npiProblem], ['ncpdp', ncpdpProblem]]){ const m = fn(body[k] || ''); if(m){ showFieldErr(card, k, m); const i = card.querySelector(`[data-sf=${k}]`); if(i) i.focus(); return; } }
       if(card.querySelector('[data-svc]')) body.services = [...card.querySelectorAll('[data-svc]')].filter(i => i.checked).map(i => i.dataset.svc);
       const cur = o.stores().find(x => x.id === id);
       if(card.dataset.hrTouched || (cur && cur.hours)) body.hours = DAYS.map((_, i) => card.querySelector(`[data-hx="${i}"]`).checked ? null : {o: card.querySelector(`[data-ho="${i}"]`).value, c: card.querySelector(`[data-hc="${i}"]`).value});
@@ -1450,6 +1584,168 @@ function pharmCardEvents(root, o){
       busy(sv, true);
       try{ await api('POST', o.base + '/stores' + (isNew ? '' : '/' + encodeURIComponent(id)), body); o.say(isNew ? 'Pharmacy created: ' + id : 'Pharmacy details saved.'); await o.after(isNew); }
       catch(err){ if(!err.auth) alert(err.message); } finally{ busy(sv, false); }
+    }
+  });
+}
+
+/* ---------------- client account page (host): who the client is, for account creation and billing ----------------
+   Built on the layout engine (layout_engine.js) like every page of the suite. CLIENT_LAYOUT is set by Neo with the layout editor
+   (dev/build_layout_editor.py client) and is the same for everyone. Uses helpers from pharm_panels.js (stateSelect, entTypeSelect, ENT_TYPES, esc).
+   A client is the bill-to account: the legal entity that pays, its EIN, addresses and contacts, and the generated IL- account number (the client's key;
+   it never changes). Pharmacies belong to a client; each pharmacy also carries its own licensed entity (that EIN can differ). */
+const CLIENT_PANELS = [['ent', 'Client And Legal Entity'], ['addr', 'Addresses'], ['contact', 'Phone, Fax And Contacts'], ['own', 'Account Owner'], ['pharm', 'Pharmacies'], ['bill', 'Billing And Invoices'], ['act', 'Save']];
+const CLIENT_LAYOUT = {"v":2,"cols":12,"panels":{"ent":[1,1,4,30],"own":[1,31,4,24],"addr":[5,1,4,44],"contact":[9,1,4,44],"pharm":[1,56,4,28],"bill":[5,46,8,38],"act":[1,85,12,10]}};
+const CLIENT_SAMPLE = {id:'IL-000001', legalName:'NorTex Holdings LLC', dba:'NorTex Pharmacy', entityType:'llc', ein:'12-3456789', address:'100 Main St', suite:'Suite 5', city:'Haslet', state:'TX', zip:'76052', billingSame:false, bAddress:'PO Box 12', bCity:'Haslet', bState:'TX', bZip:'76052', phone:'817-555-0100', fax:'817-555-0101',
+  contacts:[{role:'relations', name:'Pat Owner', title:'Owner', email:'pat@example.com', phone:'817-555-0102'},{role:'billing', name:'Sam Books', title:'Bookkeeper', email:'sam@example.com', phone:''}], pharmacies:['NTX1','NTX2']};
+const CLIENT_PAGE = { id: 'client', title: 'Host Account (Client) Setup Page', panels: CLIENT_PANELS, layout: CLIENT_LAYOUT,
+  render: (_unused, panels) => clientCardHtml(CLIENT_SAMPLE, { host: true, billing: BILL_SAMPLE, people: [], stores: [{ id: 'NTX1', name: 'NorTex Pharmacy - Haslet', city: 'Haslet', state: 'TX' }, { id: 'NTX2', name: 'NorTex Pharmacy - Keller', city: 'Keller', state: 'TX' }] }, { panels }) };
+const money = c => '$' + (c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const BILL_SAMPLE = { today: '2026-11-19', summary: { newThisMonth: { count: 1, cents: 14900 }, paidThisMonth: { count: 1, cents: 14900 }, unpaid: { count: 1, cents: 14900 }, delinquent: { count: 0, cents: 0 } },
+  invoices: [{ id: '2026-11-01_a1', number: 'IL-000001-202611-01', issued: '2026-11-01', due: '2026-11-15', cents: 14900, description: 'Compliance Calendar', status: 'paid', delinquent: false, paidOn: '2026-11-10' }, { id: '2026-12-01_b2', number: 'IL-000001-202612-01', issued: '2026-12-01', due: '2026-12-15', cents: 14900, description: 'Compliance Calendar', status: 'unpaid', delinquent: false }] };
+const CONTACT_ROLE_LABELS = { relations: 'Client relations', billing: 'Billing', other: 'Other' };
+const clientLocked = (k, cl, c) => !c.isNew && !!cl[k];                 // identity values already on file are locked until the host unlocks them with a reason
+const cfIn = (cl, k, l, c, o) => { o = o || {}; const lk = o.ident && clientLocked(k, cl, c);
+  return `<label><span>${l}</span><input type="${o.type || 'text'}" data-cf="${k}" value="${esc(cl[k] || '')}"${o.max ? ` maxlength="${o.max}"` : ''}${o.ph ? ` placeholder="${o.ph}"` : ''}${lk ? ' readonly data-ident="1"' : ''}></label>`; };
+const contactRows = list => list.map((x, i) => `<div class="clrow"><span class="cld">${esc(CONTACT_ROLE_LABELS[x.role] || x.role)}</span><span class="cln"><b>${esc(x.name)}</b>${x.title ? ', ' + esc(x.title) : ''}${x.email ? ' · ' + esc(x.email) : ''}${x.phone ? ' · ' + esc(x.phone) : ''}</span><button type="button" class="edit" data-ctdel="${i}" title="Remove this contact">✕</button></div>`).join('');
+const contactsOfCard = card => { const el = card.querySelector('[data-ctcs]'); try{ return JSON.parse(el.dataset.ctcs); }catch(_){ return []; } };
+const CLIENT_BODY = {
+  ent: (cl, c) => `<div class="pfields">${c.isNew ? '<div class="hint">The account number (IL-…) is generated when you create the client and never changes.</div>' : `<div class="pid">Account number: <b>${esc(cl.id)}</b></div><div class="hint">(generated once; never changes)</div>`}
+      <label><span>Entity type (required)</span>${entTypeSelect(`data-cf="entityType"${clientLocked('entityType', cl, c) ? ' disabled data-ident="1"' : ''}`, cl.entityType)}</label>
+      ${cfIn(cl, 'legalName', 'Legal name of the entity (required)', c, { ident: true, max: 160 })}
+      ${cfIn(cl, 'dba', 'DBA (doing business as), if any', c, { max: 160 })}
+      ${cfIn(cl, 'ein', 'EIN (required)', c, { ident: true, max: 11, ph: '12-3456789' })}
+      ${!c.isNew && !c.ro ? `<div class="identbar"><button type="button" class="btn2 small" data-unlockclient="1">Change legal name, entity type or EIN…</button>
+        <div class="hint">Locked on purpose: billing follows the client’s identity. A reason is required and every change is kept in the history.</div>
+        <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label></div>` : ''}</div>`,
+  addr: (cl, c) => `<div class="pfields"><b class="clh">Business address</b>
+      ${cfIn(cl, 'address', 'Street address', c, { max: 200 })}${cfIn(cl, 'suite', 'Suite / unit (if any)', c, { max: 40 })}${cfIn(cl, 'city', 'City', c, { max: 80 })}
+      <label><span>State</span>${stateSelect('data-cf="state"', cl.state)}</label>${cfIn(cl, 'zip', 'ZIP code', c, { max: 10 })}
+      <label class="chk">${sw('data-cf="billingSame"', cl.billingSame !== false)} Billing address is the same</label>
+      <div data-billbox${cl.billingSame !== false ? ' hidden' : ''}><b class="clh">Billing address</b>
+      ${cfIn(cl, 'bAddress', 'Street address', c, { max: 200 })}${cfIn(cl, 'bSuite', 'Suite / unit (if any)', c, { max: 40 })}${cfIn(cl, 'bCity', 'City', c, { max: 80 })}
+      <label><span>State</span>${stateSelect('data-cf="bState"', cl.bState)}</label>${cfIn(cl, 'bZip', 'ZIP code', c, { max: 10 })}</div></div>`,
+  contact: (cl, c) => `<div class="pfields">${cfIn(cl, 'phone', 'Telephone', c, { type: 'tel', max: 30 })}${cfIn(cl, 'fax', 'Fax', c, { type: 'tel', max: 30 })}
+      <b class="clh">Contacts</b><div class="hint">Client relations and billing contacts. They don’t need a login.</div>
+      <div class="cllist" data-ctlist>${contactRows(cl.contacts || [])}</div>
+      <div class="cladd ctadd"><select data-ctrole>${Object.entries(CONTACT_ROLE_LABELS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
+        <input type="text" data-ctname maxlength="80" placeholder="Name"><input type="text" data-cttitle maxlength="60" placeholder="Title">
+        <input type="email" data-ctemail maxlength="120" placeholder="Email"><input type="tel" data-ctphone maxlength="30" placeholder="Phone">
+        <button type="button" class="btn2 small" data-ctadd="1">Add</button></div>
+      <span data-ctcs='${esc(JSON.stringify(cl.contacts || []))}' hidden></span></div>`,
+  own: (cl, c) => {
+    const owner = (c.people || []).find(u => u.ownerClients && u.ownerClients[cl.id] === true);
+    const pool = (c.people || []).filter(u => !u.host && !u.disabled);
+    const head = c.isNew ? '' : `<div class="pid">Client Account Owner: <b>${owner ? esc(ownLabel(owner)) : 'Not set'}</b></div><div class="hint">Sees this client page (setup information, billing and invoices) behind a password step-up. Often the same person who owns the pharmacy.</div>`;
+    if(!c.host || c.ro) return `<div class="pfields" style="display:block">${head}${c.host ? '' : '<div class="lockhint">Set by IronLedger.</div>'}</div>`;
+    return `<div class="pfields" style="display:block">${head}<div class="ownbox">${c.isNew ? '<b class="clh">Account Owner (optional now; can be set later)</b>' : '<b class="clh">Change the client’s Account Owner</b>'}
+      <label><span>Pick a login</span><select data-cownpick><option value="">—</option>${pool.map(u => `<option value="${esc(u.login)}">${esc(ownLabel(u))}</option>`).join('')}<option value="@new">New login…</option></select></label>
+      <div data-cownnew hidden class="pfields"><label><span>Full name</span><input type="text" data-cn="name" maxlength="120"></label><label><span>Login ID</span><input type="text" data-cn="login" maxlength="32" autocapitalize="none" spellcheck="false"></label>
+        <label><span>Mobile number</span><input type="tel" data-cn="phone" maxlength="20"></label><label><span>RPh license # (if a pharmacist)</span><input type="text" data-cn="license" maxlength="20"></label>
+        <label class="chk" style="grid-column:1/-1"><input type="checkbox" data-cn="consent"> They signed the SMS consent form for this mobile number.</label></div>
+      ${!c.isNew && owner ? '<label><span>Reason for the change (required)</span><input type="text" data-cownreason maxlength="300"></label>' : ''}
+      ${c.isNew ? '' : `<button type="button" class="btn2 small" data-cownsave="${esc(cl.id)}">Save Account Owner</button>`}</div></div>`;
+  },
+  pharm: (cl, c) => { if(c.isNew) return '<div class="pfields" style="display:block"><div class="hint">Create the client first, then add its pharmacies here.</div></div>';
+    const rows = (cl.pharmacies || []).map(id => (c.stores || []).find(x => x.id === id) || { id }).map(s => { const I = ownInfo(s, c.people);
+      return `<button type="button" class="clrow2" data-openpharm="${esc(s.id)}"><b>${esc(s.id)}</b><span>${esc(s.name || '')}</span><span class="hint">${esc([s.city, s.state].filter(Boolean).join(', '))}</span><span class="hint">${I.owner ? esc(I.owner.name || I.owner.login) : 'No owner yet'}</span></button>`; }).join('');
+    return `<div class="pfields" style="display:block">${c.host && !c.ro ? `<button type="button" class="btn small" data-addpharm="${esc(cl.id)}">Add pharmacy</button>` : ''}
+      <div class="plist">${rows || '<div class="hint" style="margin-top:8px">No pharmacies yet.</div>'}</div></div>`; },
+  bill: (cl, c) => { const B = c.billing; if(c.isNew) return '<div class="pfields" style="display:block"><div class="hint">Invoices appear here once the client exists.</div></div>';
+    if(!B) return '<div class="pfields" style="display:block"><div class="hint">Loading…</div></div>';
+    const S = B.summary, tile = (l, x, cls) => `<div class="bt ${cls || ''}"><span>${l}</span><b>${x.count}</b><em>${money(x.cents)}</em></div>`;
+    const st = i => i.status === 'paid' ? `<span class="ust ok">Paid${i.paidOn ? ' ' + esc(i.paidOn) : ''}</span>` : i.status === 'void' ? '<span class="ust off">Void</span>' : i.delinquent ? '<span class="ust bad">Delinquent</span>' : '<span class="ust wait">Unpaid</span>';
+    const rows = B.invoices.map(i => `<tr><td>${esc(i.number)}</td><td>${esc(i.issued)}</td><td>${esc(i.due)}</td><td class="num">${money(i.cents)}</td><td>${esc(i.description)}</td><td>${st(i)}</td>${c.host && !c.ro ? `<td class="acts">${i.status !== 'paid' && i.status !== 'void' ? `<button type="button" class="btn2 small" data-invpaid="${esc(i.id)}">Mark paid</button> <button type="button" class="btn2 small" data-invvoid="${esc(i.id)}">Void</button>` : i.status === 'paid' ? `<button type="button" class="btn2 small" data-invunpaid="${esc(i.id)}">Undo</button>` : ''}</td>` : ''}</tr>`).join('');
+    return `<div class="pfields" style="display:block"><div class="btiles">${tile('New this month', S.newThisMonth)}${tile('Paid this month', S.paidThisMonth, 'ok')}${tile('Unpaid', S.unpaid)}${tile('Delinquent', S.delinquent, S.delinquent.count ? 'bad' : '')}</div>
+      <div class="tscroll"><table class="invt"><thead><tr><th>Invoice</th><th>Issued</th><th>Due</th><th class="num">Amount</th><th>For</th><th>Status</th>${c.host && !c.ro ? '<th></th>' : ''}</tr></thead><tbody>${rows || `<tr><td colspan="7" class="hint">No invoices yet.</td></tr>`}</tbody></table></div>
+      ${c.host && !c.ro ? `<div class="invadd"><b class="clh">Add an invoice</b><div class="pfields"><label><span>Issued</span><input type="date" data-iv="issued"></label><label><span>Due</span><input type="date" data-iv="due"></label>
+        <label><span>Amount ($)</span><input type="text" inputmode="decimal" data-iv="amount" maxlength="12"></label><label><span>For</span><input type="text" data-iv="description" maxlength="200"></label></div>
+        <button type="button" class="btn2 small" data-invadd="${esc(cl.id)}">Add invoice</button></div>` : '<div class="hint">Read only. Questions about an invoice go to IronLedger.</div>'}</div>`; },
+  act: (cl, c) => `<div class="pfields" style="display:block">
+      <div style="margin-top:10px">${c.ro ? '' : c.isNew ? '<button type="button" class="btn small" data-createclient="1">Create client</button>' : `<button type="button" class="btn small" data-saveclient="${esc(cl.id)}">Save client</button>`}</div>
+      ${c.isNew ? '' : `<div style="margin-top:8px"><button type="button" class="btn2 small" data-chist="${esc(cl.id)}">Change history</button><div data-histout></div></div>`}</div>`
+};
+// read-only view (the client's Account Owner): everything shown, nothing editable
+function clientFreeze(root){ root.querySelectorAll('input,select,textarea,button[data-ctdel]').forEach(e => { e.disabled = true; }); root.querySelectorAll('.ctadd,[data-ctdel],.identbar,[data-pnl=act]').forEach(e => { e.hidden = true; e.style.display = 'none'; }); }
+function clientCardHtml(cl, c, L){ return layoutGridHtml(CLIENT_PAGE, L, id => CLIENT_BODY[id](cl, c)); }
+
+// ---------------- behaviour for the host page ----------------
+// o = { stores: () => [pharmacy…], say: text => …, after: async isNew => … }
+function clientCardEvents(root, o){
+  root.addEventListener('change', e => {
+    const p = e.target.closest('[data-cownpick]'); if(p){ p.closest('.pcard').querySelector('[data-cownnew]').hidden = p.value !== '@new'; return; }
+    const b = e.target.closest('[data-cf=billingSame]'); if(!b) return;
+    e.target.closest('.pcard').querySelector('[data-billbox]').hidden = b.checked;
+  });
+  const ownerSpec = card => {
+    const pick = (card.querySelector('[data-cownpick]') || {}).value || '', g = k => ((card.querySelector(`[data-cn=${k}]`) || {}).value || '').trim();
+    if(!pick) return null;
+    if(pick !== '@new') return { login: pick };
+    if(!g('name') || !g('login') || !g('phone')) throw new Error('Name, Login ID and mobile number are all needed for the new login.');
+    if(!card.querySelector('[data-cn=consent]').checked) throw new Error('Have them sign the SMS consent form first, then tick the box.');
+    return { create: { name: g('name'), login: g('login').toLowerCase(), phone: g('phone'), license: g('license'), smsConsent: true } };
+  };
+  const passHtml = (r, what) => `<b>${esc(r.owner.name || r.owner.login)} is the ${what}.</b> Give them:<br>Login ID: <b class="mono">${esc(r.owner.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b>`;
+  root.addEventListener('click', async e => {
+    const card = e.target.closest('.pcard'); if(!card) return;
+    const op = e.target.closest('[data-openpharm]'), ap = e.target.closest('[data-addpharm]'), cs = e.target.closest('[data-cownsave]');
+    const ia = e.target.closest('[data-invadd]'), ipd = e.target.closest('[data-invpaid]'), ivd = e.target.closest('[data-invvoid]'), iup = e.target.closest('[data-invunpaid]');
+    if(op){ if(o.openPharm) o.openPharm(op.dataset.openpharm); return; }
+    if(ap){ if(o.addPharm) o.addPharm(ap.dataset.addpharm); return; }
+    if(cs){
+      let spec; try{ spec = ownerSpec(card); }catch(err){ alert(err.message); return; }
+      if(!spec){ alert('Pick who will be the client’s Account Owner.'); return; }
+      busy(cs, true);
+      try{ const r = await api('POST', '/host/clients/' + encodeURIComponent(cs.dataset.cownsave) + '/owner', { owner: spec, reason: (card.querySelector('[data-cownreason]') || {}).value || '' });
+        if(o.pass && r.tempPassword) o.pass(passHtml(r, 'client’s Account Owner')); o.say('Account Owner saved.'); await o.after(false); }
+      catch(err){ if(!err.auth) alert(err.message); } finally{ busy(cs, false); }
+      return;
+    }
+    if(ia || ipd || ivd || iup){
+      try{
+        if(ia){ const g = k => card.querySelector(`[data-iv=${k}]`).value.trim(); await api('POST', '/host/clients/' + encodeURIComponent(ia.dataset.invadd) + '/invoices', { issued: g('issued') || undefined, due: g('due'), amount: g('amount'), description: g('description') }); }
+        else if(ipd){ await api('POST', '/host/clients/' + encodeURIComponent(card.dataset.client) + '/invoices/' + encodeURIComponent(ipd.dataset.invpaid), { status: 'paid' }); }
+        else if(iup){ await api('POST', '/host/clients/' + encodeURIComponent(card.dataset.client) + '/invoices/' + encodeURIComponent(iup.dataset.invunpaid), { status: 'unpaid' }); }
+        else { const why = prompt('Why is this invoice voided?'); if(!why) return; await api('POST', '/host/clients/' + encodeURIComponent(card.dataset.client) + '/invoices/' + encodeURIComponent(ivd.dataset.invvoid), { status: 'void', note: why }); }
+        o.say('Invoices updated.'); await o.after(false);
+      }catch(err){ if(!err.auth) alert(err.message); }
+      return;
+    }
+    const add = e.target.closest('[data-ctadd]'), del = e.target.closest('[data-ctdel]'), ul = e.target.closest('[data-unlockclient]'), hs = e.target.closest('[data-chist]'), sv = e.target.closest('[data-saveclient],[data-createclient]');
+    if(add || del){
+      const list = contactsOfCard(card), q = s => card.querySelector(s);
+      if(del) list.splice(+del.dataset.ctdel, 1);
+      else{
+        const name = q('[data-ctname]').value.trim(); if(!name){ alert('Give the contact a name.'); return; }
+        list.push({ role: q('[data-ctrole]').value, name, title: q('[data-cttitle]').value.trim(), email: q('[data-ctemail]').value.trim(), phone: q('[data-ctphone]').value.trim() });
+        ['name', 'title', 'email', 'phone'].forEach(k => q(`[data-ct${k}]`).value = '');
+      }
+      q('[data-ctcs]').dataset.ctcs = JSON.stringify(list); q('[data-ctlist]').innerHTML = contactRows(list); return;
+    }
+    if(ul){
+      if(!confirm('Billing follows the client’s identity. Unlock the legal name, entity type and EIN to make a change? You will be asked for a reason.')) return;
+      card.querySelectorAll('[data-ident]').forEach(i => { i.removeAttribute('readonly'); i.removeAttribute('disabled'); });
+      const r = card.querySelector('.reason'); r.hidden = false; r.querySelector('input').focus(); return;
+    }
+    if(hs){
+      const out = card.querySelector('[data-histout]'); out.innerHTML = '<div class="hint">Loading…</div>';
+      try{
+        const r = await api('GET', '/host/clients/' + encodeURIComponent(hs.dataset.chist) + '/history');
+        out.innerHTML = r.history.length ? r.history.map(h => `<div class="npibox"><b>${esc((h.at || '').slice(0, 16).replace('T', ' '))} UTC</b> · ${esc(h.by)}${h.reason ? ' · “' + esc(h.reason) + '”' : ''}<div class="hint">${Object.entries(h.changes).map(([k, v]) => esc(k) + ': ' + esc(Array.isArray(v[0]) ? v[0].length + ' contacts' : v[0] == null ? '(blank)' : String(v[0])) + ' → ' + esc(Array.isArray(v[1]) ? v[1].length + ' contacts' : String(v[1]))).join('<br>')}</div></div>`).join('') : '<div class="hint">No changes recorded yet.</div>';
+      }catch(err){ if(!err.auth) out.innerHTML = `<div class="npibox bad">${esc(err.message)}</div>`; }
+      return;
+    }
+    if(sv){
+      const isNew = !!sv.dataset.createclient, body = {};
+      card.querySelectorAll('[data-cf]').forEach(i => body[i.dataset.cf] = i.type === 'checkbox' ? i.checked : i.value.trim());
+      body.contacts = contactsOfCard(card);
+      const rs = card.querySelector('[data-reason]'); if(rs && rs.value.trim()) body.changeReason = rs.value.trim();
+      if(isNew){ try{ const sp = ownerSpec(card); if(sp) body.owner = sp; }catch(err){ alert(err.message); return; } }
+      busy(sv, true);
+      try{
+        const r = await api('POST', '/host/clients' + (isNew ? '' : '/' + encodeURIComponent(sv.dataset.saveclient)), body);
+        if(isNew && r.tempPassword && o.pass) o.pass(passHtml(r, 'client’s Account Owner'));
+        o.say(isNew ? 'Client created: ' + r.id + (r.ownerError ? '. The Account Owner was not set: ' + r.ownerError : '') : 'Client saved.'); await o.after(isNew ? r.id : false);
+      }catch(err){ if(!err.auth) alert(err.message); } finally{ busy(sv, false); }
     }
   });
 }
@@ -1469,13 +1765,39 @@ function ownerLockNow(msg, serverSaid){
   const was = OWN_UNTIL > 0; OWN_UNTIL = 0;
   if(was && !serverSaid) api('POST', '/owner-lock', {}).catch(() => {});
   for(const k in STAGED) delete STAGED[k]; peopleMsg('');
-  OWN = {stores:[], users:[]}; $('ownPeople').innerHTML = ''; $('ownStores').innerHTML = '';   // nothing left on screen
+  OWN = {stores:[], users:[]}; $('ownPeople').innerHTML = ''; $('ownStores').innerHTML = ''; $('ownClientView').innerHTML = ''; CLI = null;   // nothing left on screen
   if(ownerTabActive()) showOwnLock(msg);
 }
+// Client page (the client's Account Owner only): setup information, pharmacies, billing and invoices, read-only. Same password step-up as the rest of this tab.
+let OWN_VIEW = 'pharm', CLI = null;
+function ownShowView(v){
+  const onlyClient = !(STORE && STORE.owner);                                        // a Client Account Owner who owns no pharmacy here sees just the client page
+  OWN_VIEW = onlyClient ? 'client' : v;
+  $('ownSwitch').style.display = ME && ME.clientOwner && !onlyClient ? '' : 'none';
+  $('ownPharmView').style.display = OWN_VIEW === 'pharm' ? '' : 'none'; $('ownClientView').style.display = OWN_VIEW === 'client' ? '' : 'none';
+  $('ownSwPharm').className = OWN_VIEW === 'pharm' ? 'btn small' : 'btn2 small'; $('ownSwClient').className = OWN_VIEW === 'client' ? 'btn small' : 'btn2 small';
+  if(OWN_VIEW === 'client') loadClientPage(); else loadOwner();
+}
+async function loadClientPage(){
+  const list = (ME && ME.clients) || []; if(!list.length){ $('ownClientView').innerHTML = '<div class="hint">No client account.</div>'; return; }
+  const id = (CLI && CLI.id && list.some(c => c.id === CLI.id) ? CLI.id : list[0].id);
+  $('ownClientView').innerHTML = '<div class="hint"><span class="spin"></span>Loading…</div>';
+  try{
+    const r = await api('GET', '/client/' + encodeURIComponent(id));
+    CLI = { id, data: r };
+    const people = r.pharmacies.filter(p => p.owner).map(p => ({ name: p.owner, login: p.owner, ownerStores: { [p.id]: true } })).concat(r.owner ? [{ name: r.owner.name, login: r.owner.login, ownerClients: { [id]: true } }] : []);
+    r.client.pharmacies = r.pharmacies.map(p => p.id);
+    const pick = list.length > 1 ? `<div class="toolbar" style="margin-bottom:8px;"><select id="cliPick">${list.map(c => `<option value="${esc(c.id)}"${c.id === id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>` : '';
+    $('ownClientView').innerHTML = pick + `<div class="pcard" data-client="${esc(id)}">${clientCardHtml(r.client, { ro: true, host: false, stores: r.pharmacies, people, billing: r.billing })}</div>`;
+    clientFreeze($('ownClientView').querySelector('.pcard'));
+    const sel = $('cliPick'); if(sel) sel.onchange = () => { CLI = { id: sel.value }; loadClientPage(); };
+  }catch(e){ if(!e.auth) $('ownClientView').innerHTML = `<div class="hint">Couldn’t open the client page: ${esc(e.message)}</div>`; }
+}
+$('ownSwPharm').onclick = () => ownShowView('pharm'); $('ownSwClient').onclick = () => ownShowView('client');
 function openOwnerTab(){
   if(!(OWN_UNTIL > Date.now())) return showOwnLock('');
   $('ownLock').style.display = 'none'; $('ownBody').style.display = '';
-  ownLastAct = Date.now(); loadOwner();
+  ownLastAct = Date.now(); ownShowView(OWN_VIEW);
 }
 $('ownUnlock').onclick = async () => {
   const pw = $('ownPw').value; if(!pw) return showOwnLock('Enter your password.');
@@ -1506,11 +1828,15 @@ const TEMPS = {};
 const STAGED = {};
 function effUser(u){
   const s = STAGED[u.sub]; if(!s) return u;
-  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}), acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty, initials:s.initials !== undefined ? s.initials : u.initials, license:s.license !== undefined ? s.license : u.license,
+  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}), adminStores:Object.assign({}, u.adminStores, s.adminStores || {}), acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty, initials:s.initials !== undefined ? s.initials : u.initials, license:s.license !== undefined ? s.license : u.license,
     disabled:s.disabled !== undefined ? s.disabled : u.disabled});
 }
+// owner of at least one of the pharmacies this page covers (a login can own one pharmacy and still be staff at another)
+const OWN_IS_OWNER = id => !!(ME && ME.stores || []).find(x => x.id === id && x.isOwner);
+const ownsHere = u => !u.host && !!u.owner && (OWN.stores || []).some(s => u.ownerStores && u.ownerStores[s.id] === true);
+const ownedList = u => (OWN.stores || []).filter(s => u.ownerStores && u.ownerStores[s.id] === true).map(s => s.id);
 const PIN_LABEL = {none:'Not set', set:'Set', temp:'Temporary (they must choose their own)', locked:'Locked'};
-const canIssuePin = u => !!ME && u.login !== ME.login && (ME.host ? ME.hostRole !== 'rep' : (ME.owner && !u.owner && !u.host));
+const canIssuePin = u => !!ME && u.login !== ME.login && (ME.host ? ME.hostRole !== 'rep' : (STORE && STORE.owner && !ownsHere(u) && !u.host));
 const pinLine = u => `<span class="hint">Employee ID <b>${esc(u.empId || '-')}</b>${ME && ME.pinRequired ? ` · PIN: ${PIN_LABEL[u.pin || 'none']}` : ''}</span> ${ME && ME.pinRequired && canIssuePin(u) ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="Makes a one-time temporary PIN for you to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}`;
 const stageBtns = sub => `<button class="btn small" data-upd="${esc(sub)}">Update</button> <button class="btn2 small" data-undo="${esc(sub)}">Undo</button>`;
 function peopleMsg(m){ $('ownPeopleMsg').textContent = m || ''; }
@@ -1526,7 +1852,7 @@ async function copyText(t){
     let ok = false; try{ ok = document.execCommand('copy'); }catch(e2){} a.remove(); return ok; }
 }
 async function loadOwner(){
-  if(!ME || !ME.owner) return;
+  if(!ME || !STORE || !STORE.owner) return;
   $('ownStores').innerHTML = $('ownPeople').innerHTML = '<div class="hint"><span class="spin"></span>Loading…</div>';
   try{
     const [s, u] = await Promise.all([api('GET', '/owner/stores'), api('GET', '/owner/users')]);
@@ -1542,13 +1868,13 @@ function renderOwner(){ renderOwnStores(); renderOwnPeople();
   const sig = OWN.stores.map(s => s.id + ':' + s.name).join('|');
   if(sig !== npStoresSig || !$('npPerms').innerHTML){ npStoresSig = sig; paintNewPerson(); }   // don't undo switches someone is setting for the next person
   $('impStore').innerHTML = OWN.stores.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join(''); }
-const ACCT_LABELS = {pic:'Pharmacist-in-Charge', pharmacist:'Staff Pharmacist', tech:'Pharmacy Technician', staff:'Other Staff'};
+const ACCT_LABELS = {pic:'Pharmacist-in-Charge', pharmacist:'Staff Pharmacist', tech:'Pharmacy Technician', staff:'Pharmacy Associate'};
 // choosing a type switches these on or off (the Calendar privilege is never changed by a type; it is set on its own)
 const ACCT_PRESETS = {pic:{submit:true, archive:true, remove:true, export:true}, pharmacist:{submit:true, archive:true, remove:true, export:false},
   tech:{submit:true, archive:true, remove:true, export:false}, staff:{submit:true, archive:false, remove:false, export:false}};
 function renderOwnStores(){
-  const holder = (OWN.users || []).find(u => u.owner), hn = holder ? (holder.name || holder.login) + ' (' + holder.login + ')' : '';
-  $('ownStores').innerHTML = OWN.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, { logo: LOGOS[s.id], holder: hn })}</div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
+  const holderOf = s => { const h = (OWN.users || []).find(u => u.ownerStores && u.ownerStores[s.id] === true); return h ? (h.name || h.login) + ' (' + h.login + ')' : ''; };
+  $('ownStores').innerHTML = OWN.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, { logo: LOGOS[s.id], holder: holderOf(s), people: OWN.users, picInfo: true, stores: OWN.stores })}</div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
 }
 const fmtDay = iso => { try{ return new Date(iso).toLocaleDateString('en-US', {month:'short', day:'numeric'}); }catch(e){ return ''; } };
 function statusBadge(u){
@@ -1561,19 +1887,19 @@ function renderOwnPeople(){
   const st = OWN.stores, P = Object.keys(PERM_LABELS);
   const priv = (sw_, label, title) => `<span class="priv" title="${esc(title || label)}">${sw_}<span>${esc(label)}</span></span>`;
   const head = u => `
-      <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${u.initials ? ` <span class="hint" title="Initials on printed copies">(${esc(u.initials)})</span>` : ''}${u.owner ? '<span class="urole">Account Owner</span>' : u.host ? '<span class="urole">Host (IronLedger)</span>' : ''}</div>
+      <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${u.initials ? ` <span class="hint" title="Initials on printed copies">(${esc(u.initials)})</span>` : ''}${ownsHere(u) ? '<span class="urole">Account Owner</span>' : u.host ? '<span class="urole">Host (IronLedger)</span>' : ''}</div>
       <div class="ucell mono" data-l="Username">${esc(u.login)}</div>
-      <div class="ucell" data-l="Mobile">${esc(u.phone)}${u.owner ? ' <span class="hint" title="Sign-in codes are texted here, so only IronLedger changes it. Contact IronLedger.">🔒</span>' : u.host ? '' : ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>`}</div>
+      <div class="ucell" data-l="Mobile">${esc(u.phone)}${ownsHere(u) ? ' <span class="hint" title="Sign-in codes are texted here, so only IronLedger changes it. Contact IronLedger.">🔒</span>' : u.host ? '' : ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>`}</div>
       <div class="ucell" data-l="Status">${statusBadge(u)}</div>`;
   const acts = u => `<div class="ucell acts">${STAGED[u.sub] ? stageBtns(u.sub) : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button> <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`}</div>
       <div class="ucell copycell">${u.pending && TEMPS[u.sub] ? `<button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${COPY_SVG}</button>` : ''}</div>`;
   const rowCls = u => `urow${u.disabled ? ' off' : ''}${STAGED[u.sub] ? ' dirty' : ''}`;
   $('ownPeople').innerHTML = `<div class="ulist">
     <div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div><div></div></div>
-    ${OWN.users.map(effUser).map(u => u.owner
+    ${OWN.users.map(effUser).map(u => ownsHere(u)
       ? `<div class="urow"><div class="ucols">${head(u)}<div class="ucell acts"></div><div class="ucell copycell"></div></div>
          <div class="upriv"><span class="plabel">Account type</span><span class="hint">Account Owner · primary account holder</span></div>
-         <div class="upriv"><span class="plabel">Pharmacies</span><span class="hint">All pharmacies</span></div>
+         <div class="upriv"><span class="plabel">Pharmacies</span><span class="hint">Account Owner of ${esc(ownedList(u).join(', '))}</span></div>
          <div class="upriv"><span class="plabel">Privileges</span><span class="hint">Full access</span></div>
          <div class="upriv"><span class="plabel">RPh license #</span><input type="text" data-ulic maxlength="20" value="${esc(u.license || '')}" style="width:130px;text-transform:uppercase;" aria-label="RPh license number"> <span class="hint">Pharmacists only. Prints on Rx Intake forms; the Pharmacist-In-Charge's number prints as PIC.</span></div>
          <div class="upriv"><span class="plabel">Signing</span>${pinLine(u)}</div></div>`
@@ -1595,7 +1921,10 @@ function renderOwnPeople(){
            <span class="pgroup">${st.map(s => priv(sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('')}</span></div>
          <div class="upriv"><span class="plabel">Privileges</span>
            <span class="pgroup">${P.map(p => priv(sw(`data-uperm="${p}"`, u.perms[p], PERM_LABELS[p]), PERM_LABELS[p], PERM_LABELS[p])).join('')}
-           ${priv(sw('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on')}</span></div></div>`).join('')}
+           ${priv(sw('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on')}</span></div>
+         ${u.acctType === 'pic' && (ME.stores || []).some(x => x.isOwner) ? `<div class="upriv"><span class="plabel">Super user</span>
+           <span class="pgroup">${st.filter(s => u.stores[s.id] === true && OWN_IS_OWNER(s.id)).map(s => priv(sw(`data-uadm="${esc(s.id)}"`, (u.adminStores || {})[s.id] === true, 'All administrator privileges at ' + s.name + ' except billing, the client page and ownership'), s.id, 'All administrator privileges at ' + s.name + ' except billing, the client page and ownership')).join('')}</span>
+           <span class="hint">All administrator privileges except billing, the client page and ownership.</span></div>` : ''}</div>`).join('')}
   </div>`;
 }
 function fitPeople(){}   // the two-line layout fits any width; nothing to switch
@@ -1677,6 +2006,7 @@ function stageChange(staged, u, c){
   const put = (grp, k, v, was) => { s[grp] = s[grp] || {}; if(v === was) delete s[grp][k]; else s[grp][k] = v; if(!Object.keys(s[grp]).length) delete s[grp]; };
   if(c.dataset.ust) put('stores', c.dataset.ust, c.checked, (u.stores || {})[c.dataset.ust] === true);
   else if(c.dataset.uperm) put('perms', c.dataset.uperm, c.checked, !!(u.perms || {})[c.dataset.uperm]);
+  else if(c.dataset.uadm) put('adminStores', c.dataset.uadm, c.checked, (u.adminStores || {})[c.dataset.uadm] === true);
   else if(c.dataset.uon){ if(!c.checked === !!u.disabled) delete s.disabled; else s.disabled = !c.checked; }
   if(!Object.keys(s).length) delete staged[u.sub];
 }
@@ -1814,9 +2144,21 @@ function calItems(st){                                           // the calendar
   add('obl', Object.values(st.obl || {}).concat(st.custom || []));
   return out;
 }
+// who may complete which built-in task (the server enforces the same table; this only keeps the screen honest)
+const CAL_ROLE = { 'dea-reg': 'Owner', 'dea-biennial': 'PIC', 'tx-cs-annual': 'PIC', 'cs-reconcile': 'PIC', 'cs-cycle': 'PIC', 'tx-pharmacy-license': 'Owner', 'tx-rph-license': 'PIC', 'tx-tech-reg': 'PIC', 'tx-pic-change': 'PIC', 'tx-pic-inventory': 'PIC', 'tx-officer-change': 'Owner', 'tx-location-change': 'Owner',
+  'u795-training': 'DP', 'u795-sop': 'DP', 'u797-cert-pec': 'DP', 'u797-cert-sec': 'DP', 'u797-air': 'DP', 'u797-surface': 'DP', 'u797-sop': 'DP', 'u797-qaqc': 'DP', 'u797-didactic': 'DP', 'u797-garb': 'DP', 'u797-media': 'DP', 'u797-sporicidal': 'DP', 'u797-monitor-cal': 'DP', 'u797-pressure': 'DP',
+  'u800-list': 'DP', 'u800-risk': 'DP', 'u800-sop': 'DP', 'u800-training': 'DP', 'u800-wipe': 'DP', 'osha-ecp': 'Owner', 'osha-training': 'Owner', 'hipaa-risk': 'Owner', 'hipaa-training': 'Owner', 'doc-review': 'PIC' };
+function calMayCompleteHere(obId){
+  const role = CAL_ROLE[obId]; if(!role || !ME || !STORE) return true;       // custom tasks: anyone with the calendar
+  if(STORE.pharm) return true;
+  if(role === 'Owner') return !!STORE.owner;
+  if(role === 'DP') return ME.docDuty === 'dp' || ME.docDuty === 'ctech';
+  return false;
+}
 window.ILCAL_HOST = {
+  mayComplete: obId => calMayCompleteHere(obId),
   get user(){ return ME ? {name: ME.name || ME.login, login: ME.login} : null; },
-  get canStart(){ return !!(ME && ME.owner); },
+  get canStart(){ return !!(STORE && STORE.owner); },
   get pharmacy(){                                                // what the account already knows, to pre-fill starting the calendar
     if(!STORE) return null;
     const map = {controlled:'controlled', nonsterile:'nonsterile', sterile:'sterile', hazardous:'hazardous', immunizations:'bbp'};
@@ -1866,7 +2208,7 @@ function calPaint(){                                             // called whene
   const f = $('calFrame');
   if(!ok || (f.dataset.store && STORE && f.dataset.store !== STORE.id)){
     f.removeAttribute('data-store'); f.src = 'about:blank'; CAL.sig = {}; CAL.store = null;
-    if(tab.classList.contains('active')) document.querySelector('#tabs [data-tab="list"]').click();
+    if(tab.classList.contains('active')) homeTab();
   }
 }
 
@@ -2058,7 +2400,7 @@ function docsPaintTab(){                                         // called whene
   const tab = document.querySelector('#tabs [data-tab="documents"]'); if(!tab) return;
   const ok = docsOK(); tab.style.display = ok ? '' : 'none';
   if(!ok || (DOCS_STORE && STORE && DOCS_STORE !== STORE.id)){ DOCS = docsNewModel(); DOCS_STORE = ''; const r = $('docsRoot'); if(r) r.innerHTML = ''; docsCloseDrawer(); docsCloseModal();
-    if(!ok && tab.classList.contains('active')) document.querySelector('#tabs [data-tab="list"]').click(); }
+    if(!ok && tab.classList.contains('active')) homeTab(); }
 }
 const docsToast = t => { const e = $('docsToast'); e.textContent = t; e.style.display = ''; clearTimeout(docsToast.t); docsToast.t = setTimeout(() => e.style.display = 'none', 3200); };
 function docsModal(html, wide){ const o = $('docsOv'); o.innerHTML = `<div class="dov" data-dov><div class="dmodal${wide ? ' wide' : ''}" role="dialog" aria-modal="true">${html}</div></div>`; const f = o.querySelector('[autofocus],input:not([type=hidden]),select,textarea'); if(f) f.focus(); }
@@ -2352,7 +2694,7 @@ function rxPaint(){                                               // called when
   const f = $('rxFrame');
   if(!ok || (f.dataset.store && STORE && f.dataset.store !== STORE.id)){
     f.removeAttribute('data-store'); f.src = 'about:blank';       // closing the page discards any form and PDFs held in it
-    if(tab.classList.contains('active')) document.querySelector('#tabs [data-tab="list"]').click();
+    if(tab.classList.contains('active')) homeTab();
   }
 }
 
