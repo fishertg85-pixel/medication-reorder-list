@@ -65,13 +65,15 @@ with sync_playwright() as pw:
     check("audit log names the signed-in login", [l["by"] for l in g["log"]][:1], ["Pat Owner"])
     p.screenshot(path='screenshots/calendar_tab.png')
     # Account Owner tab: account type for a person, identifiers on the pharmacy
-    p.click('#acctBtn'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_selector('select[data-utype]', timeout=8000)
-    row = p.locator('.urow[data-sub]').filter(has_text='CALA'); row.locator('select[data-utype]').select_option('pharmacist'); p.wait_for_timeout(300)
-    row = p.locator('.urow[data-sub]').filter(has_text='CALA'); row.locator('[data-upd]').click(); p.wait_for_timeout(1500)
+    p.click('#acctBtn'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_timeout(1200); (p.click('#acSide [data-qs=NTX1]') if p.locator('#acSide [data-qs=NTX1]').count() else None); p.wait_for_selector('#acSide [data-view=users]', timeout=8000); p.click('#acSide [data-view=users]'); p.wait_for_timeout(900); p.wait_for_selector('#acUsers .urow', timeout=8000)
+    p.locator('#acUsers .urow').filter(has_text='CALA').locator('.urowhead').click(); p.wait_for_selector('#acUsers select[data-utype]', timeout=8000)
+    row = p.locator('#acUsers .urow').filter(has_text='CALA'); row.locator('select[data-utype]').select_option('pharmacist'); p.wait_for_timeout(300)
+    row = p.locator('#acUsers .urow').filter(has_text='CALA'); row.locator('[data-upd]').click(); p.wait_for_timeout(1500)
     cu = {u["login"]: u for u in api(O, "GET", "/owner/users")[1]["users"]}["cala"]
     check("type saved from the screen, Calendar privilege untouched", (cu["acctType"], cu["perms"]["calendar"], cu["perms"]["submit"]), ("pharmacist", True, True))
     p.screenshot(path='screenshots/account_manager_people.png')
     # the Account Owner's pharmacy card: name/address/phone/hours editable; licenses, identifiers, services and Calendar are shown but locked
+    p.click('#acCrumb [data-crumb=pharm]'); p.wait_for_selector('#acPharm .pcard')
     card = p.locator('.pcard[data-store=NTX1]')
     check("identifiers show as read-only text", (card.locator('[data-sf=npi]').count(), card.locator('[data-sf=dea]').count(), "1234567893" in card.inner_text(), "AB1234563" in card.inner_text()), (0, 0, True, True))
     check("no services switches, no Calendar switch, no registry buttons", (card.locator('[data-svc]').count(), card.locator('[data-sfcal]').count(), card.locator('[data-npilook]').count(), card.locator('[data-deaok]').count()), (0, 0, 0, 0))

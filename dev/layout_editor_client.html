@@ -232,6 +232,26 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
 .pnl .pfields{grid-template-columns:repeat(auto-fill,minmax(min(210px,100%),1fr));min-width:0;} .pnl .entity{min-width:0;max-width:100%;}
 .licrow{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:flex-end;} .licrow label{flex:1 1 84px;min-width:0;} .licrow label:nth-child(3){flex-basis:128px;} .licrow label input,.licrow label select{width:100%;}
 .ownbox input[type=radio]{width:auto;flex:none;margin:3px 0 0;}
+
+/* ---- the drill-down (employee portal and Account tab): middle = what is open, right = the list one level down ---- */
+.crumb{font-size:14px;margin:0 0 10px;color:var(--muted);} .crumb button.lk{background:none;border:0;padding:0;min-height:0;color:var(--accent);cursor:pointer;font:inherit;text-decoration:underline;} .crumb b{color:var(--ink);}
+.cw{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start;}
+.cq{position:sticky;top:8px;max-height:calc(100vh - 24px);overflow:auto;} .cqh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;} .cqh h2{margin:0;}
+.cq .sub{font-size:12px;color:var(--muted);margin:10px 2px 4px;}
+.qrow{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink);padding:7px 10px;margin-bottom:6px;cursor:pointer;min-height:0;font:inherit;}
+.qrow b{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} .qrow span{font-size:12px;color:var(--muted);} .qrow.on{border-color:var(--accent);background:var(--accent-soft);} .qrow:hover{border-color:var(--accent);}
+.qrow.big{padding:11px 12px;} .qrow.big b{font-size:15px;}
+@media (max-width:1100px){.cw{grid-template-columns:1fr;} .cq{position:static;max-height:none;order:-1;}}
+.dsearch{width:100%;box-sizing:border-box;font:inherit;border:1px solid var(--line);border-radius:7px;padding:8px 12px;background:var(--bg);color:var(--ink);}
+.dfound{position:relative;} .dfound .hits{position:absolute;left:0;right:0;top:100%;z-index:50;background:var(--bg);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.25);max-height:60vh;overflow:auto;margin-top:2px;}
+.dfound .hit{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-soft,var(--line));padding:8px 12px;cursor:pointer;font:inherit;color:var(--ink);min-height:0;} .dfound .hit:hover{background:var(--accent-soft);}
+.dfound .hit span{display:block;font-size:12px;color:var(--muted);} .dfound .hits .hg{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:6px 12px 2px;}
+.ulist .ucols{grid-template-columns:minmax(170px,1.6fr) minmax(100px,1fr) minmax(150px,1fr) minmax(170px,1.3fr) 40px;}
+.urowhead{cursor:pointer;} .urowhead:hover{background:var(--accent-soft);} .urow.open{background:var(--panel);border-radius:6px;} .urowhead .chev{color:var(--muted);}
+.udetail{padding:2px 6px 10px 10px;border-left:3px solid var(--accent);margin:6px 0 4px 6px;}
+.urole{margin-left:8px;font-size:11.5px;font-weight:600;color:var(--muted);}
+.dtitle{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;} .dtitle h2{margin:0;font-size:18px;}
+.swrow{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-top:8px;}
 /* ---- Documents tab ---- */
 #panel-documents{position:relative;}
 #panel-documents .pgrid{margin-top:2px;}
@@ -442,13 +462,14 @@ function layoutGridHtml(page, L, body){
 /* ---------------- pharmacy setup page (host) and pharmacy account page (Account Owner): panels and their layout ----------------
    Built on the layout engine (layout_engine.js). PHARM_LAYOUT is set once by Neo with the layout editor and is the same for everyone. */
 const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
-const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['own', 'Account Owner And PIC'], ['act', 'Modules And Save']];
-const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,50],"contact":[5,1,4,36],"hrs":[9,1,4,50],"reg":[5,37,4,60],"own":[1,51,4,34],"act":[9,51,4,40],"svc":[1,98,12,19]}};
+const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['own', 'Account Owner And PIC'], ['mgr', 'Who Can Manage Users'], ['act', 'Modules And Save']];
+const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,50],"contact":[5,1,4,36],"hrs":[9,1,4,50],"reg":[5,37,4,60],"own":[1,51,4,34],"mgr":[1,85,4,16],"act":[9,51,4,40],"svc":[1,102,12,19]}};
 const PHARM_PAGE = { id: 'pharm', title: 'Host Pharmacy Setup Page', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
   render: (sample, panels) => pharmCardHtml(sample, { logo: '', holder: 'Pat Owner (owner)', host: true, clients: [{ id: 'IL-000001', legalName: 'NorTex Holdings LLC', entityType: 'llc', ein: '12-3456789' }] }, { panels }) };
 // The Account Owner's version of the same page has its own layout (Neo arranges it separately in the layout editor: page key pharm_owner).
 const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,44],"contact":[5,1,4,35],"hrs":[9,1,4,55],"reg":[5,36,4,50],"own":[1,45,4,26],"act":[9,56,4,25],"svc":[1,87,12,16]}};
-const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_PANELS, layout: PHARM_OWNER_LAYOUT,
+const PHARM_OWNER_PANELS = PHARM_PANELS.filter(p => p[0] !== 'mgr');      // the switches are IronLedger's alone
+const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_OWNER_PANELS, layout: PHARM_OWNER_LAYOUT,
   render: (sample, panels) => pharmCardHtml(Object.assign({}, sample, { ein: '', einMasked: '••-•••4321' }), { logo: '', holder: 'Pat Owner (owner)' }, { panels }) };
 const pharmLayoutOk = L => layoutOk(PHARM_PAGE, L);
 const pharmLayout = () => pharmLayoutOk(PHARM_LAYOUT) ? PHARM_LAYOUT : null;
@@ -578,11 +599,11 @@ const PHARM_BODY = {
       <div class="pid">Pharmacist in charge: <b>${esc(picTxt)}</b></div>
       ${I.admins.length ? `<div class="pid">Super user: <b>${esc(I.admins.map(ownLabel).join(', '))}</b></div>` : ''}`;
     if(!c.host || c.rep) return `<div class="pfields" style="display:block">${head}<div class="lockhint">${LOCKED}</div></div>`;
-    const pool = (c.people || []).filter(u => !u.host && !u.disabled), clientOwner = (c.people || []).find(u => u.ownerClients && u.ownerClients[s.clientId] === true);
-    const pharmacists = (c.people || []).filter(u => !u.host && (u.acctType === 'pharmacist' || u.acctType === 'pic') && u.stores && u.stores[s.id] === true);
+    const pool = (c.people || []).filter(u => !u.employeeOnly && !u.disabled), clientOwner = (c.people || []).find(u => u.ownerClients && u.ownerClients[s.clientId] === true);
+    const pharmacists = (c.people || []).filter(u => !u.employeeOnly && (u.acctType === 'pharmacist' || u.acctType === 'pic') && u.stores && u.stores[s.id] === true);
     return `<div class="pfields" style="display:block">${head}
       <div class="ownbox"><b class="clh">Change the Account Owner</b>
-        <label><span>Pick a login</span><select data-ownpick><option value="">—</option>${clientOwner ? `<option value="@client">Same as the client’s Account Owner: ${esc(ownLabel(clientOwner))}</option>` : ''}${pool.map(u => `<option value="${esc(u.login)}">${esc(ownLabel(u))}</option>`).join('')}<option value="@new">New login…</option></select></label>
+        <label><span>Pick a login</span><select data-ownpick><option value="">—</option>${I.owner ? '<option value="@none">No Account Owner (remove)</option>' : ''}${clientOwner ? `<option value="@client">Same as the client’s Account Owner: ${esc(ownLabel(clientOwner))}</option>` : ''}${pool.map(u => `<option value="${esc(u.login)}">${esc(ownLabel(u))}</option>`).join('')}<option value="@new">New login…</option></select></label>
         <div data-ownnew hidden class="pfields"><label><span>Full name</span><input type="text" data-on="name" maxlength="120"></label><label><span>Login ID</span><input type="text" data-on="login" maxlength="32" autocapitalize="none" spellcheck="false"></label>
           <label><span>Mobile number</span><input type="tel" data-on="phone" maxlength="20"></label><label><span>RPh license # (if a pharmacist)</span><input type="text" data-on="license" maxlength="20"></label>
           <label class="chk" style="grid-column:1/-1"><input type="checkbox" data-on="consent"> They signed the SMS consent form for this mobile number.</label></div>
@@ -596,6 +617,11 @@ const PHARM_BODY = {
         <div class="hint">The PIC must be a licensed pharmacist with an RPh license number on their login. Only IronLedger records or changes this; each change is kept in the history.</div>
         <button type="button" class="btn2 small" data-picsave="${esc(s.id)}">Save</button></div></div>`;
   },
+  mgr: (s, c) => c.isNew ? '<div class="pfields" style="display:block"><div class="hint">Set after the pharmacy is created.</div></div>'
+    : `<div class="pfields" style="display:block"><div class="hint" style="margin-bottom:6px">May add, change and remove people at this pharmacy. Never billing, the client page or ownership.</div>
+      <label class="chk">${sw('data-mgr="mgrOwner"', s.mgrOwner !== false)} Account Owner</label>
+      <label class="chk">${sw('data-mgr="mgrPic"', s.mgrPic !== false)} Pharmacist-in-Charge super user</label>
+      <label class="chk">${sw('data-mgr="mgrClient"', s.mgrClient === true)} Client Account Owner</label></div>`,
   act: (s, c) => `<div class="pfields"><div class="calsw">${c.host && !c.rep
         ? `<label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar</label> <span class="hint">(people also need the Calendar privilege)</span>`
         : `Calendar: <b>${s.calendar ? 'On' : 'Off'}</b>`}</div>
@@ -657,7 +683,8 @@ function pharmCardEvents(root, o){
       const card = osv.closest('.pcard'), pick = card.querySelector('[data-ownpick]').value, g = k => ((card.querySelector(`[data-on=${k}]`) || {}).value || '').trim();
       if(!pick){ alert('Pick who will be the Account Owner.'); return; }
       const body = { reason: (card.querySelector('[data-ownreason]') || {}).value || '' };
-      if(pick === '@client') body.sameAsClient = true;
+      if(pick === '@none') body.remove = true;
+      else if(pick === '@client') body.sameAsClient = true;
       else if(pick === '@new'){
         if(!g('name') || !g('login') || !g('phone')){ alert('Name, Login ID and mobile number are all needed.'); return; }
         if(!card.querySelector('[data-on=consent]').checked){ alert('Have them sign the SMS consent form first, then tick the box.'); return; }
@@ -796,15 +823,13 @@ function pharmCardEvents(root, o){
    (dev/build_layout_editor.py client) and is the same for everyone. Uses helpers from pharm_panels.js (stateSelect, entTypeSelect, ENT_TYPES, esc).
    A client is the bill-to account: the legal entity that pays, its EIN, addresses and contacts, and the generated IL- account number (the client's key;
    it never changes). Pharmacies belong to a client; each pharmacy also carries its own licensed entity (that EIN can differ). */
-const CLIENT_PANELS = [['ent', 'Client And Legal Entity'], ['addr', 'Addresses'], ['contact', 'Phone, Fax And Contacts'], ['own', 'Account Owner'], ['pharm', 'Pharmacies'], ['bill', 'Billing And Invoices'], ['act', 'Save']];
-const CLIENT_LAYOUT = {"v":2,"cols":12,"panels":{"ent":[1,1,4,30],"own":[1,31,4,24],"addr":[5,1,4,44],"contact":[9,1,4,44],"pharm":[1,56,4,28],"bill":[5,46,8,38],"act":[1,85,12,10]}};
+const CLIENT_PANELS = [['ent', 'Client And Legal Entity'], ['addr', 'Addresses'], ['contact', 'Phone, Fax And Contacts'], ['own', 'Account Owner'], ['act', 'Save']];
+const CLIENT_LAYOUT = {"v":2,"cols":12,"panels":{"ent":[1,1,6,30],"own":[1,31,6,24],"addr":[7,1,6,44],"contact":[1,56,12,24],"act":[1,81,12,10]}};
 const CLIENT_SAMPLE = {id:'IL-000001', legalName:'NorTex Holdings LLC', dba:'NorTex Pharmacy', entityType:'llc', ein:'12-3456789', address:'100 Main St', suite:'Suite 5', city:'Haslet', state:'TX', zip:'76052', billingSame:false, bAddress:'PO Box 12', bCity:'Haslet', bState:'TX', bZip:'76052', phone:'817-555-0100', fax:'817-555-0101',
   contacts:[{role:'relations', name:'Pat Owner', title:'Owner', email:'pat@example.com', phone:'817-555-0102'},{role:'billing', name:'Sam Books', title:'Bookkeeper', email:'sam@example.com', phone:''}], pharmacies:['NTX1','NTX2']};
 const CLIENT_PAGE = { id: 'client', title: 'Host Account (Client) Setup Page', panels: CLIENT_PANELS, layout: CLIENT_LAYOUT,
-  render: (_unused, panels) => clientCardHtml(CLIENT_SAMPLE, { host: true, billing: BILL_SAMPLE, people: [], stores: [{ id: 'NTX1', name: 'NorTex Pharmacy - Haslet', city: 'Haslet', state: 'TX' }, { id: 'NTX2', name: 'NorTex Pharmacy - Keller', city: 'Keller', state: 'TX' }] }, { panels }) };
+  render: (_unused, panels) => clientCardHtml(CLIENT_SAMPLE, { host: true, people: [], stores: [{ id: 'NTX1', name: 'NorTex Pharmacy - Haslet', city: 'Haslet', state: 'TX' }, { id: 'NTX2', name: 'NorTex Pharmacy - Keller', city: 'Keller', state: 'TX' }] }, { panels }) };
 const money = c => '$' + (c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const BILL_SAMPLE = { today: '2026-11-19', summary: { newThisMonth: { count: 1, cents: 14900 }, paidThisMonth: { count: 1, cents: 14900 }, unpaid: { count: 1, cents: 14900 }, delinquent: { count: 0, cents: 0 } },
-  invoices: [{ id: '2026-11-01_a1', number: 'IL-000001-202611-01', issued: '2026-11-01', due: '2026-11-15', cents: 14900, description: 'Compliance Calendar', status: 'paid', delinquent: false, paidOn: '2026-11-10' }, { id: '2026-12-01_b2', number: 'IL-000001-202612-01', issued: '2026-12-01', due: '2026-12-15', cents: 14900, description: 'Compliance Calendar', status: 'unpaid', delinquent: false }] };
 const CONTACT_ROLE_LABELS = { relations: 'Client relations', billing: 'Billing', other: 'Other' };
 const clientLocked = (k, cl, c) => !c.isNew && !!cl[k];                 // identity values already on file are locked until the host unlocks them with a reason
 const cfIn = (cl, k, l, c, o) => { o = o || {}; const lk = o.ident && clientLocked(k, cl, c);
@@ -837,8 +862,8 @@ const CLIENT_BODY = {
       <span data-ctcs='${esc(JSON.stringify(cl.contacts || []))}' hidden></span></div>`,
   own: (cl, c) => {
     const owner = (c.people || []).find(u => u.ownerClients && u.ownerClients[cl.id] === true);
-    const pool = (c.people || []).filter(u => !u.host && !u.disabled);
-    const head = c.isNew ? '' : `<div class="pid">Client Account Owner: <b>${owner ? esc(ownLabel(owner)) : 'Not set'}</b></div><div class="hint">Sees this client page (setup information, billing and invoices) behind a password step-up. Often the same person who owns the pharmacy.</div>`;
+    const pool = (c.people || []).filter(u => !u.employeeOnly && !u.disabled);
+    const head = c.isNew ? '' : `<div class="pid">Client Account Owner: <b>${owner ? esc(ownLabel(owner)) : 'Not set'}</b></div><div class="hint">Sees this client page and each pharmacy’s billing (read only) behind a password step-up. Often the same person who owns the pharmacy.</div>`;
     if(!c.host || c.ro) return `<div class="pfields" style="display:block">${head}${c.host ? '' : '<div class="lockhint">Set by IronLedger.</div>'}</div>`;
     return `<div class="pfields" style="display:block">${head}<div class="ownbox">${c.isNew ? '<b class="clh">Account Owner (optional now; can be set later)</b>' : '<b class="clh">Change the client’s Account Owner</b>'}
       <label><span>Pick a login</span><select data-cownpick><option value="">—</option>${pool.map(u => `<option value="${esc(u.login)}">${esc(ownLabel(u))}</option>`).join('')}<option value="@new">New login…</option></select></label>
@@ -848,25 +873,12 @@ const CLIENT_BODY = {
       ${!c.isNew && owner ? '<label><span>Reason for the change (required)</span><input type="text" data-cownreason maxlength="300"></label>' : ''}
       ${c.isNew ? '' : `<button type="button" class="btn2 small" data-cownsave="${esc(cl.id)}">Save Account Owner</button>`}</div></div>`;
   },
-  pharm: (cl, c) => { if(c.isNew) return '<div class="pfields" style="display:block"><div class="hint">Create the client first, then add its pharmacies here.</div></div>';
-    const rows = (cl.pharmacies || []).map(id => (c.stores || []).find(x => x.id === id) || { id }).map(s => { const I = ownInfo(s, c.people);
-      return `<button type="button" class="clrow2" data-openpharm="${esc(s.id)}"><b>${esc(s.id)}</b><span>${esc(s.name || '')}</span><span class="hint">${esc([s.city, s.state].filter(Boolean).join(', '))}</span><span class="hint">${I.owner ? esc(I.owner.name || I.owner.login) : 'No owner yet'}</span></button>`; }).join('');
-    return `<div class="pfields" style="display:block">${c.host && !c.ro ? `<button type="button" class="btn small" data-addpharm="${esc(cl.id)}">Add pharmacy</button>` : ''}
-      <div class="plist">${rows || '<div class="hint" style="margin-top:8px">No pharmacies yet.</div>'}</div></div>`; },
-  bill: (cl, c) => { const B = c.billing; if(c.isNew) return '<div class="pfields" style="display:block"><div class="hint">Invoices appear here once the client exists.</div></div>';
-    if(!B) return '<div class="pfields" style="display:block"><div class="hint">Loading…</div></div>';
-    const S = B.summary, tile = (l, x, cls) => `<div class="bt ${cls || ''}"><span>${l}</span><b>${x.count}</b><em>${money(x.cents)}</em></div>`;
-    const st = i => i.status === 'paid' ? `<span class="ust ok">Paid${i.paidOn ? ' ' + esc(i.paidOn) : ''}</span>` : i.status === 'void' ? '<span class="ust off">Void</span>' : i.delinquent ? '<span class="ust bad">Delinquent</span>' : '<span class="ust wait">Unpaid</span>';
-    const rows = B.invoices.map(i => `<tr><td>${esc(i.number)}</td><td>${esc(i.issued)}</td><td>${esc(i.due)}</td><td class="num">${money(i.cents)}</td><td>${esc(i.description)}</td><td>${st(i)}</td>${c.host && !c.ro ? `<td class="acts">${i.status !== 'paid' && i.status !== 'void' ? `<button type="button" class="btn2 small" data-invpaid="${esc(i.id)}">Mark paid</button> <button type="button" class="btn2 small" data-invvoid="${esc(i.id)}">Void</button>` : i.status === 'paid' ? `<button type="button" class="btn2 small" data-invunpaid="${esc(i.id)}">Undo</button>` : ''}</td>` : ''}</tr>`).join('');
-    return `<div class="pfields" style="display:block"><div class="btiles">${tile('New this month', S.newThisMonth)}${tile('Paid this month', S.paidThisMonth, 'ok')}${tile('Unpaid', S.unpaid)}${tile('Delinquent', S.delinquent, S.delinquent.count ? 'bad' : '')}</div>
-      <div class="tscroll"><table class="invt"><thead><tr><th>Invoice</th><th>Issued</th><th>Due</th><th class="num">Amount</th><th>For</th><th>Status</th>${c.host && !c.ro ? '<th></th>' : ''}</tr></thead><tbody>${rows || `<tr><td colspan="7" class="hint">No invoices yet.</td></tr>`}</tbody></table></div>
-      ${c.host && !c.ro ? `<div class="invadd"><b class="clh">Add an invoice</b><div class="pfields"><label><span>Issued</span><input type="date" data-iv="issued"></label><label><span>Due</span><input type="date" data-iv="due"></label>
-        <label><span>Amount ($)</span><input type="text" inputmode="decimal" data-iv="amount" maxlength="12"></label><label><span>For</span><input type="text" data-iv="description" maxlength="200"></label></div>
-        <button type="button" class="btn2 small" data-invadd="${esc(cl.id)}">Add invoice</button></div>` : '<div class="hint">Read only. Questions about an invoice go to IronLedger.</div>'}</div>`; },
   act: (cl, c) => `<div class="pfields" style="display:block">
       <div style="margin-top:10px">${c.ro ? '' : c.isNew ? '<button type="button" class="btn small" data-createclient="1">Create client</button>' : `<button type="button" class="btn small" data-saveclient="${esc(cl.id)}">Save client</button>`}</div>
       ${c.isNew ? '' : `<div style="margin-top:8px"><button type="button" class="btn2 small" data-chist="${esc(cl.id)}">Change history</button><div data-histout></div></div>`}</div>`
 };
+// read-only view (the client's Account Owner): everything shown, nothing editable
+function clientFreeze(root){ root.querySelectorAll('input,select,textarea,button[data-ctdel]').forEach(e => { e.disabled = true; }); root.querySelectorAll('.ctadd,[data-ctdel],.identbar,[data-pnl=act]').forEach(e => { e.hidden = true; e.style.display = 'none'; }); }
 function clientCardHtml(cl, c, L){ return layoutGridHtml(CLIENT_PAGE, L, id => CLIENT_BODY[id](cl, c)); }
 
 // ---------------- behaviour for the host page ----------------
@@ -888,10 +900,7 @@ function clientCardEvents(root, o){
   const passHtml = (r, what) => `<b>${esc(r.owner.name || r.owner.login)} is the ${what}.</b> Give them:<br>Login ID: <b class="mono">${esc(r.owner.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b>`;
   root.addEventListener('click', async e => {
     const card = e.target.closest('.pcard'); if(!card) return;
-    const op = e.target.closest('[data-openpharm]'), ap = e.target.closest('[data-addpharm]'), cs = e.target.closest('[data-cownsave]');
-    const ia = e.target.closest('[data-invadd]'), ipd = e.target.closest('[data-invpaid]'), ivd = e.target.closest('[data-invvoid]'), iup = e.target.closest('[data-invunpaid]');
-    if(op){ if(o.openPharm) o.openPharm(op.dataset.openpharm); return; }
-    if(ap){ if(o.addPharm) o.addPharm(ap.dataset.addpharm); return; }
+    const cs = e.target.closest('[data-cownsave]');
     if(cs){
       let spec; try{ spec = ownerSpec(card); }catch(err){ alert(err.message); return; }
       if(!spec){ alert('Pick who will be the client’s Account Owner.'); return; }
@@ -899,16 +908,6 @@ function clientCardEvents(root, o){
       try{ const r = await api('POST', '/host/clients/' + encodeURIComponent(cs.dataset.cownsave) + '/owner', { owner: spec, reason: (card.querySelector('[data-cownreason]') || {}).value || '' });
         if(o.pass && r.tempPassword) o.pass(passHtml(r, 'client’s Account Owner')); o.say('Account Owner saved.'); await o.after(false); }
       catch(err){ if(!err.auth) alert(err.message); } finally{ busy(cs, false); }
-      return;
-    }
-    if(ia || ipd || ivd || iup){
-      try{
-        if(ia){ const g = k => card.querySelector(`[data-iv=${k}]`).value.trim(); await api('POST', '/host/clients/' + encodeURIComponent(ia.dataset.invadd) + '/invoices', { issued: g('issued') || undefined, due: g('due'), amount: g('amount'), description: g('description') }); }
-        else if(ipd){ await api('POST', '/host/clients/' + encodeURIComponent(card.dataset.client) + '/invoices/' + encodeURIComponent(ipd.dataset.invpaid), { status: 'paid' }); }
-        else if(iup){ await api('POST', '/host/clients/' + encodeURIComponent(card.dataset.client) + '/invoices/' + encodeURIComponent(iup.dataset.invunpaid), { status: 'unpaid' }); }
-        else { const why = prompt('Why is this invoice voided?'); if(!why) return; await api('POST', '/host/clients/' + encodeURIComponent(card.dataset.client) + '/invoices/' + encodeURIComponent(ivd.dataset.invvoid), { status: 'void', note: why }); }
-        o.say('Invoices updated.'); await o.after(false);
-      }catch(err){ if(!err.auth) alert(err.message); }
       return;
     }
     const add = e.target.closest('[data-ctadd]'), del = e.target.closest('[data-ctdel]'), ul = e.target.closest('[data-unlockclient]'), hs = e.target.closest('[data-chist]'), sv = e.target.closest('[data-saveclient],[data-createclient]');

@@ -34,14 +34,14 @@ aws cloudformation deploy --template-file .packaged.yaml --stack-name "$APP" --r
   --capabilities CAPABILITY_IAM --parameter-overrides AppName="$APP" ${TEXT_CODES:+TextCodes="$TEXT_CODES"} --no-fail-on-empty-changeset
 
 out(){ aws cloudformation describe-stacks --stack-name "$APP" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
-SITE="$(out SiteUrl)"; API="$(out ApiUrl)"; CLIENT="$(out ClientId)"; BUCKET="$(out SiteBucketName)"
+SITE="$(out SiteUrl)"; API="$(out ApiUrl)"; CLIENT="$(out ClientId)"; PORTAL="$(out PortalClientId)"; BUCKET="$(out SiteBucketName)"
 DIST="$(out DistributionId)"; FN="$(out FunctionName)"; MAIN="$(out MainTableName)"
 
 # 3) website files, with this deployment's settings
 say "Uploading the website"
 BUILD="$(mktemp -d)"; cp -r web/. "$BUILD/"
 cat > "$BUILD/config.js" <<EOF
-window.NORTEX_CONFIG = {"region":"${REGION}","clientId":"${CLIENT}","apiUrl":"${API}"};
+window.NORTEX_CONFIG = {"region":"${REGION}","clientId":"${CLIENT}","portalClientId":"${PORTAL}","apiUrl":"${API}"};
 EOF
 sed -i "s# http://localhost:8790##" "$BUILD/index.html" "$BUILD/host.html"      # the local test address isn't allowed in the live app
 aws s3 sync "$BUILD" "s3://${BUCKET}" --delete --exclude "*.png" --cache-control "no-cache" >/dev/null

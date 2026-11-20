@@ -200,6 +200,58 @@
 .lockhint.warn{color:#9c4221;font-weight:600;}
 .pfields>label,.pidbox,.pidbox>*{min-width:0;} .pfields select{text-overflow:ellipsis;}
 .hdrop{margin:8px 0;} .hdrop summary{cursor:pointer;font-size:13px;font-weight:600;padding:6px 9px;border:1px solid var(--line,#ccc);border-radius:6px;} .hdlist{padding:6px 4px;display:grid;gap:4px;}
+
+/* client page, contacts: the list and the add form take the full panel width (the fields above them sit two to a row, these must not) */
+.pfields .clh,.pfields>.hint,.pfields [data-ctlist],.pfields .ctadd{grid-column:1/-1;}
+[data-ctlist] .clrow{flex-wrap:wrap;align-items:flex-start;gap:0 10px;padding:6px 0;border-bottom:1px solid var(--line-soft,var(--line));}
+[data-ctlist] .clrow .cld{flex:0 0 100%;min-width:0;font-size:11px;text-transform:uppercase;letter-spacing:.04em;}
+[data-ctlist] .clrow .cln{flex:1;min-width:0;overflow-wrap:anywhere;}
+.ctadd{display:grid;grid-template-columns:1fr;gap:8px;}
+.ctadd select,.ctadd input{width:100%;min-width:0;}
+.ctadd button{justify-self:start;}
+
+/* holiday list: a floating popover, never pushes the page down */
+.hdrop{position:relative;} .hdrop[open] .hdlist{position:absolute;left:0;top:100%;z-index:40;min-width:270px;max-height:62vh;overflow:auto;margin-top:4px;padding:8px 12px;background:var(--panel,#fff);border:1px solid var(--line,#ccc);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.22);}
+/* NPI / DEA buttons sit next to their boxes; inline digit errors; state licenses; owner and PIC panel */
+.fbtn{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;} .fbtn>label{flex:1 1 160px;min-width:0;} .fbtn .btn2{white-space:nowrap;margin-bottom:1px;}
+.fe{grid-column:1/-1;margin:-4px 0 4px;font-size:12.5px;color:var(--bad,#a11);font-weight:600;} input.bad{border-color:var(--bad,#a11)!important;}
+.licbox{grid-column:1/-1;} .licbox .clh{display:block;margin-bottom:6px;}
+.licrow{display:grid;grid-template-columns:minmax(64px,.7fr) minmax(90px,1.2fr) minmax(120px,1.2fr) minmax(100px,1fr) auto;gap:6px 8px;align-items:end;margin-bottom:8px;} .licrow label{min-width:0;} .licrow .edit{margin-bottom:6px;}
+.licrow.ro{grid-template-columns:minmax(64px,.7fr) minmax(90px,1.2fr) minmax(120px,1.2fr) minmax(100px,1fr);}
+.ownbox{margin-top:12px;padding-top:10px;border-top:1px solid var(--line,#d9dee6);} .ownbox .clh{display:block;margin-bottom:6px;} .ownbox label{display:block;margin:6px 0;} .ownbox button{margin-top:6px;}
+.ownbox label.chk{display:flex;align-items:flex-start;gap:6px;}
+.pnl[data-pnl=id] .entity{flex:1 1 100%;}
+
+/* client page: pharmacies list and billing */
+.plist{margin-top:8px;display:grid;gap:4px;} .clrow2{display:grid;grid-template-columns:minmax(60px,auto) 1fr auto auto;gap:4px 12px;align-items:center;text-align:left;width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:7px;background:var(--panel,#fff);color:var(--ink,inherit);font:inherit;cursor:pointer;} .clrow2:hover{border-color:var(--accent);}
+.btiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:10px;} .bt{border:1px solid var(--line);border-radius:8px;padding:8px 10px;} .bt span{display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);} .bt b{font-size:20px;margin-right:8px;} .bt em{font-style:normal;color:var(--muted);font-size:13px;} .bt.bad{border-color:var(--bad,#a11);} .bt.bad b{color:var(--bad,#a11);} .bt.ok b{color:var(--ok,#1a7f37);}
+table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,table.invt td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line-soft,var(--line));white-space:nowrap;} table.invt .num{text-align:right;}
+.invadd{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);} .invadd button{margin-top:6px;}
+
+/* narrow panels (4 columns wide): nothing may push past the panel's edge */
+.pnl .pfields{grid-template-columns:repeat(auto-fill,minmax(min(210px,100%),1fr));min-width:0;} .pnl .entity{min-width:0;max-width:100%;}
+.licrow{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:flex-end;} .licrow label{flex:1 1 84px;min-width:0;} .licrow label:nth-child(3){flex-basis:128px;} .licrow label input,.licrow label select{width:100%;}
+.ownbox input[type=radio]{width:auto;flex:none;margin:3px 0 0;}
+
+/* ---- the drill-down (employee portal and Account tab): middle = what is open, right = the list one level down ---- */
+.crumb{font-size:14px;margin:0 0 10px;color:var(--muted);} .crumb button.lk{background:none;border:0;padding:0;min-height:0;color:var(--accent);cursor:pointer;font:inherit;text-decoration:underline;} .crumb b{color:var(--ink);}
+.cw{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start;}
+.cq{position:sticky;top:8px;max-height:calc(100vh - 24px);overflow:auto;} .cqh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;} .cqh h2{margin:0;}
+.cq .sub{font-size:12px;color:var(--muted);margin:10px 2px 4px;}
+.qrow{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink);padding:7px 10px;margin-bottom:6px;cursor:pointer;min-height:0;font:inherit;}
+.qrow b{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} .qrow span{font-size:12px;color:var(--muted);} .qrow.on{border-color:var(--accent);background:var(--accent-soft);} .qrow:hover{border-color:var(--accent);}
+.qrow.big{padding:11px 12px;} .qrow.big b{font-size:15px;}
+@media (max-width:1100px){.cw{grid-template-columns:1fr;} .cq{position:static;max-height:none;order:-1;}}
+.dsearch{width:100%;box-sizing:border-box;font:inherit;border:1px solid var(--line);border-radius:7px;padding:8px 12px;background:var(--bg);color:var(--ink);}
+.dfound{position:relative;} .dfound .hits{position:absolute;left:0;right:0;top:100%;z-index:50;background:var(--bg);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.25);max-height:60vh;overflow:auto;margin-top:2px;}
+.dfound .hit{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-soft,var(--line));padding:8px 12px;cursor:pointer;font:inherit;color:var(--ink);min-height:0;} .dfound .hit:hover{background:var(--accent-soft);}
+.dfound .hit span{display:block;font-size:12px;color:var(--muted);} .dfound .hits .hg{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:6px 12px 2px;}
+.ulist .ucols{grid-template-columns:minmax(170px,1.6fr) minmax(100px,1fr) minmax(150px,1fr) minmax(170px,1.3fr) 40px;}
+.urowhead{cursor:pointer;} .urowhead:hover{background:var(--accent-soft);} .urow.open{background:var(--panel);border-radius:6px;} .urowhead .chev{color:var(--muted);}
+.udetail{padding:2px 6px 10px 10px;border-left:3px solid var(--accent);margin:6px 0 4px 6px;}
+.urole{margin-left:8px;font-size:11.5px;font-weight:600;color:var(--muted);}
+.dtitle{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;} .dtitle h2{margin:0;font-size:18px;}
+.swrow{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-top:8px;}
 /* ---- Documents tab ---- */
 #panel-documents{position:relative;}
 #panel-documents .pgrid{margin-top:2px;}
@@ -531,7 +583,7 @@ const DOCS_BODY = {
       ${docsApprove(m) ? `<select data-dfr aria-label="Review status"><option value="">Review: Any</option>${['Overdue', 'Due Soon', 'Current', 'No Date'].map(v => `<option${v === m.freview ? ' selected' : ''}>${v}</option>`).join('')}</select>` : ''}
       ${docsManage(m) ? `<label class="chk"><input type="checkbox" data-dret${m.showRetired ? ' checked' : ''}> Show Retired</label>` : ''}
       <span class="dsp"></span>
-      ${docsApprove(m) ? '<button class="btn2 small" data-dact="mypin" title="Change your signing PIN">My PIN</button>' : ''}
+      ${docsApprove(m) && ME && ME.pinRequired ? '<button class="btn2 small" data-dact="mypin" title="Change your signing PIN">My PIN</button>' : ''}
       ${docsApprove(m) ? '<button class="btn2 small" data-dact="csv" title="Copies the register in the order of Document_Register.xlsx">Copy Register As CSV</button>' : ''}
       ${docsManage(m) ? '<button class="btn small" data-dact="add">Add Document</button>' : ''}</div>
     <div data-dz="chips">${docsChipsHtml(m)}</div><div data-dz="tbl">${docsTableHtml(m)}</div><div class="hint dcount" data-dz="count">${docsCount(m)}</div>`
@@ -595,7 +647,7 @@ function docsPaintTab(){                                         // called whene
   const tab = document.querySelector('#tabs [data-tab="documents"]'); if(!tab) return;
   const ok = docsOK(); tab.style.display = ok ? '' : 'none';
   if(!ok || (DOCS_STORE && STORE && DOCS_STORE !== STORE.id)){ DOCS = docsNewModel(); DOCS_STORE = ''; const r = $('docsRoot'); if(r) r.innerHTML = ''; docsCloseDrawer(); docsCloseModal();
-    if(!ok && tab.classList.contains('active')) document.querySelector('#tabs [data-tab="list"]').click(); }
+    if(!ok && tab.classList.contains('active')) homeTab(); }
 }
 const docsToast = t => { const e = $('docsToast'); e.textContent = t; e.style.display = ''; clearTimeout(docsToast.t); docsToast.t = setTimeout(() => e.style.display = 'none', 3200); };
 function docsModal(html, wide){ const o = $('docsOv'); o.innerHTML = `<div class="dov" data-dov><div class="dmodal${wide ? ' wide' : ''}" role="dialog" aria-modal="true">${html}</div></div>`; const f = o.querySelector('[autofocus],input:not([type=hidden]),select,textarea'); if(f) f.focus(); }
@@ -611,8 +663,8 @@ async function docsDo(path, body, done, redo){                   // one action o
 }
 /* ---- signing: approve, review, reject, retire and restore need the person's own 4-digit PIN. The server checks it, stamps the initials and
    employee ID, and locks the PIN after 5 wrong tries. ---- */
-const docsSignField = what => `<div class="dfld"><label for="sPin">Your PIN</label><input type="password" id="sPin" inputmode="numeric" autocomplete="off" maxlength="4" style="max-width:110px;letter-spacing:.3em;"><div class="hint">${ME && ME.initials ? `Signs this as ${esc(ME.initials)} (${esc(what)}).` : 'Your initials are not set yet. Ask the Account Owner.'}</div></div>`;
-const docsPinVal = () => { const v = ($('sPin') || {}).value || ''; if(!/^\d{4}$/.test(v)){ docsToast('Enter your 4-digit PIN.'); return null; } return v; };
+const docsSignField = what => !(ME && ME.pinRequired) ? `<div class="dfld"><div class="hint">${ME && ME.initials ? `Signs this as ${esc(ME.initials)} (${esc(what)}).` : 'Your initials are not set yet. Ask the Account Owner.'}</div></div>` : `<div class="dfld"><label for="sPin">Your PIN</label><input type="password" id="sPin" inputmode="numeric" autocomplete="off" maxlength="4" style="max-width:110px;letter-spacing:.3em;"><div class="hint">${ME && ME.initials ? `Signs this as ${esc(ME.initials)} (${esc(what)}).` : 'Your initials are not set yet. Ask the Account Owner.'}</div></div>`;
+const docsPinVal = () => { if(!(ME && ME.pinRequired)) return ''; const v = ($('sPin') || {}).value || ''; if(!/^\d{4}$/.test(v)){ docsToast('Enter your 4-digit PIN.'); return null; } return v; };
 function docsPinModal(mode, redo){                               // mode: set (first time), temp (replace the temporary one), change (know the current one)
   const cur = mode !== 'set';
   docsModal(`<h3>${mode === 'change' ? 'Change Your PIN' : 'Choose Your PIN'}</h3><div class="dmb">
@@ -762,7 +814,7 @@ function docsReviewModal(id){
    <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="rGo">Sign And Save Review</button></div>`);
   document.querySelectorAll('[name=out]').forEach(r => r.addEventListener('change', () => { $('rHint').textContent = document.querySelector('[name=out]:checked').value === 'chg' ? 'Required: say what needs to change.' : 'Optional.'; }));
   $('rGo').addEventListener('click', () => { const out = document.querySelector('[name=out]:checked').value, com = $('rCom').value.trim();
-    if(out === 'chg' && !com) return docsToast('Say what needs to change.'); const pin = docsPinVal(); if(!pin) return; busy($('rGo'), true);
+    if(out === 'chg' && !com) return docsToast('Say what needs to change.'); const pin = docsPinVal(); if(pin === null) return; busy($('rGo'), true);
     docsDo('/' + id + '/review', { outcome: out, date: $('rDate').value, comment: com, pin }, 'Review recorded for ' + id, () => docsReviewModal(id)).then(r => { if(!r) busy($('rGo'), false); }); });
 }
 function docsNewVerModal(id){
@@ -790,21 +842,21 @@ function docsApproveModal(id){
    <div class="dg2"><div class="dfld"><label for="pDate">Effective Date</label><input type="date" id="pDate" value="${DOCS.today}"></div><div class="dfld"><label>Approved By</label><div class="dro">${esc(ME.name || ME.login)}</div></div></div>
    <div class="hint">${i.cur ? `v${esc(i.cur.v)} becomes Superseded. Approval also counts as a review and resets the review clock.` : 'This makes the document Active and starts its review clock.'}</div>${docsSignField('Approved')}</div>
    <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="pGo">Approve And Publish</button></div>`);
-  $('pGo').addEventListener('click', () => { if(!$('pDate').value) return docsToast('Enter an effective date.'); const pin = docsPinVal(); if(!pin) return; busy($('pGo'), true); docsDo('/' + id + '/approve', { effective: $('pDate').value, pin }, 'v' + p.v + ' is now current.', () => docsApproveModal(id)).then(r => { if(!r) busy($('pGo'), false); }); });
+  $('pGo').addEventListener('click', () => { if(!$('pDate').value) return docsToast('Enter an effective date.'); const pin = docsPinVal(); if(pin === null) return; busy($('pGo'), true); docsDo('/' + id + '/approve', { effective: $('pDate').value, pin }, 'v' + p.v + ' is now current.', () => docsApproveModal(id)).then(r => { if(!r) busy($('pGo'), false); }); });
 }
 function docsReasonModal(id, kind){                              // reject, retire
   const d = docOf(id), p = docInfo(d, DOCS).pend, rej = kind === 'reject';
   docsModal(`<h3>${rej ? `Reject v${esc(p.v)}` : 'Retire'}: ${d.id}</h3><div class="dmb">${rej ? '' : `<div class="hint">${esc(d.title)} leaves the active library. Its files are kept and it can be restored.</div>`}
    <div class="dfld"><label for="tWhy">Reason</label><textarea id="tWhy" maxlength="500"></textarea><div class="hint">Required.${rej ? ' The submitter sees this in the activity log.' : ' Name the replacement document if there is one.'}</div></div>${docsSignField(rej ? 'Rejected' : 'Retired')}</div>
    <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn danger" id="tGo">${rej ? 'Reject Version' : 'Retire Document'}</button></div>`);
-  $('tGo').addEventListener('click', () => { const w = $('tWhy').value.trim(); if(!w) return docsToast('Enter a reason.'); const pin = docsPinVal(); if(!pin) return; busy($('tGo'), true);
+  $('tGo').addEventListener('click', () => { const w = $('tWhy').value.trim(); if(!w) return docsToast('Enter a reason.'); const pin = docsPinVal(); if(pin === null) return; busy($('tGo'), true);
     docsDo('/' + id + '/' + (rej ? 'reject' : 'retire'), { reason: w, pin }, rej ? 'Version rejected.' : id + ' retired.', () => docsReasonModal(id, kind)).then(r => { if(!r) busy($('tGo'), false); }); });
 }
 function docsRestoreModal(id){
   const d = docOf(id);
   docsModal(`<h3>Restore: ${d.id}</h3><div class="dmb"><div class="hint">${esc(d.title)} returns to the active library.</div>${docsSignField('Restored')}</div>
    <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="sGo">Sign And Restore</button></div>`);
-  $('sGo').addEventListener('click', () => { const pin = docsPinVal(); if(!pin) return; busy($('sGo'), true); docsDo('/' + id + '/restore', { pin }, id + ' restored.', () => docsRestoreModal(id)).then(r => { if(!r) busy($('sGo'), false); }); });
+  $('sGo').addEventListener('click', () => { const pin = docsPinVal(); if(pin === null) return; busy($('sGo'), true); docsDo('/' + id + '/restore', { pin }, id + ' restored.', () => docsRestoreModal(id)).then(r => { if(!r) busy($('sGo'), false); }); });
 }
 function docsEditModal(id){
   const d = docOf(id);

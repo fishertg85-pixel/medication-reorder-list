@@ -1,13 +1,14 @@
 /* ---------------- pharmacy setup page (host) and pharmacy account page (Account Owner): panels and their layout ----------------
    Built on the layout engine (layout_engine.js). PHARM_LAYOUT is set once by Neo with the layout editor and is the same for everyone. */
 const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
-const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['own', 'Account Owner And PIC'], ['act', 'Modules And Save']];
-const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,50],"contact":[5,1,4,36],"hrs":[9,1,4,50],"reg":[5,37,4,60],"own":[1,51,4,34],"act":[9,51,4,40],"svc":[1,98,12,19]}};
+const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['own', 'Account Owner And PIC'], ['mgr', 'Who Can Manage Users'], ['act', 'Modules And Save']];
+const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,50],"contact":[5,1,4,36],"hrs":[9,1,4,50],"reg":[5,37,4,60],"own":[1,51,4,34],"mgr":[1,85,4,16],"act":[9,51,4,40],"svc":[1,102,12,19]}};
 const PHARM_PAGE = { id: 'pharm', title: 'Host Pharmacy Setup Page', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
   render: (sample, panels) => pharmCardHtml(sample, { logo: '', holder: 'Pat Owner (owner)', host: true, clients: [{ id: 'IL-000001', legalName: 'NorTex Holdings LLC', entityType: 'llc', ein: '12-3456789' }] }, { panels }) };
 // The Account Owner's version of the same page has its own layout (Neo arranges it separately in the layout editor: page key pharm_owner).
 const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,44],"contact":[5,1,4,35],"hrs":[9,1,4,55],"reg":[5,36,4,50],"own":[1,45,4,26],"act":[9,56,4,25],"svc":[1,87,12,16]}};
-const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_PANELS, layout: PHARM_OWNER_LAYOUT,
+const PHARM_OWNER_PANELS = PHARM_PANELS.filter(p => p[0] !== 'mgr');      // the switches are IronLedger's alone
+const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_OWNER_PANELS, layout: PHARM_OWNER_LAYOUT,
   render: (sample, panels) => pharmCardHtml(Object.assign({}, sample, { ein: '', einMasked: '••-•••4321' }), { logo: '', holder: 'Pat Owner (owner)' }, { panels }) };
 const pharmLayoutOk = L => layoutOk(PHARM_PAGE, L);
 const pharmLayout = () => pharmLayoutOk(PHARM_LAYOUT) ? PHARM_LAYOUT : null;
@@ -137,11 +138,11 @@ const PHARM_BODY = {
       <div class="pid">Pharmacist in charge: <b>${esc(picTxt)}</b></div>
       ${I.admins.length ? `<div class="pid">Super user: <b>${esc(I.admins.map(ownLabel).join(', '))}</b></div>` : ''}`;
     if(!c.host || c.rep) return `<div class="pfields" style="display:block">${head}<div class="lockhint">${LOCKED}</div></div>`;
-    const pool = (c.people || []).filter(u => !u.host && !u.disabled), clientOwner = (c.people || []).find(u => u.ownerClients && u.ownerClients[s.clientId] === true);
-    const pharmacists = (c.people || []).filter(u => !u.host && (u.acctType === 'pharmacist' || u.acctType === 'pic') && u.stores && u.stores[s.id] === true);
+    const pool = (c.people || []).filter(u => !u.employeeOnly && !u.disabled), clientOwner = (c.people || []).find(u => u.ownerClients && u.ownerClients[s.clientId] === true);
+    const pharmacists = (c.people || []).filter(u => !u.employeeOnly && (u.acctType === 'pharmacist' || u.acctType === 'pic') && u.stores && u.stores[s.id] === true);
     return `<div class="pfields" style="display:block">${head}
       <div class="ownbox"><b class="clh">Change the Account Owner</b>
-        <label><span>Pick a login</span><select data-ownpick><option value="">—</option>${clientOwner ? `<option value="@client">Same as the client’s Account Owner: ${esc(ownLabel(clientOwner))}</option>` : ''}${pool.map(u => `<option value="${esc(u.login)}">${esc(ownLabel(u))}</option>`).join('')}<option value="@new">New login…</option></select></label>
+        <label><span>Pick a login</span><select data-ownpick><option value="">—</option>${I.owner ? '<option value="@none">No Account Owner (remove)</option>' : ''}${clientOwner ? `<option value="@client">Same as the client’s Account Owner: ${esc(ownLabel(clientOwner))}</option>` : ''}${pool.map(u => `<option value="${esc(u.login)}">${esc(ownLabel(u))}</option>`).join('')}<option value="@new">New login…</option></select></label>
         <div data-ownnew hidden class="pfields"><label><span>Full name</span><input type="text" data-on="name" maxlength="120"></label><label><span>Login ID</span><input type="text" data-on="login" maxlength="32" autocapitalize="none" spellcheck="false"></label>
           <label><span>Mobile number</span><input type="tel" data-on="phone" maxlength="20"></label><label><span>RPh license # (if a pharmacist)</span><input type="text" data-on="license" maxlength="20"></label>
           <label class="chk" style="grid-column:1/-1"><input type="checkbox" data-on="consent"> They signed the SMS consent form for this mobile number.</label></div>
@@ -155,6 +156,11 @@ const PHARM_BODY = {
         <div class="hint">The PIC must be a licensed pharmacist with an RPh license number on their login. Only IronLedger records or changes this; each change is kept in the history.</div>
         <button type="button" class="btn2 small" data-picsave="${esc(s.id)}">Save</button></div></div>`;
   },
+  mgr: (s, c) => c.isNew ? '<div class="pfields" style="display:block"><div class="hint">Set after the pharmacy is created.</div></div>'
+    : `<div class="pfields" style="display:block"><div class="hint" style="margin-bottom:6px">May add, change and remove people at this pharmacy. Never billing, the client page or ownership.</div>
+      <label class="chk">${sw('data-mgr="mgrOwner"', s.mgrOwner !== false)} Account Owner</label>
+      <label class="chk">${sw('data-mgr="mgrPic"', s.mgrPic !== false)} Pharmacist-in-Charge super user</label>
+      <label class="chk">${sw('data-mgr="mgrClient"', s.mgrClient === true)} Client Account Owner</label></div>`,
   act: (s, c) => `<div class="pfields"><div class="calsw">${c.host && !c.rep
         ? `<label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar</label> <span class="hint">(people also need the Calendar privilege)</span>`
         : `Calendar: <b>${s.calendar ? 'On' : 'Off'}</b>`}</div>
@@ -216,7 +222,8 @@ function pharmCardEvents(root, o){
       const card = osv.closest('.pcard'), pick = card.querySelector('[data-ownpick]').value, g = k => ((card.querySelector(`[data-on=${k}]`) || {}).value || '').trim();
       if(!pick){ alert('Pick who will be the Account Owner.'); return; }
       const body = { reason: (card.querySelector('[data-ownreason]') || {}).value || '' };
-      if(pick === '@client') body.sameAsClient = true;
+      if(pick === '@none') body.remove = true;
+      else if(pick === '@client') body.sameAsClient = true;
       else if(pick === '@new'){
         if(!g('name') || !g('login') || !g('phone')){ alert('Name, Login ID and mobile number are all needed.'); return; }
         if(!card.querySelector('[data-on=consent]').checked){ alert('Have them sign the SMS consent form first, then tick the box.'); return; }

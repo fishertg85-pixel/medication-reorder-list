@@ -8,7 +8,7 @@
 #   bash host.sh add-pharmacy ID "NAME" [eastern|central|mountain|arizona|pacific]
 #   bash host.sh assign LOGIN PHARMACY_ID     give a person access to a pharmacy
 #   bash host.sh unassign LOGIN PHARMACY_ID   take that access away
-#   bash host.sh make-host LOGIN "NAME" NUMBER  create your own host login for the host page (web address/host.html)
+#   bash host.sh make-host LOGIN ["NAME" NUMBER]  IronLedger employee portal (web address/host.html). An existing pharmacy login (e.g. your own) needs only LOGIN: it keeps its ID and password.
 #   bash host.sh remove-host LOGIN           remove an extra host login (never the last one)
 # Optional: APP=other-name bash host.sh ...   for a separate copy
 set -euo pipefail
@@ -77,14 +77,18 @@ case "$cmd" in
     echo "${login}: access to ${pid} switched $([ "$cmd" = assign ] && echo on || echo off)." ;;
   make-host)
     need_login; hname="${3:-}"; num="$(echo "${4:-}" | tr -dc '0-9')"
-    [ -n "$hname" ] || { echo "Give your name in quotes, then your 10-digit mobile number."; exit 1; }
-    [ ${#num} -eq 10 ] || [ ${#num} -eq 11 ] || { echo "Give a 10-digit US mobile number."; exit 1; }
+    if [ -z "$hname" ]; then   # no name and number: only valid for a login that already exists (it keeps its ID, password and phone)
+      aws cognito-idp admin-get-user --user-pool-id "$POOL" --username "$login" --region "$REGION" >/dev/null 2>&1 || { echo "No login \"$login\" yet. Give your name in quotes, then your 10-digit mobile number."; exit 1; }
+      hname="existing"; num="0000000000"
+    else
+      [ ${#num} -eq 10 ] || [ ${#num} -eq 11 ] || { echo "Give a 10-digit US mobile number."; exit 1; }
+    fi
     payload="$(jq -cn --arg l "$login" --arg n "$hname" --arg p "$num" --arg t "$(temp_pw)" '{makeHost:{login:$l, name:$n, phone:$p, tempPassword:$t}}')"
     aws lambda invoke --function-name "$(out FunctionName)" --region "$REGION" --cli-binary-format raw-in-base64-out --payload "$payload" .host.json >/dev/null
     jq -r '.message // .errorMessage // .' .host.json; rm -f .host.json
     site="$(out SiteUrl 2>/dev/null || true)"
     [ -n "$site" ] && [ "$site" != "None" ] && echo "Host page: ${site%/}/host.html"
-    echo "Sign in there with that Login ID and temporary password (no Pharmacy ID). A code is texted to your phone." ;;
+    echo "Sign in there with that Login ID and password (no Pharmacy ID). A code is texted to your phone." ;;
   remove-host)
     need_login
     p="$(aws dynamodb query --table-name "$MAIN" --region "$REGION" --key-condition-expression "pk = :p" --expression-attribute-values '{":p":{"S":"USERS"}}' --output json | jq -c --arg l "$login" '[.Items[] | select(.login.S == $l and (.deleted.BOOL // false | not))][0]')"

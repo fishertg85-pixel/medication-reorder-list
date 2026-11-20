@@ -132,7 +132,7 @@ async function signOut(quiet){
   if(SESSION && SESSION.refresh) cog('RevokeToken', {ClientId:CFG.clientId, Token:SESSION.refresh}).catch(() => {});
   SESSION = null; saveSession();
   if(typeof TEMPS !== 'undefined') for(const k in TEMPS) delete TEMPS[k];
-  if(typeof STAGED !== 'undefined') for(const k in STAGED) delete STAGED[k];       // copied temporary passwords go with the session
+  if(typeof AC_ST !== 'undefined'){ AC_ST.open = null; for(const k in AC_ST.staged) delete AC_ST.staged[k]; }       // copied temporary passwords go with the session
   if(!quiet){ $('liUser').value = ''; showLogin('Signed out. The next person can sign in.'); }   // shared computers: leave nobody's Login ID behind
 }
 $('signOutBtn').onclick = () => { if(confirm('Sign out of the Reorder List on this device?')) signOut(); };

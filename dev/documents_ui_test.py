@@ -150,17 +150,29 @@ with sync_playwright() as pw:
     # ---- Account Owner: people list
     p = newpage(); signin(p, "NTX1", "owner", "ownerpass99"); opendocs(p); check("Account Owner sees the Documents tab and tiles", (tabvis(p), p.locator('.dtile').count()), (True, 5))
     p.click('#acctBtn'); p.wait_for_timeout(500)
-    p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_selector('#ownBody:visible'); p.wait_for_selector('#ownPeople [data-sub]', timeout=8000)
-    check("initials field on each person; duplicate initials refused", (p.locator('#ownPeople [data-uini]').count() >= 4, api(O, "POST", "/owner/users/" + [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "ctk"][0]["sub"], {"initials": "sf"})[0], api(O, "POST", "/owner/users/" + [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "ctk"][0]["sub"], {"initials": "CT"})[0], api(O, "POST", "/owner/users/" + [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "ctk"][0]["sub"], {"initials": "C1"})[0]), (True, 400, 200, 400))
-    row = p.locator('#ownPeople [data-sub]:has-text("MAMARE"), #ownPeople [data-sub]:has-text("NOP")').first
-    row.locator('[data-uini]').fill('np'); p.keyboard.press('Tab'); p.wait_for_timeout(400); p.locator('#ownPeople [data-upd]').first.click(); p.wait_for_timeout(1500)
+    p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_selector('#ownBody:visible'); p.wait_for_timeout(1200); (p.click('#acSide [data-qs=NTX1]') if p.locator('#acSide [data-qs=NTX1]').count() else None); p.wait_for_selector('#acSide [data-view=users]', timeout=8000); p.click('#acSide [data-view=users]'); p.wait_for_timeout(900); p.wait_for_selector('#acUsers .urow', timeout=8000)
+    def open_sub(sub):
+        r = p.locator('#acUsers .urow[data-sub="%s"]' % sub)
+        if r.locator('.udetail').count() == 0: r.locator('.urowhead').click(); p.wait_for_selector('#acUsers .urow[data-sub="%s"] .udetail' % sub)
+        return p.locator('#acUsers .urow[data-sub="%s"]' % sub)
+    check("initials field on each person; duplicate initials refused", (p.locator('#acUsers .urow').count() >= 4, api(O, "POST", "/owner/users/" + [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "ctk"][0]["sub"], {"initials": "sf"})[0], api(O, "POST", "/owner/users/" + [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "ctk"][0]["sub"], {"initials": "CT"})[0], api(O, "POST", "/owner/users/" + [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "ctk"][0]["sub"], {"initials": "C1"})[0]), (True, 400, 200, 400))
+    nopsub = [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "nop"][0]["sub"]
+    row = open_sub(nopsub)
+    row.locator('[data-uini]').fill('np'); p.keyboard.press('Tab'); p.wait_for_timeout(400); p.locator('#acUsers [data-upd]').first.click(); p.wait_for_timeout(1500)
     check("initials saved from the people list (stored in capitals)", [u["initials"] for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "nop"], ["NP"])
-    check("Documents is one of the privileges", p.locator('#ownPeople [data-uperm=documents]').count() > 0, True)
-    check("document duty select shows only for people with the privilege", (p.locator('#ownPeople [data-sub]:has([data-uperm=documents]:checked) [data-udoc]').count(), p.locator('#ownPeople [data-sub]:not(:has([data-uperm=documents]:checked)) [data-udoc]').count()), (3, 0))
+    check("Documents is one of the privileges", open_sub(nopsub).locator('[data-uperm=documents]').count() > 0, True)
+    with_sel = without_sel = 0
+    for sub in [x["sub"] for x in api(O, "GET", "/owner/users")[1]["users"] if not x.get("owner")]:
+        rr = open_sub(sub)
+        if rr.locator('[data-uperm=documents]').count() == 0: continue
+        if rr.locator('[data-uperm=documents]:checked').count(): with_sel += rr.locator('[data-udoc]').count()
+        else: without_sel += rr.locator('[data-udoc]').count()
+    check("document duty select shows only for people with the privilege", (with_sel, without_sel), (3, 0))
     dpsub = [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "dpe"][0]["sub"]
-    check("people list shows Employee ID and PIN state, never the PIN", ('Employee ID' in p.inner_text('#ownPeople'), 'Set' in p.locator(f'#ownPeople [data-sub="{dpsub}"] .upriv:has-text("Signing")').inner_text()), (True, True))
-    check("Issue Temporary PIN button on others, not on own row", (p.locator('#ownPeople [data-pinreset]').count() >= 4, p.locator(f'#ownPeople [data-sub="{OSUB}"] [data-pinreset]').count()), (True, 0))
-    p.locator(f'#ownPeople [data-sub="{dpsub}"] [data-pinreset]').click(); p.wait_for_timeout(1500)
+    drow = open_sub(dpsub)
+    check("people list shows Employee ID and PIN state, never the PIN", ('Employee ID' in drow.inner_text(), 'Set' in drow.locator('.upriv:has-text("Signing")').inner_text()), (True, True))
+    check("Issue Temporary PIN button on others, not on own row", (drow.locator('[data-pinreset]').count(), open_sub(OSUB).locator('[data-pinreset]').count()), (1, 0))
+    open_sub(dpsub).locator('[data-pinreset]').click(); p.wait_for_timeout(1500)
     check("temporary PIN shown once to hand over", p.locator('#passBox, .passbox, [data-passbox]').count() >= 0 and bool(__import__('re').search(r'\b\d{4}\b', p.inner_text('body'))), True)
     p.screenshot(path='screenshots/docs_owner_pin.png')
     check("PIN state now temporary, and the old PIN no longer signs", (api(O, "GET", "/owner/users")[1]["users"][[u["login"] for u in api(O, "GET", "/owner/users")[1]["users"]].index("dpe")]["pin"], api(tok2("dpe", "dpepass12345"), "POST", D + "/" + d1 + "/review", {"outcome": "ok", "date": "2026-11-17", "comment": "", "pin": "5918"})[0]), ("temp", 409))

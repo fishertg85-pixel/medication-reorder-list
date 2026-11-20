@@ -57,7 +57,7 @@ check("owner can edit own pharmacy phone", api(LO, "POST", "/owner/stores/LAG1",
 check("owner can't import into another pharmacy", api(LO, "POST", "/owner/import/NTX1", {})[0], 403)
 check("owner can't open another pharmacy's lines", api(LO, "GET", "/stores/NTX1/lines")[0], 403)
 users = api(LO, "GET", "/owner/users")[1]["users"]
-check("owner's people list excludes the other pharmacy's owner", sorted(u["login"] for u in users), ["lagown", "neo"])
+check("owner's people list excludes the other pharmacy's owner", sorted(u["login"] for u in users), ["lagown"])
 
 # ---- PIC: yes/no, host only, licensed pharmacist
 r = api(H, "POST", "/host/users", {"login": "rph1", "name": "Rae Pharmacist", "phone": "(817) 555-0122", "smsConsent": True, "stores": {"LAG1": True}, "perms": {"calendar": True}, "acctType": "pharmacist", "initials": "RP", "license": "RPH-1"})
@@ -124,19 +124,19 @@ LO2, LOA2 = login("lagown", "lagpass12345", "lagpass12345")
 check("unlock with the password", api(LO2, "POST", "/owner-unlock", {"password": "lagpass12345", "accessToken": LOA2})[0], 200)
 check("wrong password does not unlock", api(LO2, "POST", "/owner-unlock", {"password": "nope-nope-1", "accessToken": LOA2})[0], 400)
 pg = api(LO2, "GET", f"/client/{C1}")[1]
-check("client page: setup info + pharmacies + billing", (pg["client"]["legalName"], [p["id"] for p in pg["pharmacies"]], sorted(pg["billing"]["summary"])), ("IronLedger Compliance LLC", ["LAG1"], ["delinquent", "newThisMonth", "paidThisMonth", "unpaid"]))
+check("client page: setup info + pharmacies (billing and people open per pharmacy)", (pg["client"]["legalName"], [p["id"] for p in pg["pharmacies"]], "billing" in pg), ("IronLedger Compliance LLC", ["LAG1"], False))
 check("other logins can't open a client page", [api(t, "GET", f"/client/{C1}")[0] for t in (RP, TT, AS)], [403] * 3)
-today = api(H, "GET", f"/host/clients/{C1}/billing")[1]["today"]
-check("host adds an invoice (current)", api(H, "POST", f"/host/clients/{C1}/invoices", {"issued": today, "due": "2099-01-01", "amount": "149.00", "description": "Compliance Calendar"})[0], 200)
-check("host adds an overdue invoice", api(H, "POST", f"/host/clients/{C1}/invoices", {"issued": "2026-01-05", "due": "2026-01-20", "amount": "$99.50", "description": "Old"})[0], 200)
-check("bad amount refused", api(H, "POST", f"/host/clients/{C1}/invoices", {"issued": today, "due": today, "amount": "abc"})[0], 400)
-b = api(LO2, "GET", f"/client/{C1}/billing")[1]
+today = api(H, "GET", "/host/stores/LAG1/billing")[1]["today"]
+check("host adds an invoice (current)", api(H, "POST", f"/host/stores/LAG1/invoices", {"issued": today, "due": "2099-01-01", "amount": "149.00", "description": "Compliance Calendar"})[0], 200)
+check("host adds an overdue invoice", api(H, "POST", f"/host/stores/LAG1/invoices", {"issued": "2026-01-05", "due": "2026-01-20", "amount": "$99.50", "description": "Old"})[0], 200)
+check("bad amount refused", api(H, "POST", f"/host/stores/LAG1/invoices", {"issued": today, "due": today, "amount": "abc"})[0], 400)
+b = api(LO2, "GET", "/billing/LAG1")[1]
 check("summary: new this month, unpaid, delinquent", (b["summary"]["newThisMonth"], b["summary"]["unpaid"], b["summary"]["delinquent"]), ({"count": 1, "cents": 14900}, {"count": 1, "cents": 14900}, {"count": 1, "cents": 9950}))
 inv = [i for i in b["invoices"] if i["delinquent"]][0]["id"]
-check("host marks it paid", api(H, "POST", f"/host/clients/{C1}/invoices/{inv}", {"status": "paid", "paidOn": today})[0], 200)
-b = api(LO2, "GET", f"/client/{C1}/billing")[1]
+check("host marks it paid", api(H, "POST", f"/host/stores/LAG1/invoices/{inv}", {"status": "paid", "paidOn": today})[0], 200)
+b = api(LO2, "GET", "/billing/LAG1")[1]
 check("summary after payment", (b["summary"]["paidThisMonth"], b["summary"]["delinquent"]), ({"count": 1, "cents": 9950}, {"count": 0, "cents": 0}))
-check("client owner cannot change invoices", (api(LO2, "POST", f"/client/{C1}/invoices", {"issued": today, "due": today, "amount": "1"})[0], api(LO2, "POST", f"/host/clients/{C1}/invoices", {"issued": today, "due": today, "amount": "1"})[0]), (404, 404))
+check("client owner cannot change invoices", (api(LO2, "POST", "/host/stores/LAG1/invoices", {"issued": today, "due": today, "amount": "1"})[0], api(LO2, "POST", "/owner/stores/LAG1/invoices", {"issued": today, "due": today, "amount": "1"})[0]), (404, 403))
 check("owner step-up relocks via owner-lock", (api(LO2, "POST", "/owner-lock", {})[0], api(LO2, "GET", f"/client/{C1}")[0]), (200, 423))
 check("new client with a new owner login in one go", (lambda r: (r[0], bool(r[1].get("tempPassword"))))(api(H, "POST", "/host/clients", dict(CL, legalName="Second LLC", owner={"create": {"login": "own2", "name": "Two Owner", "phone": "(817) 555-0155", "smsConsent": True}}))), (200, True))
 check("the first owner isn't a client owner for the second client", len(api(LO, "GET", "/me")[1]["clients"]), 1)

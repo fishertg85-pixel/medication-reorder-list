@@ -1,8 +1,9 @@
-/* IronLedger host page: a separate gate for the host login only.
-   Talks only to /host/* on the server, which answers nobody but a host login (everyone else gets "not found").
+/* IronLedger employee portal: a separate sign-in for IronLedger employees only (its own app client; a pharmacy login is refused like a wrong password).
+   Clients → pharmacies → one pharmacy's account, users and billing. Talks to /host/* and to the one-pharmacy views; the server decides what each login may see.
    The sign-in is kept for this browser tab only, and the page locks after 5 minutes without activity. */
 'use strict';
 const CFG = window.NORTEX_CONFIG || {};
+const CID = CFG.portalClientId || CFG.clientId;       // the portal's own sign-in client (falls back to the app's in dev)
 const COG = CFG.cognitoEndpoint || `https://cognito-idp.${CFG.region}.amazonaws.com/`;
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -13,7 +14,7 @@ const PERMS = {submit:'Submit orders', archive:'View archive', remove:'Remove li
 
 /* ---- Cognito, called directly ---- */
 const COG_ERR = {
-  NotAuthorizedException: 'Login ID or password is wrong.', UserNotFoundException: 'Login ID or password is wrong.',
+  NotAuthorizedException: 'Incorrect ID or password.', UserNotFoundException: 'Incorrect ID or password.', UserLambdaValidationException: 'Incorrect ID or password.',
   CodeMismatchException: 'That code isn’t right. Check the text message and try again.', ExpiredCodeException: 'That code has expired. Start again.',
   LimitExceededException: 'Too many tries. Wait a few minutes.', TooManyRequestsException: 'Too many tries. Wait a few minutes.'
 };
@@ -24,7 +25,7 @@ async function cog(target, body){
   const j = await r.json().catch(() => ({}));
   if(!r.ok){
     const code = String(j.__type || '').split('#').pop();
-    let msg = COG_ERR[code] || j.message || 'Sign-in failed.';
+    let msg = COG_ERR[code] || (code === 'UserLambdaValidationException' ? 'Incorrect ID or password.' : j.message) || 'Sign-in failed.';
     if(code === 'NotAuthorizedException' && /disabled/i.test(j.message || '')) msg = 'This login is switched off.';
     if(code === 'NotAuthorizedException' && /expired/i.test(j.message || '')) msg = 'The temporary password has expired. Run host.sh make-host again for a new one.';
     if(code === 'NotAuthorizedException' && /attempts exceeded/i.test(j.message || '')) msg = 'Too many wrong tries. Wait 15 minutes, then try once more.';
@@ -41,7 +42,7 @@ function setTokens(a){ SES = {id:a.IdToken, access:a.AccessToken || (SES && SES.
 async function idToken(force){
   if(!SES) throw authErr();
   if(!force && SES.exp - 120000 > Date.now()) return SES.id;
-  try{ const j = await cog('InitiateAuth', {ClientId:CFG.clientId, AuthFlow:'REFRESH_TOKEN_AUTH', AuthParameters:{REFRESH_TOKEN:SES.refresh}}); setTokens(j.AuthenticationResult); return SES.id; }
+  try{ const j = await cog('InitiateAuth', {ClientId:CID, AuthFlow:'REFRESH_TOKEN_AUTH', AuthParameters:{REFRESH_TOKEN:SES.refresh}}); setTokens(j.AuthenticationResult); return SES.id; }
   catch(e){ if(e.code){ SES = null; store(); throw authErr(); } throw e; }
 }
 function authErr(){ const e = new Error('Please sign in again.'); e.auth = true; return e; }
@@ -55,20 +56,22 @@ async function api(method, path, body, retried){
   if(r.status === 401 && !retried){ try{ await idToken(true); }catch(e){ showSign('Please sign in again.'); throw e; } return api(method, path, body, true); }
   const j = await r.json().catch(() => ({}));
   if(r.status === 423){ lockNow('Locked after 5 minutes without activity.', true); const e = new Error(j.error); e.auth = true; throw e; }
-  if(r.status === 404 && path.startsWith('/host')){ await signOut('This page is only for the IronLedger host login.'); const e = new Error('Not the host'); e.auth = true; throw e; }
+  if(r.status === 404 && path.startsWith('/host')){ await signOut('Incorrect ID or password.'); const e = new Error('Not an employee'); e.auth = true; throw e; }
   if(r.status === 403 && path === '/me'){ await signOut('This login is switched off.'); const e = new Error('off'); e.auth = true; throw e; }
   if(!r.ok){ const e = new Error(j.error || j.message || ('Server answered ' + r.status)); e.status = r.status; throw e; }
-  if(path.startsWith('/host/')) UNTIL = Date.now() + LOCK_MS;
+  UNTIL = Date.now() + LOCK_MS;
   return j;
 }
 
 /* ---- screens ---- */
-let ME = null, UNTIL = 0, lastAct = 0, pingAt = 0, DATA = {stores:[], users:[]}, LOGOS = {};
-const NAV = {client:null, pharm:null, find:''};          // client: null | 'new' | IL-id; pharm: a pharmacy ID inside that client
-let BILL = null;                                          // the open client's invoices
+let ME = null, UNTIL = 0, lastAct = 0, pingAt = 0, DATA = {stores:[], users:[], clients:[]}, LOGOS = {};
+const NAV = {client:null, pharm:null, view:'acct'};       // client: null (the start page) | IL-id; pharm: a pharmacy ID; view: acct | users | billing (one pharmacy at a time)
+const TEMPS = {};                                         // temporary passwords made in this tab, so they can be copied again while the person is pending
+const PS = {U:null, B:null, st:drState(TEMPS), bo:{edit:true, filter:'all'}};      // the open pharmacy's people and billing
 const SIGN = {step:'start', session:null, user:'', pw:''};
 function only(id){ ['gSign', 'gLock', 'gBody'].forEach(k => $(k).style.display = k === id ? '' : 'none'); }
-function clearData(){ for(const k in STAGED) delete STAGED[k]; if($('peopleMsg')) $('peopleMsg').textContent = ''; DATA = {stores:[], users:[]}; LOGOS = {}; BILL = null; NAV.client = NAV.pharm = null; NAV.find = ''; $('people').innerHTML = ''; $('cview').innerHTML = ''; $('pview').innerHTML = ''; $('cqueue').innerHTML = ''; $('pmodal').hidden = true; $('newStore').innerHTML = ''; $('passBox').style.display = 'none'; $('passBox').innerHTML = ''; }
+function clearData(){ DATA = {stores:[], users:[], clients:[]}; LOGOS = {}; NAV.client = NAV.pharm = null; NAV.view = 'acct'; PS.U = PS.B = null; PS.st.open = null; for(const k in PS.st.staged) delete PS.st.staged[k]; PS.bo.filter = 'all';
+  ['vNew', 'vClient', 'vPharm', 'vUsers', 'vBill', 'side', 'gHits'].forEach(k => $(k).innerHTML = ''); $('gFind').value = ''; $('gHits').hidden = true; $('clientMsg').textContent = ''; $('pmodal').hidden = true; $('newStore').innerHTML = ''; $('passBox').style.display = 'none'; $('passBox').innerHTML = ''; }
 function showSign(msg, ok){
   ME = null; UNTIL = 0; clearData(); only('gSign');
   SIGN.step = 'start'; SIGN.pw = ''; $('sPass').value = '';
@@ -95,7 +98,7 @@ $('sGo').onclick = async () => {
   const user = $('sUser').value.trim().toLowerCase(), pw = $('sPass').value.trim();
   if(!user || !pw) return paintSign('Enter your Login ID and password.');
   SIGN.user = user; SIGN.pw = pw; busy($('sGo'), true);
-  try{ await afterAuth(await cog('InitiateAuth', {ClientId:CFG.clientId, AuthFlow:'USER_PASSWORD_AUTH', AuthParameters:{USERNAME:user, PASSWORD:pw}})); }
+  try{ await afterAuth(await cog('InitiateAuth', {ClientId:CID, AuthFlow:'USER_PASSWORD_AUTH', AuthParameters:{USERNAME:user, PASSWORD:pw}})); }
   catch(e){ SIGN.pw = ''; paintSign(e.message); } finally{ busy($('sGo'), false); }
 };
 $('sPass').addEventListener('keydown', e => { if(e.key === 'Enter') $('sGo').click(); });
@@ -104,14 +107,14 @@ $('sNewGo').onclick = async () => {
   if(a.length < 10 || !/[a-z]/.test(a) || !/\d/.test(a)) return paintSign('At least 10 characters, with a lowercase letter and a number.');
   if(a !== b) return paintSign('The two passwords don’t match.');
   busy($('sNewGo'), true);
-  try{ SIGN.pw = a; await afterAuth(await cog('RespondToAuthChallenge', {ClientId:CFG.clientId, ChallengeName:'NEW_PASSWORD_REQUIRED', Session:SIGN.session, ChallengeResponses:{USERNAME:SIGN.user, NEW_PASSWORD:a}})); $('sNew1').value = $('sNew2').value = ''; }
+  try{ SIGN.pw = a; await afterAuth(await cog('RespondToAuthChallenge', {ClientId:CID, ChallengeName:'NEW_PASSWORD_REQUIRED', Session:SIGN.session, ChallengeResponses:{USERNAME:SIGN.user, NEW_PASSWORD:a}})); $('sNew1').value = $('sNew2').value = ''; }
   catch(e){ paintSign(e.message); } finally{ busy($('sNewGo'), false); }
 };
 $('sCodeGo').onclick = async () => {
   const code = $('sCodeIn').value.replace(/\D/g, '');
   if(code.length < 6) return paintSign('Enter the 6-digit code from the text message.');
   busy($('sCodeGo'), true);
-  try{ await afterAuth(await cog('RespondToAuthChallenge', {ClientId:CFG.clientId, ChallengeName:'SMS_MFA', Session:SIGN.session, ChallengeResponses:{USERNAME:SIGN.user, SMS_MFA_CODE:code}})); }
+  try{ await afterAuth(await cog('RespondToAuthChallenge', {ClientId:CID, ChallengeName:'SMS_MFA', Session:SIGN.session, ChallengeResponses:{USERNAME:SIGN.user, SMS_MFA_CODE:code}})); }
   catch(e){ if(e.code === 'NotAuthorizedException'){ SIGN.step = 'start'; SIGN.pw = ''; paintSign('That took too long. Sign in again.'); } else paintSign(e.message); }
   finally{ busy($('sCodeGo'), false); }
 };
@@ -121,8 +124,8 @@ $('sBack').onclick = () => showSign('');
 // signed in: make sure this is the host login, then open (the password just typed opens the page; it isn't kept)
 async function enter(pw){
   try{ ME = await api('GET', '/me'); }catch(e){ return; }
-  if(!ME.host){ return signOut('This page is only for the IronLedger host login.'); }
-  $('bWho').textContent = (ME.name || ME.login) + ' · host';
+  if(!ME.host){ return signOut('Incorrect ID or password.'); }
+  $('bWho').textContent = ME.name || ME.login;
   if(pw){ SIGN.pw = ''; return unlock(pw, $('sMsg')); }
   showLock('');
 }
@@ -143,7 +146,7 @@ function lockNow(msg, serverSaid){
 async function signOut(msg){
   if(SES){
     try{ if(UNTIL > 0) await api('POST', '/host-lock', {}); }catch(e){}
-    try{ await cog('RevokeToken', {ClientId:CFG.clientId, Token:SES.refresh}); }catch(e){}
+    try{ await cog('RevokeToken', {ClientId:CID, Token:SES.refresh}); }catch(e){}
   }
   SES = null; store(); for(const k in TEMPS) delete TEMPS[k]; showSign(msg || 'Signed out.', !msg);
 }
@@ -158,180 +161,151 @@ setInterval(() => {
   if(lastAct > pingAt && now - pingAt > 60000){ pingAt = now; api('POST', '/host/keepalive', {}).catch(() => {}); }
 }, 15000);
 
-/* ---- what the host can do ---- */
+/* ---- what an IronLedger employee can do ---- */
+const enc = encodeURIComponent;
 async function load(){
   try{
-    const [s, u, me, dr, cl] = await Promise.all([api('GET', '/host/stores'), api('GET', '/host/users'), api('GET', '/me'), api('GET', '/host/drafts'), api('GET', '/host/clients')]);
-    DATA = {stores:s.stores, users:u.users, me, drafts:dr.drafts, clients:cl.clients};
-    if(NAV.client && NAV.client !== 'new' && !DATA.clients.some(k => k.id === NAV.client)) NAV.client = NAV.pharm = null;
+    const [s, u, me, cl] = await Promise.all([api('GET', '/host/stores'), api('GET', '/host/users'), api('GET', '/me'), api('GET', '/host/clients')]);
+    DATA = {stores:s.stores, users:u.users.filter(x => !x.employeeOnly), me, clients:cl.clients};
+    if(NAV.client && !DATA.clients.some(k => k.id === NAV.client)) NAV.client = NAV.pharm = null;
     if(NAV.pharm && !DATA.stores.some(x => x.id === NAV.pharm)) NAV.pharm = null;
-    if(NAV.client && NAV.client !== 'new'){ try{ BILL = await api('GET', '/host/clients/' + encodeURIComponent(NAV.client) + '/billing'); }catch(e){ if(e.auth) throw e; BILL = null; } } else BILL = null;
     for(const k in TEMPS) if(!DATA.users.some(x => x.sub === k && x.pending)) delete TEMPS[k];
-    for(const k in STAGED) if(!DATA.users.some(x => x.sub === k)) delete STAGED[k];
+    await loadPharm();
     render();
-  }catch(e){ if(!e.auth) $('people').innerHTML = `<div class="msg">${esc(e.message)}</div>`; }
+  }catch(e){ if(!e.auth) $('clientMsg').innerHTML = `<span class="msg">${esc(e.message)}</span>`; }
 }
-const fmtDay = iso => { try{ return new Date(iso).toLocaleDateString('en-US', {month:'short', day:'numeric'}); }catch(e){ return ''; } };
-function statusBadge(u){
-  if(u.disabled) return '<span class="ust off">Login off</span>';
-  if(u.pending && u.tempExpired) return '<span class="ust bad">Expired</span><div class="role">Temp password expired</div>';
-  if(u.pending) return `<span class="ust wait">Pending</span><div class="role">${u.tempExpires ? 'Temp password until ' + fmtDay(u.tempExpires) : 'Hasn’t signed in yet'}</div>`;
-  return '<span class="ust ok">Active</span>';
-}
-// temporary passwords made on this page, kept only in this tab's memory so they can be copied again while the person is pending
-const TEMPS = {};
-// switch changes wait on the row until Update is pressed (Undo puts them back)
-const STAGED = {};
-function effUser(u){
-  const s = STAGED[u.sub]; if(!s) return u;
-  return Object.assign({}, u, {adminStores:Object.assign({}, u.adminStores || {}, s.adminStores || {}), stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}),
-    disabled:s.disabled !== undefined ? s.disabled : u.disabled, initials:s.initials !== undefined ? s.initials : u.initials, license:s.license !== undefined ? s.license : u.license});
-}
-function stageChange(u, c){
-  const s = STAGED[u.sub] || (STAGED[u.sub] = {});
-  const put = (grp, k, v, was) => { s[grp] = s[grp] || {}; if(v === was) delete s[grp][k]; else s[grp][k] = v; if(!Object.keys(s[grp]).length) delete s[grp]; };
-  if(c.dataset.ust) put('stores', c.dataset.ust, c.checked, (u.stores || {})[c.dataset.ust] === true);
-  else if(c.dataset.uadm) put('adminStores', c.dataset.uadm, c.checked, (u.adminStores || {})[c.dataset.uadm] === true);
-  else if(c.dataset.uperm) put('perms', c.dataset.uperm, c.checked, !!(u.perms || {})[c.dataset.uperm]);
-  else if(c.dataset.uon){ if(!c.checked === !!u.disabled) delete s.disabled; else s.disabled = !c.checked; }
-  if(!Object.keys(s).length) delete STAGED[u.sub];
-}
-const COPY_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
-function signInText(u, pw){
-  const on = DATA.stores.filter(s => u.stores && u.stores[s.id] === true).map(s => s.id);
-  const ownIds = Object.keys(u.ownerStores || {}).filter(k => u.ownerStores[k]);
-  return `Pharmacy ID: ${(ownIds.length ? ownIds : on).join(' or ') || '(switch a pharmacy on first)'}\nUser ID: ${u.login}\nTemporary Pass: ${pw}`;
-}
-async function copyText(t){
-  try{ await navigator.clipboard.writeText(t); return true; }
-  catch(e){ const a = document.createElement('textarea'); a.value = t; a.style.position = 'fixed'; a.style.opacity = '0'; document.body.appendChild(a); a.select();
-    let ok = false; try{ ok = document.execCommand('copy'); }catch(e2){} a.remove(); return ok; }
-}
-// never a sideways scroll: if the people table is wider than its space, each person becomes a card
-function fitPeople(){}   // the two-line layout fits any width
-let fitTimer = 0;
-window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitPeople, 120); });
-const box = (attrs, on, title) => `<input type="checkbox" ${attrs}${on ? ' checked' : ''} title="${esc(title || '')}">`;
-function render(){
-  const st = DATA.stores, P = Object.keys(PERMS);
-  // two lines per user, like the Account Owner tab: user / username / mobile / status, then Pharmacies, then Privileges
-  const priv = (b, label, title) => `<label class="priv" title="${esc(title || label)}">${b}<span>${esc(label)}</span></label>`;
-  $('people').innerHTML = `<div class="ulist">
-    <div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div><div></div></div>
-    ${DATA.users.map(effUser).map(u => {
-      const self = u.sub === (ME && ME.sub) || (u.host && u.login === ME.login);
-      const own = Object.keys(u.ownerStores || {}).filter(k => u.ownerStores[k]), cown = Object.keys(u.ownerClients || {}).filter(k => u.ownerClients[k]);
-      const role = u.host ? 'Host (IronLedger)' : [own.length ? 'Account Owner' : '', cown.length ? 'Client Account Owner' : ''].filter(Boolean).join(' · ');
-      const on = self ? '' : priv(box('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on');
-      const isOwn = id => u.ownerStores && u.ownerStores[id] === true;
-      const adm = (id) => (ME && ME.hostRole !== 'rep' && !u.host && (u.acctType === 'pic' || u.acctType === 'pharmacist') && !isOwn(id) && (u.stores[id] === true || (u.adminStores || {})[id] === true)) ? priv(box(`data-uadm="${esc(id)}"`, (u.adminStores || {})[id] === true, 'Super user: every Account Owner privilege at this pharmacy except billing, the client page and ownership'), 'Super user at ' + id) : '';
-      const pharm = u.host ? `<span class="hint">${esc(st.filter(s => u.stores[s.id] === true).map(s => s.id).join(', ') || 'None')} (set by the Account Owner)</span>`
-        : st.map(s => isOwn(s.id) ? `<span class="tag" title="Account Owner of ${esc(s.name)}">${esc(s.id)} · Owner</span>` : priv(box(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('');
-      const privs = u.host ? `<span class="hint">${esc(P.filter(p => u.perms[p]).map(p => PERMS[p]).join(', ') || 'None')} (set by the Account Owner)</span>${on}`
-        : P.map(p => priv(box(`data-uperm="${p}"`, u.perms[p], PERMS[p]), PERMS[p])).join('') + st.map(s => adm(s.id)).join('') + on;
-      const acts = STAGED[u.sub] ? `<button class="btn small" data-upd="${esc(u.sub)}">Update</button> <button class="btn2 small" data-undo="${esc(u.sub)}">Undo</button>`
-        : (self ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`) + (u.owner || u.host || cown.length ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`);
-      return `<div class="urow${u.disabled ? ' off' : ''}${STAGED[u.sub] ? ' dirty' : ''}" data-sub="${esc(u.sub)}">
-        <div class="ucols">
-          <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${role ? `<span class="urole">${role}</span>` : ''}</div>
-          <div class="ucell mono" data-l="Username">${esc(u.login)}</div>
-          <div class="ucell" data-l="Mobile"><span class="mono">${esc(u.phone)}</span> <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button></div>
-          <div class="ucell" data-l="Status">${statusBadge(u)}</div>
-          <div class="ucell acts">${acts}</div>
-          <div class="ucell copycell">${u.pending && TEMPS[u.sub] ? `<button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${COPY_SVG}</button>` : ''}</div>
-        </div>
-        <div class="upriv"><span class="plabel">Pharmacies</span><span class="pgroup">${pharm}</span></div>
-        <div class="upriv"><span class="plabel">Privileges</span><span class="pgroup">${privs}</span></div>
-        <div class="upriv"><span class="plabel">RPh license #</span><input type="text" data-ulic maxlength="20" value="${esc(u.license || '')}" style="width:130px;text-transform:uppercase;" aria-label="RPh license number"> <span class="hint">Pharmacists only. Prints on Rx Intake forms; the Pharmacist-In-Charge's number prints as PIC.</span></div>
-        <div class="upriv"><span class="plabel">Signing</span><input type="text" data-uini maxlength="3" value="${esc(u.initials || '')}" style="width:70px;text-transform:uppercase;" aria-label="Initials" placeholder="Initials">
-          <span class="hint">Employee ID <b>${esc(u.empId || '-')}</b>${ME && ME.pinRequired ? ` · PIN: ${({none:'Not set', set:'Set', temp:'Temporary', locked:'Locked'})[u.pin || 'none']}` : ''}</span>
-          ${ME && ME.pinRequired && !self && ME.hostRole !== 'rep' ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="One-time temporary PIN to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}</div>
-      </div>`;
-    }).join('')}
-  </div>`;
-  fitPeople();
-  $('nStores').innerHTML = st.map(s => `<label class="chk"><input type="checkbox" data-nst="${esc(s.id)}"${st.length === 1 ? ' checked' : ''}> ${esc(s.id)} · ${esc(s.name)}</label>`).join('') || '<span class="hint">Add a pharmacy first.</span>';
-  $('nPerms').innerHTML = Object.entries(PERMS).map(([p, l]) => `<label class="chk"><input type="checkbox" data-nperm="${p}"${p !== 'export' ? ' checked' : ''}> ${l}</label>`).join('');
-  if(!$('nPass').value) $('nPass').value = genTemp();
-  renderNav(); renderReviews();
-  const keep = $('impStore').value;
-  $('impStore').innerHTML = st.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join('');
-  if(keep && st.some(s => s.id === keep)) $('impStore').value = keep;
-  for(const s of st) if(s.hasLogo && LOGOS[s.id] === undefined) loadLogo(s.id);
-}
-const holderOf = s => { const o = ownInfo(s, DATA.users).owner; return o ? ownLabel(o) : 'Not set yet'; };
-const isRepMe = () => !!(DATA.me && DATA.me.hostRole === 'rep');
-function renderReviews(){
-  const d = DATA.drafts || [], sup = !isRepMe(), pend = d.filter(x => x.status === 'pending');
-  $('reviewCard').hidden = !(d.length || (sup && DATA.users.some(u => u.hostRole === 'rep')));
-  $('reviewTitle').textContent = sup ? 'Rep drafts waiting for review' : 'Your drafts';
-  const chg = c => Object.entries(c).map(([k, v]) => `<div class="hint">${esc(k)}: ${esc(Array.isArray(v[0]) || typeof v[0] === 'object' ? JSON.stringify(v[0]) : v[0] === '' ? '(blank)' : v[0])} → ${esc(typeof v[1] === 'object' ? JSON.stringify(v[1]) : v[1])}</div>`).join('');
-  $('reviews').innerHTML = (sup ? pend : d).map(x => `<div class="npibox" data-draft="${esc(x.id)}" data-dstore="${esc(x.store)}"><b>${esc(x.store)}</b> · ${esc(x.by)} · ${esc((x.at || '').slice(0, 10))} · <b>${esc(x.status)}</b>
-      <div>“${esc(x.note)}”</div>${chg(x.changes)}${x.decisionNote ? `<div class="hint">Decision by ${esc(x.decidedBy)}: ${esc(x.decisionNote)}</div>` : ''}
-      ${sup && x.status === 'pending' ? '<div class="row" style="margin-top:6px"><button class="btn small" data-dapprove="1">Approve and apply</button><button class="btn2 small" data-dreject="1">Reject…</button></div>' : ''}</div>`).join('') || '<div class="hint">Nothing waiting.</div>';
-  const reps = sup ? DATA.users.filter(u => u.hostRole === 'rep') : [];
-  $('repAssign').innerHTML = reps.length ? '<h3 style="font-size:15px;margin:14px 0 6px">Which pharmacies each rep may draft for</h3>' + reps.map(u => `<div class="npibox" data-repsub="${esc(u.sub)}"><b>${esc(u.name || u.login)}</b> ${DATA.stores.map(s => `<label class="chk"><input type="checkbox" data-repstore="${esc(s.id)}"${(u.repStores || {})[s.id] ? ' checked' : ''}> ${esc(s.id)}</label>`).join('')} <button class="btn2 small" data-repsave="1">Save</button></div>`).join('') : '';
-}
-$('reviewCard').addEventListener('click', async e => {
-  const ap = e.target.closest('[data-dapprove]'), rj = e.target.closest('[data-dreject]'), rs = e.target.closest('[data-repsave]'), box = e.target.closest('[data-draft]');
+// the open pharmacy's people or billing: one pharmacy at a time, read from the server when its button is pressed
+async function loadPharm(){
+  PS.U = PS.B = null;
+  if(!NAV.pharm || NAV.view === 'acct') return;
   try{
-    if(rs){ const row = rs.closest('[data-repsub]'), st = {}; row.querySelectorAll('[data-repstore]').forEach(i => st[i.dataset.repstore] = i.checked); await api('POST', '/host/users/' + encodeURIComponent(row.dataset.repsub), {repStores:st}); await load(); return; }
-    if(!box) return;
-    if(ap){ await api('POST', `/host/drafts/${encodeURIComponent(box.dataset.dstore)}/${encodeURIComponent(box.dataset.draft)}/approve`, {}); sayStore('Approved and applied.'); await load(); }
-    if(rj){ const n = prompt('Why is this rejected?'); if(!n) return; await api('POST', `/host/drafts/${encodeURIComponent(box.dataset.dstore)}/${encodeURIComponent(box.dataset.draft)}/reject`, {note:n}); await load(); }
-  }catch(err){ if(!err.auth) alert(err.message); }
-});
-const sayStore = t => { $('clientMsg').textContent = t; };
-const sayClient = sayStore;
+    if(NAV.view === 'users'){ PS.U = await api('GET', '/pharmacy/' + enc(NAV.pharm) + '/users'); for(const k in PS.st.staged) if(!PS.U.users.some(x => x.sub === k)) delete PS.st.staged[k]; }
+    else PS.B = await api('GET', '/host/stores/' + enc(NAV.pharm) + '/billing');
+  }catch(e){ if(e.auth) throw e; $('clientMsg').innerHTML = `<span class="msg">${esc(e.message)}</span>`; }
+}
+const isRepMe = () => !!(DATA.me && DATA.me.hostRole === 'rep');
 const clientOf = id => (DATA.clients || []).find(k => k.id === id);
 const storeOf = id => DATA.stores.find(s => s.id === id);
 const clientLabel = k => k ? (k.dba || k.legalName) : '';
-function goto(client, pharm){ NAV.client = client || null; NAV.pharm = pharm || null; $('clientMsg').textContent = ''; document.querySelector('#hTabs [data-tab=clients]').click(); load(); }
+const holderOf = s => { const o = ownInfo(s, DATA.users).owner; return o ? ownLabel(o) : 'Not set yet'; };
+const sayStore = t => { $('clientMsg').textContent = t; };
+function showPass(html){ $('passBox').innerHTML = html; $('passBox').style.display = 'block'; $('passBox').scrollIntoView({block:'center'}); }
+function goto(client, pharm, view){ NAV.client = client || null; NAV.pharm = pharm || null; NAV.view = view || 'acct'; PS.st.open = null; PS.bo.filter = 'all'; $('clientMsg').textContent = ''; $('gHits').hidden = true; load(); }
+
+function render(){
+  renderNav();
+  const keep = $('impStore').value;
+  $('impStore').innerHTML = DATA.stores.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join('');
+  if(keep && DATA.stores.some(s => s.id === keep)) $('impStore').value = keep;
+  for(const s of DATA.stores) if(s.hasLogo && LOGOS[s.id] === undefined) loadLogo(s.id);
+}
+const unlinked = () => DATA.stores.filter(s => !s.clientId);
 function renderNav(){
-  const rep_ = isRepMe(), clients = DATA.clients || [], q = NAV.find.trim().toLowerCase();
-  // the queue (right): one line per client, the selected one highlighted; typing finds a client by name, account number or one of its pharmacies
-  const hit = k => !q || [k.legalName, k.dba, k.id].some(x => String(x || '').toLowerCase().includes(q)) || (k.pharmacies || []).some(id => { const s = storeOf(id); return id.toLowerCase().includes(q) || (s && String(s.name || '').toLowerCase().includes(q)); });
-  $('cqueue').innerHTML = clients.filter(hit).map(k => `<button type="button" class="qrow${NAV.client === k.id ? ' on' : ''}" data-q="${esc(k.id)}"><b>${esc(clientLabel(k))}</b><span>${esc(k.id)} · ${(k.pharmacies || []).length} ${(k.pharmacies || []).length === 1 ? 'pharmacy' : 'pharmacies'}</span></button>`).join('') || `<div class="hint">${clients.length ? 'No match.' : 'No clients yet.'}</div>`;
-  $('qNew').style.display = rep_ ? 'none' : '';
-  // breadcrumb
-  const k = NAV.client && NAV.client !== 'new' ? clientOf(NAV.client) : null, s = NAV.pharm ? storeOf(NAV.pharm) : null;
-  $('crumb').innerHTML = !NAV.client ? '<b>Clients</b>' : NAV.client === 'new' ? '<button class="lk" data-crumb="home">Clients</button> › <b>New client</b>'
-    : `<button class="lk" data-crumb="home">Clients</button> › ${s ? `<button class="lk" data-crumb="client">${esc(clientLabel(k))}</button> › <b>${esc(s.name || s.id)}</b>` : `<b>${esc(clientLabel(k))}</b>`}`;
-  const cv = $('cview'), pv = $('pview'); cv.hidden = !!s; pv.hidden = !s;
+  const rep_ = isRepMe(), clients = DATA.clients || [];
+  if(NAV.pharm && !NAV.client){ const s0 = storeOf(NAV.pharm); if(s0 && s0.clientId) NAV.client = s0.clientId; }       // linked to a client: it now lives inside that client
+  const k = NAV.client ? clientOf(NAV.client) : null, s = NAV.pharm ? storeOf(NAV.pharm) : null;
+  // breadcrumb: Clients › client › pharmacy › Users / Billing
+  const lk = (w, t) => `<button class="lk" data-crumb="${w}">${esc(t)}</button>`;
+  const parts = [];
+  if(!k && !s) parts.push('<b>Clients</b>');
+  else{
+    parts.push(lk('home', 'Clients'));
+    if(k) parts.push(s ? lk('client', clientLabel(k)) : `<b>${esc(clientLabel(k))}</b>`);
+    if(s) parts.push(NAV.view === 'acct' ? `<b>${esc(s.name || s.id)}</b>` : lk('pharm', s.name || s.id));
+    if(s && NAV.view !== 'acct') parts.push(`<b>${NAV.view === 'users' ? 'Users' : 'Billing'}</b>`);
+  }
+  $('crumb').innerHTML = parts.join(' › ');
+  // the right-hand list is always the next level down
+  const row = (attr, id, title, sub, on, big) => `<button type="button" class="qrow${on ? ' on' : ''}${big ? ' big' : ''}" ${attr}="${esc(id)}"><b>${esc(title)}</b><span>${esc(sub)}</span></button>`;
   if(s){
-    $('cview').innerHTML = '';
-    pv.innerHTML = `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, {logo:LOGOS[s.id], host:true, rep:rep_, holder:holderOf(s), clients:DATA.clients, people:DATA.users})}</div>`;
+    $('side').innerHTML = `<div class="cqh"><h2>${esc(s.id)}</h2></div>` + [['acct', 'Account'], ['users', 'Users'], ['billing', 'Billing']].map(([v, t]) => row('data-view', v, t, v === 'acct' ? 'Details, owner, services' : v === 'users' ? 'People at this pharmacy' : 'Invoices and payments', NAV.view === v, true)).join('');
+  }else if(k){
+    const mine = DATA.stores.filter(x => x.clientId === k.id);
+    $('side').innerHTML = `<div class="cqh"><h2>Profiles</h2>${rep_ ? '' : `<button type="button" class="btn small" id="addP">Add pharmacy</button>`}</div>` +
+      (mine.map(x => row('data-qs', x.id, x.name || x.id, [x.id, [x.city, x.state].filter(Boolean).join(', '), holderOf(x)].filter(Boolean).join(' · '))).join('') || '<div class="hint">No pharmacies yet.</div>');
+  }else{
+    const un = unlinked();
+    $('side').innerHTML = `<div class="cqh"><h2>Clients</h2></div>` +
+      (clients.map(c => row('data-q', c.id, clientLabel(c), `${c.id} · ${(c.pharmacies || []).length} ${(c.pharmacies || []).length === 1 ? 'pharmacy' : 'pharmacies'}`)).join('') || '<div class="hint">No clients yet.</div>') +
+      (un.length ? '<div class="sub">Not linked to a client yet</div>' + un.map(x => row('data-qs', x.id, x.name || x.id, x.id + ' · link it to a client on its page')).join('') : '');
+  }
+  // the middle: only the one thing that is open
+  const show = id => ['vNew', 'vClient', 'vPharm', 'vUsers', 'vBill'].forEach(x => $(x).hidden = x !== id);
+  $('impCard').hidden = !!(k || s) || rep_;
+  if(s){
+    if(NAV.view === 'users'){
+      show('vUsers');
+      if(!PS.U){ $('vUsers').innerHTML = '<div class="hint">Loading…</div>'; return; }
+      $('vUsers').innerHTML = `<div class="dtitle"><h2>Users · ${esc(s.name || s.id)}</h2><span class="hint">${PS.U.users.length} ${PS.U.users.length === 1 ? 'person' : 'people'}</span></div><div class="msg ok" id="usersMsg" role="status" style="margin:0 0 8px"></div><div id="usersBody">${drUsersHtml(PS.U, usersOpts())}</div>`;
+    }else if(NAV.view === 'billing'){
+      show('vBill');
+      if(!PS.B){ $('vBill').innerHTML = '<div class="hint">Loading…</div>'; return; }
+      PS.bo.edit = !rep_;
+      $('vBill').innerHTML = `<div class="dtitle"><h2>Billing · ${esc(s.name || s.id)}</h2></div><div class="msg ok" id="billMsg" role="status" style="margin:0 0 8px"></div>${drBillingHtml(PS.B, PS.bo)}`;
+    }else{
+      show('vPharm');
+      $('vPharm').innerHTML = `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, {logo:LOGOS[s.id], host:true, rep:rep_, holder:holderOf(s), clients:DATA.clients, people:DATA.users})}</div>`;
+    }
     return;
   }
-  pv.innerHTML = '';
-  if(NAV.client === 'new'){ if(rep_) cv.innerHTML = '<div class="hint">New clients are set up by an IronLedger supervisor.</div>'; else if(!cv.querySelector('[data-is-new]')) cv.innerHTML = `<div class="pcard" data-is-new="1"><h3 class="clt">New client</h3>${clientCardHtml({billingSame:true}, {host:true, isNew:true, stores:DATA.stores, people:DATA.users}, undefined)}</div>`; return; }
-  if(!k){ cv.innerHTML = '<div class="hint">Pick a client from the list on the right, or add one.</div>'; return; }
-  cv.innerHTML = `<div class="pcard" data-client="${esc(k.id)}"><h3 class="clt">${esc(k.legalName)}${k.dba ? ' <span class="hint">dba ' + esc(k.dba) + '</span>' : ''}</h3>${clientCardHtml(k, {host:true, stores:DATA.stores, people:DATA.users, billing:BILL, ro:rep_}, undefined)}</div>`;
+  if(k){ show('vClient'); $('vClient').innerHTML = `<div class="pcard" data-client="${esc(k.id)}"><h3 class="clt">${esc(k.legalName)}${k.dba ? ' <span class="hint">dba ' + esc(k.dba) + '</span>' : ''}</h3>${clientCardHtml(k, {host:true, stores:DATA.stores, people:DATA.users, ro:rep_}, undefined)}</div>`; return; }
+  show('vNew');
+  if(rep_) $('vNew').innerHTML = '<div class="hint">New clients are set up by an IronLedger supervisor.</div>';
+  else if(!$('vNew').querySelector('[data-is-new]')) $('vNew').innerHTML = `<div class="pcard" data-is-new="1"><h3 class="clt">New client</h3>${clientCardHtml({billingSame:true}, {host:true, isNew:true, stores:DATA.stores, people:DATA.users}, undefined)}</div>`;
 }
-$('cqueue').addEventListener('click', e => { const b = e.target.closest('[data-q]'); if(b) goto(b.dataset.q, null); });
-$('qNew').onclick = () => { NAV.client = 'new'; NAV.pharm = null; $('cview').innerHTML = ''; $('clientMsg').textContent = ''; renderNav(); };
-$('qFind').addEventListener('input', e => { NAV.find = e.target.value; renderNav(); });
-$('crumb').addEventListener('click', e => { const b = e.target.closest('[data-crumb]'); if(!b) return; if(b.dataset.crumb === 'home') goto(null, null); else goto(NAV.client, null); });
-// the client page (setup information, owner, pharmacies, billing) and its pharmacies' pages
-const clientEv = {stores:() => DATA.stores, say:sayClient, pass:showPass, openPharm:id => goto(NAV.client, id), addPharm:openAddPharm, after: async newId => { if(newId){ NAV.client = newId; NAV.pharm = null; $('cview').innerHTML = ''; } await load(); }};
-clientCardEvents($('cview'), clientEv);
-$('hTabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if(!b) return;
-  document.querySelectorAll('#hTabs button').forEach(x => x.classList.toggle('on', x === b));
-  document.querySelectorAll('[data-pane]').forEach(x => x.hidden = x.dataset.pane !== b.dataset.tab);
-  if(b.dataset.tab === 'billing') loadBillAll(); });
-async function loadBillAll(){
-  const box = $('billAll'), cl = DATA.clients || []; if(!cl.length){ box.innerHTML = '<div class="hint">No clients yet.</div>'; return; }
-  box.innerHTML = '<div class="hint">Loading…</div>';
-  try{
-    const rs = await Promise.all(cl.map(k => api('GET', '/host/clients/' + encodeURIComponent(k.id) + '/billing')));
-    const t = (x, bad) => `<div${bad && x.count ? ' class="bad"' : ''}><b>${x.count}</b><em>${money(x.cents)}</em></div>`;
-    box.innerHTML = '<div class="bgrid"><div class="brow" style="cursor:default;border:0;background:none;font-size:11.5px;text-transform:uppercase;color:var(--muted)"><div>Client</div><div>New this month</div><div>Paid this month</div><div>Unpaid</div><div>Delinquent</div></div>' +
-      cl.map((k, i) => { const S = rs[i].summary; return `<button type="button" class="brow" data-bill="${esc(k.id)}"><div><b>${esc(clientLabel(k))}</b><em>${esc(k.id)}</em></div>${t(S.newThisMonth)}${t(S.paidThisMonth)}${t(S.unpaid)}${t(S.delinquent, true)}</button>`; }).join('') + '</div>';
-  }catch(e){ if(!e.auth) box.innerHTML = `<div class="msg">${esc(e.message)}</div>`; }
+const usersOpts = () => ({st:PS.st, me:ME, host:true, ownerMe:false, pinRequired:!!(ME && ME.pinRequired), canPin:!isRepMe()});
+$('side').addEventListener('click', e => {
+  const q = e.target.closest('[data-q]'), p = e.target.closest('[data-qs]'), v = e.target.closest('[data-view]');
+  if(q) goto(q.dataset.q, null); else if(p) goto(NAV.client || (storeOf(p.dataset.qs) || {}).clientId || null, p.dataset.qs); else if(v){ NAV.view = v.dataset.view; PS.st.open = null; $('clientMsg').textContent = ''; load(); }
+  else if(e.target.closest('#addP')) openAddPharm(NAV.client);
+});
+$('crumb').addEventListener('click', e => { const b = e.target.closest('[data-crumb]'); if(!b) return; const w = b.dataset.crumb;
+  if(w === 'home') goto(null, null); else if(w === 'client') goto(NAV.client, null); else goto(NAV.client, NAV.pharm, 'acct'); });
+
+/* ---- one search bar: clients, pharmacies and people (name, username or employee ID) ---- */
+function findHits(q){
+  q = q.trim().toLowerCase(); if(q.length < 2) return [];
+  const has = (...v) => v.some(x => String(x || '').toLowerCase().includes(q)), out = [];
+  for(const c of DATA.clients || []) if(has(c.legalName, c.dba, c.id)) out.push({g:'Clients', t:clientLabel(c), s:c.id, go:() => goto(c.id, null)});
+  for(const x of DATA.stores) if(has(x.id, x.name)) out.push({g:'Pharmacies', t:x.name || x.id, s:x.id, go:() => goto(x.clientId || null, x.id)});
+  for(const u of DATA.users) if(has(u.name, u.login, u.empId)){
+    const ids = [...new Set([...Object.keys(u.stores || {}).filter(i => u.stores[i]), ...Object.keys(u.ownerStores || {}).filter(i => u.ownerStores[i]), ...Object.keys(u.adminStores || {}).filter(i => u.adminStores[i])])].filter(i => storeOf(i));
+    for(const i of ids) out.push({g:'People', t:u.name || u.login, s:`${u.login}${u.empId ? ' · ' + u.empId : ''} · at ${i}`, go:() => { PS.st.open = u.sub; NAV.client = (storeOf(i) || {}).clientId || null; NAV.pharm = i; NAV.view = 'users'; $('clientMsg').textContent = ''; $('gHits').hidden = true; load(); }});
+  }
+  return out.slice(0, 40);
 }
-$('billAll').addEventListener('click', e => { const b = e.target.closest('[data-bill]'); if(b) goto(b.dataset.bill, null); });
+let HITS = [];
+$('gFind').addEventListener('input', e => {
+  HITS = findHits(e.target.value); const box = $('gHits'); let g = '';
+  box.innerHTML = HITS.map((h, i) => (h.g !== g ? `<div class="hg">${g = h.g}</div>` : '') + `<button type="button" class="hit" data-hit="${i}"><b>${esc(h.t)}</b><span>${esc(h.s)}</span></button>`).join('') || '<div class="hint" style="padding:8px 12px">No match.</div>';
+  box.hidden = e.target.value.trim().length < 2;
+});
+$('gHits').addEventListener('click', e => { const b = e.target.closest('[data-hit]'); if(!b) return; const h = HITS[+b.dataset.hit]; $('gFind').value = ''; $('gHits').hidden = true; if(h) h.go(); });
+document.addEventListener('click', e => { if(!e.target.closest('.dfound')) $('gHits').hidden = true; });
+$('gFind').addEventListener('keydown', e => { if(e.key === 'Escape'){ $('gHits').hidden = true; } else if(e.key === 'Enter'){ const b = $('gHits').querySelector('[data-hit]'); if(b) b.click(); } });
+
+/* ---- the open things and what they do ---- */
+const clientEv = {stores:() => DATA.stores, say:sayStore, pass:showPass, after: async newId => { if(newId){ NAV.client = newId; NAV.pharm = null; NAV.view = 'acct'; $('vNew').innerHTML = ''; } await load(); }};
+clientCardEvents($('vClient'), clientEv); clientCardEvents($('vNew'), clientEv);
 const pharmEv = {base:'/host', stores:() => DATA.stores, clients:() => DATA.clients, say:sayStore, pass:showPass, after: async () => { await load(); }};
-pharmCardEvents($('pview'), pharmEv);
+pharmCardEvents($('vPharm'), pharmEv);
+// who may manage people at this pharmacy: three switches, saved as they are pressed
+$('vPharm').addEventListener('change', async e => {
+  const m = e.target.closest('[data-mgr]'); if(!m) return;
+  const sid = m.closest('[data-store]').dataset.store;
+  try{ await api('POST', '/host/stores/' + enc(sid), {[m.dataset.mgr]:m.checked}); sayStore('Saved.'); await load(); }
+  catch(err){ m.checked = !m.checked; if(!err.auth) alert(err.message); }
+});
+$('vPharm').addEventListener('change', async e => {
+  const f = e.target.closest('[data-logo]'); if(!f || !f.files[0]) return;
+  try{ const d = await shrink(f.files[0]); await api('POST', '/host/stores/' + enc(f.dataset.logo) + '/logo', {dataUrl:d}); LOGOS[f.dataset.logo] = d; renderNav(); }
+  catch(err){ if(!err.auth) alert(err.message); }
+});
+const usersEnv = {get sid(){ return NAV.pharm; }, base:'/host', U:() => PS.U, st:PS.st, me:() => ME, say:t => { const m = $('usersMsg'); if(m) m.textContent = t || ''; },
+  pass:showPass, paint:() => { $('usersBody').innerHTML = drUsersHtml(PS.U, usersOpts()); }, reload: async () => { await load(); }};
+drUsersEvents($('vUsers'), usersEnv);
+const billEnv = {get sid(){ return NAV.pharm; }, B:() => PS.B, o:PS.bo, paint:() => renderNav(), reload: async () => { await load(); }, say:t => { const m = $('billMsg'); if(m) m.textContent = t || ''; }};
+drBillingEvents($('vBill'), billEnv);
 // Add pharmacy: a window over the page, the client already chosen
 function openAddPharm(clientId){
   if(isRepMe()){ alert('New pharmacies are set up by an IronLedger supervisor.'); return; }
@@ -343,107 +317,13 @@ const closeAddPharm = () => { $('pmodal').hidden = true; $('newStore').innerHTML
 $('pmClose').onclick = closeAddPharm;
 $('pmodal').addEventListener('mousedown', e => { if(e.target === $('pmodal')) closeAddPharm(); });
 document.addEventListener('keydown', e => { if(e.key === 'Escape' && !$('pmodal').hidden && !document.querySelector('details.hdrop[open]')) closeAddPharm(); });
-pharmCardEvents($('newStore'), {base:'/host', stores:() => DATA.stores, clients:() => DATA.clients, say:sayStore, pass:showPass, after: async isNew => { if(isNew){ const id = ($('newStore').querySelector('[data-newid]') || {}).value; closeAddPharm(); await load(); const s = DATA.stores.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))[0]; if(id && storeOf(id.trim().toUpperCase())) NAV.pharm = id.trim().toUpperCase(); else if(s) NAV.pharm = s.id; renderNav(); } else await load(); }});
+pharmCardEvents($('newStore'), {base:'/host', stores:() => DATA.stores, clients:() => DATA.clients, say:sayStore, pass:showPass, after: async isNew => {
+  if(isNew){ const id = (($('newStore').querySelector('[data-newid]') || {}).value || '').trim().toUpperCase(); closeAddPharm(); NAV.pharm = id || null; NAV.view = 'acct'; await load(); }
+  else await load(); }});
 async function loadLogo(id){
   LOGOS[id] = '';
-  try{ const r = await fetch(CFG.apiUrl.replace(/\/$/, '') + '/public/pharmacy/' + encodeURIComponent(id), {cache:'no-store'}); const j = await r.json(); LOGOS[id] = j.logo || ''; renderNav(); }catch(e){}
+  try{ const r = await fetch(CFG.apiUrl.replace(/\/$/, '') + '/public/pharmacy/' + enc(id), {cache:'no-store'}); const j = await r.json(); LOGOS[id] = j.logo || ''; renderNav(); }catch(e){}
 }
-function genTemp(){ const L = 'abcdefghjkmnpqrstuvwxyz', D = '23456789', A = L + D, R = n => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; };
-  let p = L[R(23)] + D[R(8)]; while(p.length < 12) p += A[R(A.length)]; return p; }
-function showPass(html){ $('passBox').innerHTML = html; $('passBox').style.display = 'block'; $('passBox').scrollIntoView({block:'center'}); }
-const nameOf = sub => { const u = DATA.users.find(x => x.sub === sub); return u ? (u.name || u.login) : ''; };
-
-$('people').addEventListener('change', async e => {
-  const ini = e.target.closest('input[data-uini]');
-  if(ini){
-    const sub = ini.closest('[data-sub]').dataset.sub, u = DATA.users.find(x => x.sub === sub); if(!u) return;
-    const v = ini.value.trim().toUpperCase(), stg = STAGED[sub] || (STAGED[sub] = {});
-    if(v === (u.initials || '')) delete stg.initials; else stg.initials = v;
-    if(!Object.keys(stg).length) delete STAGED[sub];
-    $('peopleMsg').textContent = ''; render(); return;
-  }
-  const lic = e.target.closest('input[data-ulic]');
-  if(lic){
-    const sub = lic.closest('[data-sub]').dataset.sub, u = DATA.users.find(x => x.sub === sub); if(!u) return;
-    const v = lic.value.trim().toUpperCase(), stg = STAGED[sub] || (STAGED[sub] = {});
-    if(v === (u.license || '')) delete stg.license; else stg.license = v;
-    if(!Object.keys(stg).length) delete STAGED[sub];
-    $('peopleMsg').textContent = ''; render(); return;
-  }
-  const c = e.target.closest('input[type=checkbox]'); if(!c) return;
-  const sub = c.closest('[data-sub]').dataset.sub, u = DATA.users.find(x => x.sub === sub); if(!u) return;
-  stageChange(u, c); $('peopleMsg').textContent = ''; render();      // saved only when Update is pressed
-});
-$('people').addEventListener('click', async e => {
-  const ph = e.target.closest('[data-phone]'), rs = e.target.closest('[data-reset]'), dl = e.target.closest('[data-del]'), cp = e.target.closest('[data-copy]');
-  const up = e.target.closest('[data-upd]'), un = e.target.closest('[data-undo]');
-  const pr = e.target.closest('[data-pinreset]');
-  if(pr){
-    const u = DATA.users.find(x => x.sub === pr.dataset.pinreset); if(!u) return;
-    if(!confirm(`Issue a temporary PIN for ${u.name || u.login}? Their current PIN stops working. Give it to them in person.`)) return;
-    try{ const r = await api('POST', '/host/users/' + encodeURIComponent(u.sub) + '/pin-reset', {}); await load();
-      showPass(`<b>Temporary PIN for ${esc(u.name || u.login)}:</b> <span class="mono" style="font-size:20px;letter-spacing:.2em;">${esc(r.tempPin)}</span><br><span class="hint">Shown once. They choose their own PIN when they next sign something.</span>`); }
-    catch(err){ if(!err.auth) alert(err.message); }
-    return;
-  }
-  if(un){ delete STAGED[un.dataset.undo]; $('peopleMsg').textContent = ''; render(); return; }
-  if(up){
-    const u = DATA.users.find(x => x.sub === up.dataset.upd), body = STAGED[up.dataset.upd]; if(!u || !body) return;
-    const am = u.owner ? '\n\nThis is the Account Owner.' : '';
-    if(body.disabled === true && !confirm(`Switch off ${nameOf(u.sub)}'s login? They are signed out everywhere and can't sign in until it's switched back on.${am}`)) return;
-    busy(up, true);
-    try{
-      await api('POST', '/host/users/' + encodeURIComponent(u.sub), body);
-      delete STAGED[u.sub];
-      $('peopleMsg').textContent = body.disabled === true ? `${nameOf(u.sub)}'s login was switched off. They were signed out.`
-        : `${nameOf(u.sub)}'s account access was updated. It takes effect after they sign out and sign back in.`;
-      await load();
-    }catch(err){ busy(up, false); if(!err.auth) alert(err.message); }
-    return;
-  }
-  if(cp){
-    const u = DATA.users.find(x => x.sub === cp.dataset.copy); if(!u || !TEMPS[u.sub]) return;
-    const ok = await copyText(signInText(u, TEMPS[u.sub])); cp.title = ok ? 'Copied' : 'Couldn’t copy';
-    showPass(ok ? `<b>Copied ${esc(u.name || u.login)}’s sign-in details.</b> Paste them where you need them.` : 'Couldn’t copy. Select the text instead.'); return;
-  }
-  if(dl){
-    const u = DATA.users.find(x => x.sub === dl.dataset.del);
-    const typed = prompt(u.pending ? `Cancel ${u.name || u.login}'s invitation?\n\nThey haven't signed in yet. Their login and temporary password are removed, and the Login ID can be used again.\n\nType their Login ID (${u.login}) to cancel it:` : `Delete ${u.name || u.login} for good?\n\nTheir login is removed and can't be switched back on. Orders and archive lines they entered stay, under their name.\nTo just stop them signing in for now, switch their login off instead.\n\nType their Login ID (${u.login}) to delete:`);
-    if(typed === null) return;
-    if(typed.trim().toLowerCase() !== u.login) return alert('The Login ID didn’t match. Nothing was deleted.');
-    try{ await api('POST', '/host/users/' + encodeURIComponent(u.sub) + '/delete', {}); await load(); alert(`${u.name || u.login} was deleted.`); }catch(err){ if(!err.auth) alert(err.message); }
-  }
-  if(ph){
-    const u = DATA.users.find(x => x.sub === ph.dataset.phone);
-    const v = prompt(`New mobile number for ${u.name || u.login} (sign-in codes are texted here):`, u.phone); if(!v) return;
-    if(!confirm(`Has ${u.name || u.login} signed a new SMS consent form for ${v}?`)) return alert('Have them sign the SMS consent form for the new number first.');
-    try{ await api('POST', '/host/users/' + encodeURIComponent(u.sub), {phone:v, smsConsent:true}); await load(); }catch(err){ if(!err.auth) alert(err.message); }
-  }
-  if(rs){
-    const u = DATA.users.find(x => x.sub === rs.dataset.reset);
-    if(!confirm(`Give ${u.name || u.login} a new temporary password? Their current password stops working and they're signed out everywhere.`)) return;
-    try{ const r = await api('POST', '/host/users/' + encodeURIComponent(u.sub) + '/reset-password', {});
-      TEMPS[u.sub] = r.tempPassword; await load();
-      showPass(`<b>New temporary password for ${esc(u.name || u.login)}</b><br>Login ID: <b class="mono">${esc(u.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b><br><span class="hint">They choose their own password when they next sign in. The copy button on their row copies their sign-in details.</span>`); }
-    catch(err){ if(!err.auth) alert(err.message); }
-  }
-});
-$('nAdd').onclick = async () => {
-  const stores = {}; document.querySelectorAll('[data-nst]').forEach(c => stores[c.dataset.nst] = c.checked);
-  const perms = {}; document.querySelectorAll('[data-nperm]').forEach(c => perms[c.dataset.nperm] = c.checked);
-  const body = {name:$('nName').value.trim(), login:$('nLogin').value.trim().toLowerCase(), phone:$('nPhone').value.trim(), tempPassword:$('nPass').value.trim() || undefined, stores, perms, smsConsent:$('nConsent').checked};
-  if(!body.name || !body.login || !body.phone) return alert('Name, Login ID and mobile number are all needed.');
-  if(!body.smsConsent) return alert('Have them sign the SMS consent form first, then tick the box.');
-  busy($('nAdd'), true);
-  try{
-    const r = await api('POST', '/host/users', body); TEMPS[r.user.sub] = r.tempPassword;
-    const ids = Object.keys(stores).filter(k => stores[k]);
-    showPass(`<b>${esc(body.name)} can sign in now.</b> Give them:<br>Pharmacy ID: <b class="mono">${esc(ids.join(' or ') || '(switch one on first)')}</b><br>Login ID: <b class="mono">${esc(r.user.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b><br><span class="hint">This temporary password isn’t shown again.</span>`);
-    ['nName', 'nLogin', 'nPhone'].forEach(k => $(k).value = ''); $('nPass').value = genTemp(); $('nConsent').checked = false;
-    await load(); $('nName').focus({preventScroll: true});
-  }catch(err){ if(!err.auth) alert(err.message); }
-  finally{ busy($('nAdd'), false); }
-};
 function shrink(file){
   return new Promise((res, rej) => {
     const img = new Image(), url = URL.createObjectURL(file);
@@ -454,11 +334,6 @@ function shrink(file){
     img.onerror = () => rej(new Error('That file isn’t a picture this browser can read.')); img.src = url;
   });
 }
-$('pview').addEventListener('change', async e => {
-  const f = e.target.closest('[data-logo]'); if(!f || !f.files[0]) return;
-  try{ const d = await shrink(f.files[0]); await api('POST', '/host/stores/' + encodeURIComponent(f.dataset.logo) + '/logo', {dataUrl:d}); LOGOS[f.dataset.logo] = d; renderNav(); }
-  catch(err){ if(!err.auth) alert(err.message); }
-});
 $('impGo').onclick = async () => {
   const f = $('impFile').files[0], sid = $('impStore').value;
   if(!f || !sid) return alert('Choose the pharmacy and the nortex_reorder_data.json file.');

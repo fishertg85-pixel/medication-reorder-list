@@ -251,6 +251,26 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
 .pnl .pfields{grid-template-columns:repeat(auto-fill,minmax(min(210px,100%),1fr));min-width:0;} .pnl .entity{min-width:0;max-width:100%;}
 .licrow{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:flex-end;} .licrow label{flex:1 1 84px;min-width:0;} .licrow label:nth-child(3){flex-basis:128px;} .licrow label input,.licrow label select{width:100%;}
 .ownbox input[type=radio]{width:auto;flex:none;margin:3px 0 0;}
+
+/* ---- the drill-down (employee portal and Account tab): middle = what is open, right = the list one level down ---- */
+.crumb{font-size:14px;margin:0 0 10px;color:var(--muted);} .crumb button.lk{background:none;border:0;padding:0;min-height:0;color:var(--accent);cursor:pointer;font:inherit;text-decoration:underline;} .crumb b{color:var(--ink);}
+.cw{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start;}
+.cq{position:sticky;top:8px;max-height:calc(100vh - 24px);overflow:auto;} .cqh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;} .cqh h2{margin:0;}
+.cq .sub{font-size:12px;color:var(--muted);margin:10px 2px 4px;}
+.qrow{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink);padding:7px 10px;margin-bottom:6px;cursor:pointer;min-height:0;font:inherit;}
+.qrow b{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} .qrow span{font-size:12px;color:var(--muted);} .qrow.on{border-color:var(--accent);background:var(--accent-soft);} .qrow:hover{border-color:var(--accent);}
+.qrow.big{padding:11px 12px;} .qrow.big b{font-size:15px;}
+@media (max-width:1100px){.cw{grid-template-columns:1fr;} .cq{position:static;max-height:none;order:-1;}}
+.dsearch{width:100%;box-sizing:border-box;font:inherit;border:1px solid var(--line);border-radius:7px;padding:8px 12px;background:var(--bg);color:var(--ink);}
+.dfound{position:relative;} .dfound .hits{position:absolute;left:0;right:0;top:100%;z-index:50;background:var(--bg);border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.25);max-height:60vh;overflow:auto;margin-top:2px;}
+.dfound .hit{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-soft,var(--line));padding:8px 12px;cursor:pointer;font:inherit;color:var(--ink);min-height:0;} .dfound .hit:hover{background:var(--accent-soft);}
+.dfound .hit span{display:block;font-size:12px;color:var(--muted);} .dfound .hits .hg{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:6px 12px 2px;}
+.ulist .ucols{grid-template-columns:minmax(170px,1.6fr) minmax(100px,1fr) minmax(150px,1fr) minmax(170px,1.3fr) 40px;}
+.urowhead{cursor:pointer;} .urowhead:hover{background:var(--accent-soft);} .urow.open{background:var(--panel);border-radius:6px;} .urowhead .chev{color:var(--muted);}
+.udetail{padding:2px 6px 10px 10px;border-left:3px solid var(--accent);margin:6px 0 4px 6px;}
+.urole{margin-left:8px;font-size:11.5px;font-weight:600;color:var(--muted);}
+.dtitle{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;} .dtitle h2{margin:0;font-size:18px;}
+.swrow{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-top:8px;}
 /* ---- Documents tab ---- */
 #panel-documents{position:relative;}
 #panel-documents .pgrid{margin-top:2px;}
@@ -397,17 +417,17 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
   td.chk input{accent-color:var(--ok);}
   #listBody tr.is-ordered td{background:color-mix(in srgb, var(--ok) 14%, var(--panel)) !important;}
   .card,.li-card{box-shadow:var(--shadow);}
-  .li-il{display:flex;align-items:center;gap:10px;margin-bottom:14px;color:var(--text);font-size:20px;font-weight:700;letter-spacing:.2px;}.li-il b{color:var(--accent);}
-  .li-il img{width:32px;height:32px;border-radius:7px;}
+  .li-il{margin-bottom:14px;color:var(--text);}
   .brandfoot img{height:20px;width:20px;border-radius:5px;}
 </style>
+<link rel="stylesheet" href="lockup.css">
 <link rel="stylesheet" href="suite.css">
 </head>
 <body>
 
 <div id="login">
   <div class="li-card">
-    <div class="li-il"><img src="mark.svg" alt=""><span>Iron<b>Ledger</b></span></div>
+    <div class="li-il"><span class="il-lock"><img src="mark.svg" alt=""><span class="wm">Iron<b>Ledger</b></span></span></div>
     <div id="liBrand"></div>
     <h1>Reorder List</h1>
     <div class="li-msg" id="liMsg"></div>
@@ -446,7 +466,7 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
 
 <div id="app" style="display:none;">
 <header>
-  <img class="ilmark" src="mark.svg" alt="" width="36" height="36"><span class="ilword">Iron<b>Ledger</b></span>
+  <span class="il-lock il-lock-sep"><img src="mark.svg" alt=""><span class="wm">Iron<b>Ledger</b></span></span>
   <img id="storeLogo" alt="" style="display:none;">
   <div>
     <h1 id="storeName">Reorder List</h1>
@@ -559,43 +579,23 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
       <div class="li-msg" id="ownLockMsg"></div>
     </div>
     <div id="ownBody" style="display:none;">
-    <div class="toolbar" id="ownSwitch" style="display:none;margin-bottom:8px;"><button class="btn small" id="ownSwPharm">Pharmacy and users</button><button class="btn2 small" id="ownSwClient">Client</button></div>
-    <div id="ownClientView" style="display:none;"></div>
-    <div id="ownPharmView">
     <div class="banner info" id="passBox"></div>
-    <div class="card">
-      <h2>Users</h2>
-      <div class="hint" style="margin-bottom:8px;">Change a user’s privileges, then press <b>Update</b> on that user to save. <b>Undo</b> puts them back.</div>
-      <div id="ownPeopleMsg" class="npmsg ok" role="status"></div>
-      <div id="ownPeople"></div>
-    </div>
-    <div class="card">
-      <h2>Add A User</h2>
-      <div class="formgrid">
-        <label><span>Name</span><input type="text" id="npName"></label>
-        <label><span>Initials</span><input type="text" id="npIni" maxlength="3" autocapitalize="characters" spellcheck="false" style="max-width:90px;text-transform:uppercase;" placeholder="e.g. TF"></label>
-        <label><span>RPh license # (pharmacists)</span><input type="text" id="npLic" maxlength="20" autocapitalize="characters" spellcheck="false" style="max-width:150px;text-transform:uppercase;"></label>
-        <label><span>Login ID</span><input type="text" id="npLogin" autocapitalize="none" spellcheck="false" placeholder="e.g. maria.t"></label>
-        <label><span>Mobile number (for sign-in codes)</span><input type="tel" id="npPhone" placeholder="817-555-1234"></label>
-        <label><span>Temporary password</span><input type="text" id="npPass" class="mono" spellcheck="false"></label>
+    <div class="crumb" id="acCrumb"></div>
+    <div class="cw">
+      <div class="cmain">
+        <div class="npmsg ok" id="acMsg" role="status"></div>
+        <div id="acClient" hidden></div>
+        <div id="acPharm" hidden></div>
+        <div id="acUsers" hidden></div>
+        <div id="acBill" hidden></div>
+        <div class="card" id="impCard" style="margin-top:14px;display:none;">
+          <h2>Import From The Shared-Drive Version</h2>
+          <div class="hint">Brings in the old <b>nortex_reorder_data.json</b>: archive, open list and remembered distributors. Only adds; anything already here is left as it is, so it’s safe to run twice.</div>
+          <div class="toolbar" style="margin-top:10px;"><select id="impStore" class="btn2"></select><input type="file" id="impFile" accept=".json"><button class="btn" id="impGo">Import</button></div>
+          <div class="hint" id="impMsg"></div>
+        </div>
       </div>
-      <label class="chk" style="margin-top:10px;"><input type="checkbox" id="npConsent" style="width:18px;height:18px;"> The employee has signed the <a href="https://ironledgerrx.com/sms-consent.html" target="_blank" rel="noopener">SMS consent form</a> for this mobile number (print it, have them sign, keep it on file).</label>
-      <div style="margin-top:8px;"><b class="hint">Pharmacies:</b><div id="npStores"></div></div>
-      <div style="margin-top:8px;"><b class="hint">Account type:</b> <select id="npType"></select> <span class="hint">sets the switches below; change any of them after</span></div>
-      <div style="margin-top:4px;"><b class="hint">May:</b><div id="npPerms"></div></div>
-      <div class="toolbar" style="margin-top:10px;"><button class="btn" id="npAdd">Add user</button> <button class="btn2" id="npGen">New temporary password</button></div>
-      <div id="npMsg" class="npmsg" role="status"></div>
-    </div>
-    <div class="card">
-      <h2>Pharmacies</h2>
-      <div id="ownStores"></div>
-      <div class="hint" style="margin-top:6px;">Licenses, identifiers, services and the Calendar switch are set by IronLedger. New pharmacies are added by IronLedger too.</div>
-    </div>
-    <div class="card">
-      <h2>Import From The Shared-Drive Version</h2>
-      <div class="hint">Brings in the old <b>nortex_reorder_data.json</b>: archive, open list and remembered distributors. Only adds; anything already here is left as it is, so it’s safe to run twice.</div>
-      <div class="toolbar" style="margin-top:10px;"><select id="impStore" class="btn2"></select><input type="file" id="impFile" accept=".json"><button class="btn" id="impGo">Import</button></div>
-      <div class="hint" id="impMsg"></div>
+      <aside class="cq card" id="acSide" aria-label="Next level"></aside>
     </div>
     <div style="margin:22px 0 8px;font-weight:600;color:var(--muted);text-transform:uppercase;font-size:12px;letter-spacing:.06em;">Tools</div>
     <div class="card" style="display:none;">
@@ -622,7 +622,6 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
       </ol>
       <div class="hint">Barcode scanning is for computers with a USB barcode scanner: click in the search box and scan the bottle or box.</div>
     </div>
-    </div><!-- #ownPharmView -->
     </div><!-- #ownBody -->
   </section>
 </main>

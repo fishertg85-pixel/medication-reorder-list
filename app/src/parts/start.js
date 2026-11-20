@@ -41,7 +41,6 @@ setInterval(async () => {
   showLogin(`Signed out after ${IDLE_MIN} minutes without use.`);
 }, 1000);
 if('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
-$('npPass').value = genTemp();
 docsInit();
 
 (async function start(){

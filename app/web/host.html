@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.amazonaws.com http://localhost:8790; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
-<title>IronLedger · Host</title>
+<title>IronLedger · Employee portal</title>
 <link rel="icon" href="mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="brand.css">
+<link rel="stylesheet" href="lockup.css">
 <link rel="stylesheet" href="pharm_panels.css">
 <link rel="stylesheet" href="suite.css">
-<style>.tabs{display:flex;gap:4px;margin:12px 0;border-bottom:2px solid var(--line);}.tabs button{background:none;border:0;border-bottom:3px solid transparent;margin-bottom:-2px;padding:9px 16px;font:inherit;font-weight:600;color:var(--muted);cursor:pointer;}.tabs button.on{color:var(--text);border-bottom-color:var(--accent);}[data-pane][hidden]{display:none;}</style>
 <style>
   .wrap { max-width: min(1700px, 100%); }
   .gate { max-width: 400px; margin: 60px auto; }
@@ -56,13 +56,6 @@
     .ucell.uname, .ucell.acts { grid-column: 1 / -1; } .ucell.acts { text-align: left; } .ucell.copycell:empty { display: none; }
     .ucell.uname, .ucell.mono { white-space: normal; }
   }
-  .crumb { font-size: 14px; margin: 0 0 10px; color: var(--muted); } .crumb a, .crumb button.lk { background: none; border: 0; padding: 0; min-height: 0; color: var(--accent); cursor: pointer; font: inherit; text-decoration: underline; } .crumb b { color: var(--ink); }
-  .cw { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
-  .cq { position: sticky; top: 8px; max-height: calc(100vh - 24px); overflow: auto; } .cqh { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; } .cqh h2 { margin: 0; }
-  #qFind { width: 100%; box-sizing: border-box; margin-bottom: 8px; font: inherit; border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; background: var(--bg); color: var(--ink); }
-  .qrow { display: block; width: 100%; text-align: left; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--ink); padding: 7px 10px; margin-bottom: 6px; cursor: pointer; min-height: 0; }
-  .qrow b { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .qrow span { font-size: 12px; color: var(--muted); } .qrow.on { border-color: var(--accent); background: var(--accent-soft); } .qrow:hover { border-color: var(--accent); }
-  @media (max-width: 1100px) { .cw { grid-template-columns: 1fr; } .cq { position: static; max-height: none; order: -1; } }
   .modal { position: fixed; inset: 0; background: rgba(10, 20, 35, .55); z-index: 100; display: flex; align-items: flex-start; justify-content: center; padding: 3vh 2vw; overflow: auto; } .modal[hidden] { display: none; }
   .mbox { background: var(--bg); border-radius: 10px; width: min(1500px, 96vw); padding: 12px 14px 4px; box-shadow: 0 16px 48px rgba(0, 0, 0, .4); } .mhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .bgrid { display: grid; gap: 8px; } .brow { display: grid; grid-template-columns: minmax(160px, 1.4fr) repeat(4, minmax(90px, 1fr)); gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; text-align: left; font: inherit; color: var(--ink); width: 100%; } .brow:hover { border-color: var(--accent); } .brow .bad { color: var(--bad); font-weight: 700; } .brow em { font-style: normal; color: var(--muted); font-size: 12px; display: block; }
@@ -105,15 +98,15 @@
 </head>
 <body>
 <header class="topbar"><div class="in">
-  <span class="brand"><img src="mark.svg" alt=""><span class="wm">Iron<b>Ledger</b></span></span>
-  <span class="tag" style="background:transparent;color:var(--topbar-dim);margin-left:auto">Host</span>
+  <span class="il-lock"><img src="mark.svg" alt=""><span class="wm">Iron<b>Ledger</b></span></span>
+  <span class="tag" style="background:transparent;color:var(--topbar-dim);margin-left:auto">IronLedger employee portal</span>
 </div></header>
 
 <main class="wrap">
   <!-- sign in: Login ID + password, then the text code -->
   <section id="gSign" class="card gate" style="display:none">
-    <h1>Host sign-in</h1>
-    <div class="hint">For the IronLedger host login only.</div>
+    <h1>Employee portal</h1>
+    <div class="hint">For IronLedger employees only.</div>
     <div id="sStart">
       <label class="f">Login ID<input type="text" id="sUser" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="32"></label>
       <label class="f">Password<input type="password" id="sPass" autocomplete="current-password" maxlength="256"></label>
@@ -136,7 +129,7 @@
   <!-- re-enter password: the page locks after 5 minutes without activity -->
   <section id="gLock" class="card gate" style="display:none">
     <h1>Locked</h1>
-    <div class="hint">Enter your password to open the host page.</div>
+    <div class="hint">Enter your password to open the portal.</div>
     <label class="f">Password<input type="password" id="lPass" autocomplete="current-password" maxlength="256"></label>
     <div class="row"><button class="btn" id="lGo">Open</button><button class="btn2" id="lOut">Sign out</button></div>
     <div class="msg" id="lMsg"></div>
@@ -152,67 +145,25 @@
       <button class="btn2 small" id="bOut">Sign out</button>
     </div>
     <div class="pass" id="passBox"></div>
-    <nav class="tabs" id="hTabs" role="tablist">
-      <button type="button" data-tab="clients" class="on">Clients</button><button type="button" data-tab="users">Users</button><button type="button" data-tab="billing">Billing</button>
-    </nav>
-
-    <div data-pane="clients">
-    <div class="crumb" id="crumb"></div>
+    <div class="dfound"><input type="text" class="dsearch" id="gFind" placeholder="Find a client, pharmacy or person" autocomplete="off" maxlength="60" aria-label="Find a client, pharmacy or person"><div class="hits" id="gHits" hidden></div></div>
+    <div class="crumb" id="crumb" style="margin-top:12px"></div>
     <div class="cw">
       <div class="cmain">
         <div class="msg ok" id="clientMsg" role="status" style="margin:0 0 8px"></div>
-        <div id="cview"><div class="hint">Pick a client from the list on the right, or add one.</div></div>
-        <div id="pview"></div>
+        <div id="vNew"></div>
+        <div id="vClient" hidden></div>
+        <div id="vPharm" hidden></div>
+        <div id="vUsers" hidden></div>
+        <div id="vBill" hidden></div>
+        <section class="card" id="impCard" style="margin-top:14px">
+          <h2>Import a pharmacy's old reorder file</h2>
+          <div class="hint">The <span class="mono">nortex_reorder_data.json</span> file from the shared-drive version: open orders, archive and remembered items.
+            It only adds. Nothing already in the cloud is changed or removed, and running it twice adds nothing twice.</div>
+          <div class="row"><select id="impStore"></select><input type="file" id="impFile" accept=".json,application/json"><button class="btn" id="impGo">Import</button></div>
+          <div class="msg ok" id="impMsg"></div>
+        </section>
       </div>
-      <aside class="cq card" aria-label="Clients">
-        <div class="cqh"><h2>Clients</h2><button type="button" class="btn small" id="qNew">Add client</button></div>
-        <input type="text" id="qFind" placeholder="Find a client or pharmacy" autocomplete="off" maxlength="60">
-        <div id="cqueue"><div class="hint">Loading…</div></div>
-      </aside>
-    </div>
-    <section class="card" id="reviewCard" hidden>
-      <h2 id="reviewTitle">Rep drafts waiting for review</h2>
-      <div class="hint" style="margin-bottom:8px">A rep drafts changes for the pharmacies assigned to them; nothing is applied until a supervisor approves it. Services, the Calendar switch and DEA checks are never drafted.</div>
-      <div id="reviews"></div><div id="repAssign"></div>
-    </section>
-    <section class="card">
-      <h2>Import a pharmacy's old reorder file</h2>
-      <div class="hint">The <span class="mono">nortex_reorder_data.json</span> file from the shared-drive version: open orders, archive and remembered items.
-        It only adds. Nothing already in the cloud is changed or removed, and running it twice adds nothing twice.</div>
-      <div class="row"><select id="impStore"></select><input type="file" id="impFile" accept=".json,application/json"><button class="btn" id="impGo">Import</button></div>
-      <div class="msg ok" id="impMsg"></div>
-    </section>
-    </div>
-
-    <div data-pane="users" hidden>
-    <section class="card">
-      <h2>Users</h2>
-      <div class="hint" style="margin-bottom:8px">Change a user’s pharmacies or privileges, then press <b>Update</b> on that user to save. Resetting a password signs that person out everywhere.</div>
-      <div class="msg ok" id="peopleMsg" role="status" style="margin:0 0 8px"></div>
-      <div id="people"><div class="hint">Loading…</div></div>
-    </section>
-
-    <section class="card">
-      <h2>Add a user</h2>
-      <div class="grid2">
-        <label class="f">Full name<input type="text" id="nName" maxlength="120"></label>
-        <label class="f">Login ID<input type="text" id="nLogin" autocapitalize="none" spellcheck="false" maxlength="32"></label>
-        <label class="f">Mobile number<input type="tel" id="nPhone" maxlength="20"></label>
-        <label class="f">Temporary password<input type="text" id="nPass" class="mono" maxlength="64"></label>
-      </div>
-      <div style="margin-top:10px"><b style="font-size:14px">Pharmacies</b><div id="nStores"></div></div>
-      <div style="margin-top:10px"><b style="font-size:14px">Can</b><div id="nPerms"></div></div>
-      <label class="chk" style="margin-top:14px"><input type="checkbox" id="nConsent"> They signed the SMS consent form for this mobile number.</label>
-      <div class="row"><button class="btn" id="nAdd">Add user</button></div>
-    </section>
-    </div>
-
-    <div data-pane="billing" hidden>
-    <section class="card">
-      <h2>Billing</h2>
-      <div class="hint" style="margin-bottom:8px">Every client at a glance. Open a client to add or update invoices. Only the client’s own Account Owner (read only) and IronLedger can see a client’s billing.</div>
-      <div id="billAll"><div class="hint">Open this tab to load.</div></div>
-    </section>
+      <aside class="cq card" aria-label="Next level" id="side"></aside>
     </div>
   </div>
 </main>
@@ -222,6 +173,7 @@
 <script src="layout_engine.js"></script>
 <script src="pharm_panels.js"></script>
 <script src="client_panels.js"></script>
+<script src="drill.js"></script>
 <script src="host.js"></script>
 </body>
 </html>

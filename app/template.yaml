@@ -94,6 +94,8 @@ Resources:
         SnsRegion: !Ref AWS::Region
       SmsAuthenticationMessage: 'IronLedger: Your NorTex Reorder sign-in code is {####}. Do not share this code. Reply STOP to opt out.'
       SmsVerificationMessage: 'IronLedger: Your NorTex Reorder verification code is {####}. Do not share this code. Reply STOP to opt out.'
+      LambdaConfig:
+        PreAuthentication: !GetAtt PortalGateFunction.Arn
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true
         InviteMessageTemplate:
@@ -129,6 +131,69 @@ Resources:
       IdTokenValidity: 1
       RefreshTokenValidity: 30
       TokenValidityUnits: { AccessToken: hours, IdToken: hours, RefreshToken: days }
+
+  # The IronLedger employee portal signs in through its own app client, in the same user pool: the same Login ID and password, but a different door.
+  # The pre-sign-in check (PortalGateFunction) lets only IronLedger employee logins through this door, before any texted code is sent.
+  PortalClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub '${AppName}-portal'
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      PreventUserExistenceErrors: ENABLED
+      WriteAttributes: [name]
+      EnableTokenRevocation: true
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      TokenValidityUnits: { AccessToken: hours, IdToken: hours, RefreshToken: days }
+
+  PortalGateRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: gate
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem]
+                Resource: !GetAtt MainTable.Arn
+              # the pool and the gate refer to each other, so the pool can't be named here; this only reads an app client's name
+              - Effect: Allow
+                Action: [cognito-idp:DescribeUserPoolClient]
+                Resource: '*'
+
+  PortalGateFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AppName}-portal-gate'
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Code: ./lambda
+      MemorySize: 256
+      Timeout: 10
+      Role: !GetAtt PortalGateRole.Arn
+      Environment:
+        Variables:
+          MAIN_TABLE: !Ref MainTable
+
+  PortalGateInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PortalGateFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt UserPool.Arn
 
   # ------------------------------------------------------------------ API
   ApiRole:
@@ -185,6 +250,7 @@ Resources:
           SUITE_USERS: 'NTX1:tfisher85,mferreiro,eoviedo,mamare;TEST1:tfisher85'   # Calendar + Documents: only these logins, at this pharmacy ID (STORE:login,login;STORE2:...)
           ARCHIVE_TABLE: !Ref ArchiveTable
           USER_POOL_ID: !Ref UserPool
+          PORTAL_CLIENT_ID: !Ref PortalClient
           DOCS_BUCKET: !Ref DocsBucket
           PIN_SECRET_ARN: !Ref PinSecret
 
@@ -214,7 +280,7 @@ Resources:
       IdentitySource: ['$request.header.Authorization']
       JwtConfiguration:
         Issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}'
-        Audience: [!Ref UserPoolClient]
+        Audience: [!Ref UserPoolClient, !Ref PortalClient]
 
   ApiIntegration:
     Type: AWS::ApiGatewayV2::Integration
@@ -370,6 +436,7 @@ Outputs:
   ApiUrl:         { Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com' }
   UserPoolId:     { Value: !Ref UserPool }
   ClientId:       { Value: !Ref UserPoolClient }
+  PortalClientId: { Value: !Ref PortalClient }
   SiteBucketName: { Value: !Ref SiteBucket }
   DocsBucketName: { Value: !Ref DocsBucket }
   DistributionId: { Value: !Ref Distribution }

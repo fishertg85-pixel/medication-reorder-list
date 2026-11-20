@@ -1,0 +1,6 @@
+/* The IronLedger logo + name: ONE lockup, used everywhere (sign-in, suite header, host page, legal pages, website). Change it here only. */
+.il-lock{display:inline-flex;align-items:center;gap:10px;line-height:1;white-space:nowrap;text-decoration:none;color:inherit;flex:none;}
+.il-lock img{width:36px;height:36px;border-radius:8px;flex:none;display:block;box-shadow:0 0 0 1px rgba(133,196,228,.35);}
+.il-lock .wm{font-family:inherit;font-weight:700;font-size:22px;line-height:1;letter-spacing:.2px;}
+.il-lock .wm b{font-weight:700;color:var(--accent,#85c4e4);}
+.topbar .il-lock{color:var(--topbar-ink,inherit);} .topbar .il-lock .wm b{color:var(--topbar-dim,var(--accent,#85c4e4));}

@@ -257,43 +257,23 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
       <div class="li-msg" id="ownLockMsg"></div>
     </div>
     <div id="ownBody" style="display:none;">
-    <div class="toolbar" id="ownSwitch" style="display:none;margin-bottom:8px;"><button class="btn small" id="ownSwPharm">Pharmacy and users</button><button class="btn2 small" id="ownSwClient">Client</button></div>
-    <div id="ownClientView" style="display:none;"></div>
-    <div id="ownPharmView">
     <div class="banner info" id="passBox"></div>
-    <div class="card">
-      <h2>Users</h2>
-      <div class="hint" style="margin-bottom:8px;">Change a user’s privileges, then press <b>Update</b> on that user to save. <b>Undo</b> puts them back.</div>
-      <div id="ownPeopleMsg" class="npmsg ok" role="status"></div>
-      <div id="ownPeople"></div>
-    </div>
-    <div class="card">
-      <h2>Add A User</h2>
-      <div class="formgrid">
-        <label><span>Name</span><input type="text" id="npName"></label>
-        <label><span>Initials</span><input type="text" id="npIni" maxlength="3" autocapitalize="characters" spellcheck="false" style="max-width:90px;text-transform:uppercase;" placeholder="e.g. TF"></label>
-        <label><span>RPh license # (pharmacists)</span><input type="text" id="npLic" maxlength="20" autocapitalize="characters" spellcheck="false" style="max-width:150px;text-transform:uppercase;"></label>
-        <label><span>Login ID</span><input type="text" id="npLogin" autocapitalize="none" spellcheck="false" placeholder="e.g. maria.t"></label>
-        <label><span>Mobile number (for sign-in codes)</span><input type="tel" id="npPhone" placeholder="817-555-1234"></label>
-        <label><span>Temporary password</span><input type="text" id="npPass" class="mono" spellcheck="false"></label>
+    <div class="crumb" id="acCrumb"></div>
+    <div class="cw">
+      <div class="cmain">
+        <div class="npmsg ok" id="acMsg" role="status"></div>
+        <div id="acClient" hidden></div>
+        <div id="acPharm" hidden></div>
+        <div id="acUsers" hidden></div>
+        <div id="acBill" hidden></div>
+        <div class="card" id="impCard" style="margin-top:14px;display:none;">
+          <h2>Import From The Shared-Drive Version</h2>
+          <div class="hint">Brings in the old <b>nortex_reorder_data.json</b>: archive, open list and remembered distributors. Only adds; anything already here is left as it is, so it’s safe to run twice.</div>
+          <div class="toolbar" style="margin-top:10px;"><select id="impStore" class="btn2"></select><input type="file" id="impFile" accept=".json"><button class="btn" id="impGo">Import</button></div>
+          <div class="hint" id="impMsg"></div>
+        </div>
       </div>
-      <label class="chk" style="margin-top:10px;"><input type="checkbox" id="npConsent" style="width:18px;height:18px;"> The employee has signed the <a href="https://ironledgerrx.com/sms-consent.html" target="_blank" rel="noopener">SMS consent form</a> for this mobile number (print it, have them sign, keep it on file).</label>
-      <div style="margin-top:8px;"><b class="hint">Pharmacies:</b><div id="npStores"></div></div>
-      <div style="margin-top:8px;"><b class="hint">Account type:</b> <select id="npType"></select> <span class="hint">sets the switches below; change any of them after</span></div>
-      <div style="margin-top:4px;"><b class="hint">May:</b><div id="npPerms"></div></div>
-      <div class="toolbar" style="margin-top:10px;"><button class="btn" id="npAdd">Add user</button> <button class="btn2" id="npGen">New temporary password</button></div>
-      <div id="npMsg" class="npmsg" role="status"></div>
-    </div>
-    <div class="card">
-      <h2>Pharmacies</h2>
-      <div id="ownStores"></div>
-      <div class="hint" style="margin-top:6px;">Licenses, identifiers, services and the Calendar switch are set by IronLedger. New pharmacies are added by IronLedger too.</div>
-    </div>
-    <div class="card">
-      <h2>Import From The Shared-Drive Version</h2>
-      <div class="hint">Brings in the old <b>nortex_reorder_data.json</b>: archive, open list and remembered distributors. Only adds; anything already here is left as it is, so it’s safe to run twice.</div>
-      <div class="toolbar" style="margin-top:10px;"><select id="impStore" class="btn2"></select><input type="file" id="impFile" accept=".json"><button class="btn" id="impGo">Import</button></div>
-      <div class="hint" id="impMsg"></div>
+      <aside class="cq card" id="acSide" aria-label="Next level"></aside>
     </div>
     <div style="margin:22px 0 8px;font-weight:600;color:var(--muted);text-transform:uppercase;font-size:12px;letter-spacing:.06em;">Tools</div>
     <div class="card" style="display:none;">
@@ -320,7 +300,6 @@ cut('  <!-- ======================= SETUP ======================= -->', '</main>
       </ol>
       <div class="hint">Barcode scanning is for computers with a USB barcode scanner: click in the search box and scan the bottle or box.</div>
     </div>
-    </div><!-- #ownPharmView -->
     </div><!-- #ownBody -->
   </section>
 ''')
@@ -342,7 +321,7 @@ rep('''/* ======================================================================
    Drug search: NLM RxTerms / RxNav live, FDA NDC Directory backup. DailyMed links open labels.
    ======================================================================= */''')
 cut('/* ---------------- shared state ---------------- */', '/* ---------------- drug search:', open(P + 'state.js').read() + '\n' + open(P + 'login.js').read() + '\n')
-cut('/* ---------------- safety net:', '</script>', open(P + 'layout_engine.js').read() + '\n' + open(P + 'pharm_panels.js').read() + '\n' + open(P + 'client_panels.js').read() + '\n' + open(P + 'owner.js').read() + '\n' + open(P + 'calendar.js').read() + '\n' + open(P + 'documents_panels.js').read() + '\n' + open(P + 'rx.js').read() + '\n' + open(P + 'start.js').read())
+cut('/* ---------------- safety net:', '</script>', open(P + 'layout_engine.js').read() + '\n' + open(P + 'pharm_panels.js').read() + '\n' + open(P + 'client_panels.js').read() + '\n' + open(P + 'drill.js').read() + '\n' + open(P + 'owner.js').read() + '\n' + open(P + 'calendar.js').read() + '\n' + open(P + 'documents_panels.js').read() + '\n' + open(P + 'rx.js').read() + '\n' + open(P + 'start.js').read())
 # remove the old tabs/start (now in start.js) — it was after the safety-net block, so already cut
 
 # ---------- list rows: who added it, labels for phone layout, remove only with permission
@@ -423,13 +402,13 @@ rep('</style>\n</head>', """</style>
   td.chk input{accent-color:var(--ok);}
   #listBody tr.is-ordered td{background:color-mix(in srgb, var(--ok) 14%, var(--panel)) !important;}
   .card,.li-card{box-shadow:var(--shadow);}
-  .li-il{display:flex;align-items:center;gap:10px;margin-bottom:14px;color:var(--text);font-size:20px;font-weight:700;letter-spacing:.2px;}.li-il b{color:var(--accent);}
-  .li-il img{width:32px;height:32px;border-radius:7px;}
+  .li-il{margin-bottom:14px;color:var(--text);}
   .brandfoot img{height:20px;width:20px;border-radius:5px;}
 </style>
+<link rel="stylesheet" href="lockup.css">
 <link rel="stylesheet" href="suite.css">
 </head>""")
-rep('  <img id="storeLogo" alt="" style="display:none;">\n', '  <img class="ilmark" src="mark.svg" alt="" width="36" height="36"><span class="ilword">Iron<b>Ledger</b></span>\n  <img id="storeLogo" alt="" style="display:none;">\n')
+rep('  <img id="storeLogo" alt="" style="display:none;">\n', '  <span class="il-lock il-lock-sep"><img src="mark.svg" alt=""><span class="wm">Iron<b>Ledger</b></span></span>\n  <img id="storeLogo" alt="" style="display:none;">\n')
 rep('  <div class="spacer"></div>\n  <select class="hsel" id="storeSel"', '  <button class="hbtn" id="acctBtn" style="display:none;" title="Pharmacy account details, people and backup">Account</button>\n  <div class="spacer"></div>\n  <select class="hsel" id="storeSel"')
 rep('''  $('dmHeader').textContent = netState === 'offline' ? 'Drug search: no internet'
     : netState === 'down' ? 'Drug search: NLM not answering' : 'Drug search: NLM RxTerms / RxNav';''', "  /* the header carries no drug-search status line */")
@@ -438,7 +417,7 @@ rep('<meta name="apple-mobile-web-app-title" content="Reorder">', '<meta name="a
 rep('<link rel="icon" href="icon-192.png">', '<link rel="icon" href="mark.svg" type="image/svg+xml">\n<link rel="alternate icon" href="icon-192.png">')
 rep("""  <div class="li-card">
     <div id="liBrand"></div>""", """  <div class="li-card">
-    <div class="li-il"><img src="mark.svg" alt=""><span>Iron<b>Ledger</b></span></div>
+    <div class="li-il"><span class="il-lock"><img src="mark.svg" alt=""><span class="wm">Iron<b>Ledger</b></span></span></div>
     <div id="liBrand"></div>""")
 rep('<img id="ilLogo" src="ironledger-logo.png" alt="" hidden>', '<img id="ilLogo" src="mark.svg" alt="" hidden>')
 
@@ -450,6 +429,7 @@ open(OUT.replace('index.html', 'layout_engine.js'), 'w').write(open(P + 'layout_
 open(OUT.replace('index.html', 'pharm_panels.js'), 'w').write(open(P + 'pharm_panels.js').read())
 open(OUT.replace('index.html', 'documents_panels.js'), 'w').write(open(P + 'documents_panels.js').read())
 open(OUT.replace('index.html', 'client_panels.js'), 'w').write(open(P + 'client_panels.js').read())          # the host page uses the same card and layout
+open(OUT.replace('index.html', 'drill.js'), 'w').write(open(P + 'drill.js').read())                          # ...and the same Users / Billing views
 # ---------- move the app script out of the page so a strict Content-Security-Policy can block injected scripts
 import hashlib, base64 as b64
 m = re.search(r'<script>\n(/\* =+\n   NorTex Reorder List \(cloud\)[\s\S]*?)</script>', s)

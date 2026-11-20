@@ -71,18 +71,26 @@ TEXTED SIGN-IN CODES OFF / ON
   The choice is kept across normal updates (plain 'bash deploy.sh') until you change it.
   Temporary passwords are never texted: they are shown on screen to whoever reset them.
 
-HOST PAGE (no CloudShell needed)
-  Once:  bash host.sh make-host neo "Thomas Fisher" 8175551234    (prints a temporary password)
-  Then open  <web address>/host.html  and sign in with that Login ID and password (no Pharmacy ID),
-  then the texted code. It is a separate gate: only the host login opens it, it asks for the password
-  again on reload and locks after 5 minutes idle. From there: reset any password (including the
-  Account Owner's), change mobile numbers, switch logins on/off, add or delete people, add
-  pharmacies, assign people to pharmacies, and import a pharmacy's old nortex_reorder_data.json. The host sees no pharmacy's list unless the Account Owner allows it.
-  If you ever lose the host password, run the make-host command again for a new temporary one.
-  SETTING UP A PHARMACY: the host page has a "Set up a new pharmacy" card. Only the host sets a pharmacy's
-  license, NPI, DEA, NCPDP, Services provided and Calendar switch; the pharmacy's Account Owner sees them
-  but cannot change them or add a pharmacy. The Account Owner edits name, address, phone, fax, email,
-  time zone and hours. The host page needs a desktop or tablet screen.
+IRONLEDGER EMPLOYEE PORTAL (no CloudShell needed)
+  Once for a new employee:  bash host.sh make-host neo "Thomas Fisher" 8175551234    (prints a temporary password)
+  For a login that already exists (e.g. your own pharmacy login):  bash host.sh make-host tfisher85
+  (it keeps its ID and password; the same login then also opens the portal).
+  Open  <web address>/host.html  and sign in with the Login ID and password (no Pharmacy ID), then the texted code.
+  The portal has its own sign-in entry (a separate Cognito app client, same user pool). A pre-sign-in check
+  refuses a pharmacy login there exactly like a wrong password ("Incorrect ID or password.") before any text code is sent.
+  It asks for the password again on reload and locks after 5 minutes idle. Employee logins never appear in a pharmacy's people list.
+  Layout: start page = new-client form in the middle, client list on the right. Open a client: its account in the
+  middle and its Profiles (pharmacies, "Add pharmacy") on the right. Open a pharmacy: its account in the middle and
+  Users / Billing buttons on the right. One search bar at the top finds clients, pharmacies and people
+  (name, login, employee ID). The breadcrumb goes back up. Users and Billing show ONE pharmacy at a time.
+  The pharmacy page has "Who can manage users" switches (Account Owner, PIC, Client Account Owner).
+  Pharmacies with no client are listed on the start page under "Not linked to a client yet" so they can be opened and linked.
+  If you ever lose the password, run the make-host command again for a new temporary one.
+  SETTING UP A PHARMACY: only the portal sets a pharmacy's license, NPI, DEA, NCPDP, Services provided and Calendar switch;
+  the pharmacy's Account Owner sees them but cannot change them or add a pharmacy. The Account Owner edits name, address,
+  phone, fax, email, time zone and hours. The portal needs a desktop or tablet screen.
+  AFTER EACH deploy.sh: sign in on the portal with a PHARMACY login. It must say "Incorrect ID or password." and no text arrives.
+  If a text arrives, the pre-sign-in check is not attached: re-run bash deploy.sh and tell your developer.
 
 HOST TOOLS (CloudShell, in the same folder)
   bash host.sh people                    bash host.sh reset-password maria.t

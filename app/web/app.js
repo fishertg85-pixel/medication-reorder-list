@@ -129,7 +129,7 @@ async function api(method, path, body, retried){
   const j = await r.json().catch(() => ({}));
   if(r.status === 423 && j.locked){ ownerLockNow('Locked after 5 minutes without activity. Re-enter your password.', true); const e = new Error(j.error); e.auth = true; e.locked = true; throw e; }
   if(!r.ok){ const e = new Error(j.error || j.message || ('Server answered ' + r.status)); e.status = r.status; if(j.pin) e.pin = j.pin; throw e; }
-  if(/^\/(owner|client)\/|\/import$/.test(path)) OWN_UNTIL = Date.now() + OWN_MS;         // using the tab keeps it open
+  if(/^\/(owner|client|pharmacy|billing)\/|\/import$/.test(path)) OWN_UNTIL = Date.now() + OWN_MS;         // using the tab keeps it open
   return j;
 }
 function setOnline(ok){ const b = $('offlineBanner'); if(b) b.style.display = ok ? 'none' : 'block'; }
@@ -414,7 +414,7 @@ async function signOut(quiet){
   if(SESSION && SESSION.refresh) cog('RevokeToken', {ClientId:CFG.clientId, Token:SESSION.refresh}).catch(() => {});
   SESSION = null; saveSession();
   if(typeof TEMPS !== 'undefined') for(const k in TEMPS) delete TEMPS[k];
-  if(typeof STAGED !== 'undefined') for(const k in STAGED) delete STAGED[k];       // copied temporary passwords go with the session
+  if(typeof AC_ST !== 'undefined'){ AC_ST.open = null; for(const k in AC_ST.staged) delete AC_ST.staged[k]; }       // copied temporary passwords go with the session
   if(!quiet){ $('liUser').value = ''; showLogin('Signed out. The next person can sign in.'); }   // shared computers: leave nobody's Login ID behind
 }
 $('signOutBtn').onclick = () => { if(confirm('Sign out of the Reorder List on this device?')) signOut(); };
@@ -1239,13 +1239,14 @@ function layoutGridHtml(page, L, body){
 /* ---------------- pharmacy setup page (host) and pharmacy account page (Account Owner): panels and their layout ----------------
    Built on the layout engine (layout_engine.js). PHARM_LAYOUT is set once by Neo with the layout editor and is the same for everyone. */
 const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
-const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['own', 'Account Owner And PIC'], ['act', 'Modules And Save']];
-const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,50],"contact":[5,1,4,36],"hrs":[9,1,4,50],"reg":[5,37,4,60],"own":[1,51,4,34],"act":[9,51,4,40],"svc":[1,98,12,19]}};
+const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['own', 'Account Owner And PIC'], ['mgr', 'Who Can Manage Users'], ['act', 'Modules And Save']];
+const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,50],"contact":[5,1,4,36],"hrs":[9,1,4,50],"reg":[5,37,4,60],"own":[1,51,4,34],"mgr":[1,85,4,16],"act":[9,51,4,40],"svc":[1,102,12,19]}};
 const PHARM_PAGE = { id: 'pharm', title: 'Host Pharmacy Setup Page', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
   render: (sample, panels) => pharmCardHtml(sample, { logo: '', holder: 'Pat Owner (owner)', host: true, clients: [{ id: 'IL-000001', legalName: 'NorTex Holdings LLC', entityType: 'llc', ein: '12-3456789' }] }, { panels }) };
 // The Account Owner's version of the same page has its own layout (Neo arranges it separately in the layout editor: page key pharm_owner).
 const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,44],"contact":[5,1,4,35],"hrs":[9,1,4,55],"reg":[5,36,4,50],"own":[1,45,4,26],"act":[9,56,4,25],"svc":[1,87,12,16]}};
-const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_PANELS, layout: PHARM_OWNER_LAYOUT,
+const PHARM_OWNER_PANELS = PHARM_PANELS.filter(p => p[0] !== 'mgr');      // the switches are IronLedger's alone
+const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_OWNER_PANELS, layout: PHARM_OWNER_LAYOUT,
   render: (sample, panels) => pharmCardHtml(Object.assign({}, sample, { ein: '', einMasked: '••-•••4321' }), { logo: '', holder: 'Pat Owner (owner)' }, { panels }) };
 const pharmLayoutOk = L => layoutOk(PHARM_PAGE, L);
 const pharmLayout = () => pharmLayoutOk(PHARM_LAYOUT) ? PHARM_LAYOUT : null;
@@ -1375,11 +1376,11 @@ const PHARM_BODY = {
       <div class="pid">Pharmacist in charge: <b>${esc(picTxt)}</b></div>
       ${I.admins.length ? `<div class="pid">Super user: <b>${esc(I.admins.map(ownLabel).join(', '))}</b></div>` : ''}`;
     if(!c.host || c.rep) return `<div class="pfields" style="display:block">${head}<div class="lockhint">${LOCKED}</div></div>`;
-    const pool = (c.people || []).filter(u => !u.host && !u.disabled), clientOwner = (c.people || []).find(u => u.ownerClients && u.ownerClients[s.clientId] === true);
-    const pharmacists = (c.people || []).filter(u => !u.host && (u.acctType === 'pharmacist' || u.acctType === 'pic') && u.stores && u.stores[s.id] === true);
+    const pool = (c.people || []).filter(u => !u.employeeOnly && !u.disabled), clientOwner = (c.people || []).find(u => u.ownerClients && u.ownerClients[s.clientId] === true);
+    const pharmacists = (c.people || []).filter(u => !u.employeeOnly && (u.acctType === 'pharmacist' || u.acctType === 'pic') && u.stores && u.stores[s.id] === true);
     return `<div class="pfields" style="display:block">${head}
       <div class="ownbox"><b class="clh">Change the Account Owner</b>
-        <label><span>Pick a login</span><select data-ownpick><option value="">—</option>${clientOwner ? `<option value="@client">Same as the client’s Account Owner: ${esc(ownLabel(clientOwner))}</option>` : ''}${pool.map(u => `<option value="${esc(u.login)}">${esc(ownLabel(u))}</option>`).join('')}<option value="@new">New login…</option></select></label>
+        <label><span>Pick a login</span><select data-ownpick><option value="">—</option>${I.owner ? '<option value="@none">No Account Owner (remove)</option>' : ''}${clientOwner ? `<option value="@client">Same as the client’s Account Owner: ${esc(ownLabel(clientOwner))}</option>` : ''}${pool.map(u => `<option value="${esc(u.login)}">${esc(ownLabel(u))}</option>`).join('')}<option value="@new">New login…</option></select></label>
         <div data-ownnew hidden class="pfields"><label><span>Full name</span><input type="text" data-on="name" maxlength="120"></label><label><span>Login ID</span><input type="text" data-on="login" maxlength="32" autocapitalize="none" spellcheck="false"></label>
           <label><span>Mobile number</span><input type="tel" data-on="phone" maxlength="20"></label><label><span>RPh license # (if a pharmacist)</span><input type="text" data-on="license" maxlength="20"></label>
           <label class="chk" style="grid-column:1/-1"><input type="checkbox" data-on="consent"> They signed the SMS consent form for this mobile number.</label></div>
@@ -1393,6 +1394,11 @@ const PHARM_BODY = {
         <div class="hint">The PIC must be a licensed pharmacist with an RPh license number on their login. Only IronLedger records or changes this; each change is kept in the history.</div>
         <button type="button" class="btn2 small" data-picsave="${esc(s.id)}">Save</button></div></div>`;
   },
+  mgr: (s, c) => c.isNew ? '<div class="pfields" style="display:block"><div class="hint">Set after the pharmacy is created.</div></div>'
+    : `<div class="pfields" style="display:block"><div class="hint" style="margin-bottom:6px">May add, change and remove people at this pharmacy. Never billing, the client page or ownership.</div>
+      <label class="chk">${sw('data-mgr="mgrOwner"', s.mgrOwner !== false)} Account Owner</label>
+      <label class="chk">${sw('data-mgr="mgrPic"', s.mgrPic !== false)} Pharmacist-in-Charge super user</label>
+      <label class="chk">${sw('data-mgr="mgrClient"', s.mgrClient === true)} Client Account Owner</label></div>`,
   act: (s, c) => `<div class="pfields"><div class="calsw">${c.host && !c.rep
         ? `<label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar</label> <span class="hint">(people also need the Calendar privilege)</span>`
         : `Calendar: <b>${s.calendar ? 'On' : 'Off'}</b>`}</div>
@@ -1454,7 +1460,8 @@ function pharmCardEvents(root, o){
       const card = osv.closest('.pcard'), pick = card.querySelector('[data-ownpick]').value, g = k => ((card.querySelector(`[data-on=${k}]`) || {}).value || '').trim();
       if(!pick){ alert('Pick who will be the Account Owner.'); return; }
       const body = { reason: (card.querySelector('[data-ownreason]') || {}).value || '' };
-      if(pick === '@client') body.sameAsClient = true;
+      if(pick === '@none') body.remove = true;
+      else if(pick === '@client') body.sameAsClient = true;
       else if(pick === '@new'){
         if(!g('name') || !g('login') || !g('phone')){ alert('Name, Login ID and mobile number are all needed.'); return; }
         if(!card.querySelector('[data-on=consent]').checked){ alert('Have them sign the SMS consent form first, then tick the box.'); return; }
@@ -1593,15 +1600,13 @@ function pharmCardEvents(root, o){
    (dev/build_layout_editor.py client) and is the same for everyone. Uses helpers from pharm_panels.js (stateSelect, entTypeSelect, ENT_TYPES, esc).
    A client is the bill-to account: the legal entity that pays, its EIN, addresses and contacts, and the generated IL- account number (the client's key;
    it never changes). Pharmacies belong to a client; each pharmacy also carries its own licensed entity (that EIN can differ). */
-const CLIENT_PANELS = [['ent', 'Client And Legal Entity'], ['addr', 'Addresses'], ['contact', 'Phone, Fax And Contacts'], ['own', 'Account Owner'], ['pharm', 'Pharmacies'], ['bill', 'Billing And Invoices'], ['act', 'Save']];
-const CLIENT_LAYOUT = {"v":2,"cols":12,"panels":{"ent":[1,1,4,30],"own":[1,31,4,24],"addr":[5,1,4,44],"contact":[9,1,4,44],"pharm":[1,56,4,28],"bill":[5,46,8,38],"act":[1,85,12,10]}};
+const CLIENT_PANELS = [['ent', 'Client And Legal Entity'], ['addr', 'Addresses'], ['contact', 'Phone, Fax And Contacts'], ['own', 'Account Owner'], ['act', 'Save']];
+const CLIENT_LAYOUT = {"v":2,"cols":12,"panels":{"ent":[1,1,6,30],"own":[1,31,6,24],"addr":[7,1,6,44],"contact":[1,56,12,24],"act":[1,81,12,10]}};
 const CLIENT_SAMPLE = {id:'IL-000001', legalName:'NorTex Holdings LLC', dba:'NorTex Pharmacy', entityType:'llc', ein:'12-3456789', address:'100 Main St', suite:'Suite 5', city:'Haslet', state:'TX', zip:'76052', billingSame:false, bAddress:'PO Box 12', bCity:'Haslet', bState:'TX', bZip:'76052', phone:'817-555-0100', fax:'817-555-0101',
   contacts:[{role:'relations', name:'Pat Owner', title:'Owner', email:'pat@example.com', phone:'817-555-0102'},{role:'billing', name:'Sam Books', title:'Bookkeeper', email:'sam@example.com', phone:''}], pharmacies:['NTX1','NTX2']};
 const CLIENT_PAGE = { id: 'client', title: 'Host Account (Client) Setup Page', panels: CLIENT_PANELS, layout: CLIENT_LAYOUT,
-  render: (_unused, panels) => clientCardHtml(CLIENT_SAMPLE, { host: true, billing: BILL_SAMPLE, people: [], stores: [{ id: 'NTX1', name: 'NorTex Pharmacy - Haslet', city: 'Haslet', state: 'TX' }, { id: 'NTX2', name: 'NorTex Pharmacy - Keller', city: 'Keller', state: 'TX' }] }, { panels }) };
+  render: (_unused, panels) => clientCardHtml(CLIENT_SAMPLE, { host: true, people: [], stores: [{ id: 'NTX1', name: 'NorTex Pharmacy - Haslet', city: 'Haslet', state: 'TX' }, { id: 'NTX2', name: 'NorTex Pharmacy - Keller', city: 'Keller', state: 'TX' }] }, { panels }) };
 const money = c => '$' + (c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const BILL_SAMPLE = { today: '2026-11-19', summary: { newThisMonth: { count: 1, cents: 14900 }, paidThisMonth: { count: 1, cents: 14900 }, unpaid: { count: 1, cents: 14900 }, delinquent: { count: 0, cents: 0 } },
-  invoices: [{ id: '2026-11-01_a1', number: 'IL-000001-202611-01', issued: '2026-11-01', due: '2026-11-15', cents: 14900, description: 'Compliance Calendar', status: 'paid', delinquent: false, paidOn: '2026-11-10' }, { id: '2026-12-01_b2', number: 'IL-000001-202612-01', issued: '2026-12-01', due: '2026-12-15', cents: 14900, description: 'Compliance Calendar', status: 'unpaid', delinquent: false }] };
 const CONTACT_ROLE_LABELS = { relations: 'Client relations', billing: 'Billing', other: 'Other' };
 const clientLocked = (k, cl, c) => !c.isNew && !!cl[k];                 // identity values already on file are locked until the host unlocks them with a reason
 const cfIn = (cl, k, l, c, o) => { o = o || {}; const lk = o.ident && clientLocked(k, cl, c);
@@ -1634,8 +1639,8 @@ const CLIENT_BODY = {
       <span data-ctcs='${esc(JSON.stringify(cl.contacts || []))}' hidden></span></div>`,
   own: (cl, c) => {
     const owner = (c.people || []).find(u => u.ownerClients && u.ownerClients[cl.id] === true);
-    const pool = (c.people || []).filter(u => !u.host && !u.disabled);
-    const head = c.isNew ? '' : `<div class="pid">Client Account Owner: <b>${owner ? esc(ownLabel(owner)) : 'Not set'}</b></div><div class="hint">Sees this client page (setup information, billing and invoices) behind a password step-up. Often the same person who owns the pharmacy.</div>`;
+    const pool = (c.people || []).filter(u => !u.employeeOnly && !u.disabled);
+    const head = c.isNew ? '' : `<div class="pid">Client Account Owner: <b>${owner ? esc(ownLabel(owner)) : 'Not set'}</b></div><div class="hint">Sees this client page and each pharmacy’s billing (read only) behind a password step-up. Often the same person who owns the pharmacy.</div>`;
     if(!c.host || c.ro) return `<div class="pfields" style="display:block">${head}${c.host ? '' : '<div class="lockhint">Set by IronLedger.</div>'}</div>`;
     return `<div class="pfields" style="display:block">${head}<div class="ownbox">${c.isNew ? '<b class="clh">Account Owner (optional now; can be set later)</b>' : '<b class="clh">Change the client’s Account Owner</b>'}
       <label><span>Pick a login</span><select data-cownpick><option value="">—</option>${pool.map(u => `<option value="${esc(u.login)}">${esc(ownLabel(u))}</option>`).join('')}<option value="@new">New login…</option></select></label>
@@ -1645,21 +1650,6 @@ const CLIENT_BODY = {
       ${!c.isNew && owner ? '<label><span>Reason for the change (required)</span><input type="text" data-cownreason maxlength="300"></label>' : ''}
       ${c.isNew ? '' : `<button type="button" class="btn2 small" data-cownsave="${esc(cl.id)}">Save Account Owner</button>`}</div></div>`;
   },
-  pharm: (cl, c) => { if(c.isNew) return '<div class="pfields" style="display:block"><div class="hint">Create the client first, then add its pharmacies here.</div></div>';
-    const rows = (cl.pharmacies || []).map(id => (c.stores || []).find(x => x.id === id) || { id }).map(s => { const I = ownInfo(s, c.people);
-      return `<button type="button" class="clrow2" data-openpharm="${esc(s.id)}"><b>${esc(s.id)}</b><span>${esc(s.name || '')}</span><span class="hint">${esc([s.city, s.state].filter(Boolean).join(', '))}</span><span class="hint">${I.owner ? esc(I.owner.name || I.owner.login) : 'No owner yet'}</span></button>`; }).join('');
-    return `<div class="pfields" style="display:block">${c.host && !c.ro ? `<button type="button" class="btn small" data-addpharm="${esc(cl.id)}">Add pharmacy</button>` : ''}
-      <div class="plist">${rows || '<div class="hint" style="margin-top:8px">No pharmacies yet.</div>'}</div></div>`; },
-  bill: (cl, c) => { const B = c.billing; if(c.isNew) return '<div class="pfields" style="display:block"><div class="hint">Invoices appear here once the client exists.</div></div>';
-    if(!B) return '<div class="pfields" style="display:block"><div class="hint">Loading…</div></div>';
-    const S = B.summary, tile = (l, x, cls) => `<div class="bt ${cls || ''}"><span>${l}</span><b>${x.count}</b><em>${money(x.cents)}</em></div>`;
-    const st = i => i.status === 'paid' ? `<span class="ust ok">Paid${i.paidOn ? ' ' + esc(i.paidOn) : ''}</span>` : i.status === 'void' ? '<span class="ust off">Void</span>' : i.delinquent ? '<span class="ust bad">Delinquent</span>' : '<span class="ust wait">Unpaid</span>';
-    const rows = B.invoices.map(i => `<tr><td>${esc(i.number)}</td><td>${esc(i.issued)}</td><td>${esc(i.due)}</td><td class="num">${money(i.cents)}</td><td>${esc(i.description)}</td><td>${st(i)}</td>${c.host && !c.ro ? `<td class="acts">${i.status !== 'paid' && i.status !== 'void' ? `<button type="button" class="btn2 small" data-invpaid="${esc(i.id)}">Mark paid</button> <button type="button" class="btn2 small" data-invvoid="${esc(i.id)}">Void</button>` : i.status === 'paid' ? `<button type="button" class="btn2 small" data-invunpaid="${esc(i.id)}">Undo</button>` : ''}</td>` : ''}</tr>`).join('');
-    return `<div class="pfields" style="display:block"><div class="btiles">${tile('New this month', S.newThisMonth)}${tile('Paid this month', S.paidThisMonth, 'ok')}${tile('Unpaid', S.unpaid)}${tile('Delinquent', S.delinquent, S.delinquent.count ? 'bad' : '')}</div>
-      <div class="tscroll"><table class="invt"><thead><tr><th>Invoice</th><th>Issued</th><th>Due</th><th class="num">Amount</th><th>For</th><th>Status</th>${c.host && !c.ro ? '<th></th>' : ''}</tr></thead><tbody>${rows || `<tr><td colspan="7" class="hint">No invoices yet.</td></tr>`}</tbody></table></div>
-      ${c.host && !c.ro ? `<div class="invadd"><b class="clh">Add an invoice</b><div class="pfields"><label><span>Issued</span><input type="date" data-iv="issued"></label><label><span>Due</span><input type="date" data-iv="due"></label>
-        <label><span>Amount ($)</span><input type="text" inputmode="decimal" data-iv="amount" maxlength="12"></label><label><span>For</span><input type="text" data-iv="description" maxlength="200"></label></div>
-        <button type="button" class="btn2 small" data-invadd="${esc(cl.id)}">Add invoice</button></div>` : '<div class="hint">Read only. Questions about an invoice go to IronLedger.</div>'}</div>`; },
   act: (cl, c) => `<div class="pfields" style="display:block">
       <div style="margin-top:10px">${c.ro ? '' : c.isNew ? '<button type="button" class="btn small" data-createclient="1">Create client</button>' : `<button type="button" class="btn small" data-saveclient="${esc(cl.id)}">Save client</button>`}</div>
       ${c.isNew ? '' : `<div style="margin-top:8px"><button type="button" class="btn2 small" data-chist="${esc(cl.id)}">Change history</button><div data-histout></div></div>`}</div>`
@@ -1687,10 +1677,7 @@ function clientCardEvents(root, o){
   const passHtml = (r, what) => `<b>${esc(r.owner.name || r.owner.login)} is the ${what}.</b> Give them:<br>Login ID: <b class="mono">${esc(r.owner.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b>`;
   root.addEventListener('click', async e => {
     const card = e.target.closest('.pcard'); if(!card) return;
-    const op = e.target.closest('[data-openpharm]'), ap = e.target.closest('[data-addpharm]'), cs = e.target.closest('[data-cownsave]');
-    const ia = e.target.closest('[data-invadd]'), ipd = e.target.closest('[data-invpaid]'), ivd = e.target.closest('[data-invvoid]'), iup = e.target.closest('[data-invunpaid]');
-    if(op){ if(o.openPharm) o.openPharm(op.dataset.openpharm); return; }
-    if(ap){ if(o.addPharm) o.addPharm(ap.dataset.addpharm); return; }
+    const cs = e.target.closest('[data-cownsave]');
     if(cs){
       let spec; try{ spec = ownerSpec(card); }catch(err){ alert(err.message); return; }
       if(!spec){ alert('Pick who will be the client’s Account Owner.'); return; }
@@ -1698,16 +1685,6 @@ function clientCardEvents(root, o){
       try{ const r = await api('POST', '/host/clients/' + encodeURIComponent(cs.dataset.cownsave) + '/owner', { owner: spec, reason: (card.querySelector('[data-cownreason]') || {}).value || '' });
         if(o.pass && r.tempPassword) o.pass(passHtml(r, 'client’s Account Owner')); o.say('Account Owner saved.'); await o.after(false); }
       catch(err){ if(!err.auth) alert(err.message); } finally{ busy(cs, false); }
-      return;
-    }
-    if(ia || ipd || ivd || iup){
-      try{
-        if(ia){ const g = k => card.querySelector(`[data-iv=${k}]`).value.trim(); await api('POST', '/host/clients/' + encodeURIComponent(ia.dataset.invadd) + '/invoices', { issued: g('issued') || undefined, due: g('due'), amount: g('amount'), description: g('description') }); }
-        else if(ipd){ await api('POST', '/host/clients/' + encodeURIComponent(card.dataset.client) + '/invoices/' + encodeURIComponent(ipd.dataset.invpaid), { status: 'paid' }); }
-        else if(iup){ await api('POST', '/host/clients/' + encodeURIComponent(card.dataset.client) + '/invoices/' + encodeURIComponent(iup.dataset.invunpaid), { status: 'unpaid' }); }
-        else { const why = prompt('Why is this invoice voided?'); if(!why) return; await api('POST', '/host/clients/' + encodeURIComponent(card.dataset.client) + '/invoices/' + encodeURIComponent(ivd.dataset.invvoid), { status: 'void', note: why }); }
-        o.say('Invoices updated.'); await o.after(false);
-      }catch(err){ if(!err.auth) alert(err.message); }
       return;
     }
     const add = e.target.closest('[data-ctadd]'), del = e.target.closest('[data-ctdel]'), ul = e.target.closest('[data-unlockclient]'), hs = e.target.closest('[data-chist]'), sv = e.target.closest('[data-saveclient],[data-createclient]');
@@ -1750,9 +1727,228 @@ function clientCardEvents(root, o){
   });
 }
 
-/* ---------------- Account Owner tab: pharmacies, people, access switches, import ----------------
-   Opening it needs the password again; it locks after 5 minutes without activity on the tab.
-   The server enforces the same rule, so the lock can't be skipped by changing the page. */
+/* ---------------- Users and Billing at ONE pharmacy ----------------
+   Shared by the IronLedger employee portal (host.js) and the Account tab (owner.js). Everything here works on one pharmacy at a time:
+   the people at that pharmacy and that pharmacy's invoices, never another pharmacy's, even under the same client.
+   The server decides who may open what (GET /pharmacy/:id/users, GET /billing/:id) and who may change what (canManage); this file only draws it.
+   Needs esc, sw, busy and money (client_panels.js) from the page. */
+const DR_PERMS = {submit:'Submit orders', archive:'View archive', remove:'Remove lines', export:'Download backup', calendar:'Calendar', documents:'Documents'};
+const DR_ACCT = {pic:'Pharmacist-in-Charge', pharmacist:'Staff Pharmacist', tech:'Pharmacy Technician', staff:'Pharmacy Associate'};
+// choosing a type switches these on or off (Calendar and Documents are never changed by a type)
+const DR_PRESETS = {pic:{submit:true, archive:true, remove:true, export:true}, pharmacist:{submit:true, archive:true, remove:true, export:false},
+  tech:{submit:true, archive:true, remove:true, export:false}, staff:{submit:true, archive:false, remove:false, export:false}};
+const DR_DUTY = {'':'Staff (view and print only)', dp:'Designated Person', ctech:'Compliance Technician'};
+const DR_PIN = {none:'Not set', set:'Set', temp:'Temporary (they must choose their own)', locked:'Locked'};
+const DR_COPY = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+const drDay = iso => { try{ return new Date(iso).toLocaleDateString('en-US', {month:'short', day:'numeric'}); }catch(e){ return ''; } };
+function drStatus(u){
+  if(u.disabled) return '<span class="ustat off ust">Login off</span>';
+  if(u.pending && u.tempExpired) return '<span class="ustat bad ust">Expired</span><div class="maker role">Temp password expired</div>';
+  if(u.pending) return `<span class="ustat wait ust">Pending</span><div class="maker role">${u.tempExpires ? 'Temp password until ' + drDay(u.tempExpires) : 'Hasn’t signed in yet'}</div>`;
+  return '<span class="ustat ok ust">Active</span>';
+}
+function drTemp(){ const L = 'abcdefghjkmnpqrstuvwxyz', D = '23456789', A = L + D, R = n => { const a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; };
+  let p = L[R(23)] + D[R(8)]; while(p.length < 12) p += A[R(A.length)]; return p; }
+async function drCopy(t){
+  try{ await navigator.clipboard.writeText(t); return true; }
+  catch(e){ const a = document.createElement('textarea'); a.value = t; a.style.position = 'fixed'; a.style.opacity = '0'; document.body.appendChild(a); a.select();
+    let ok = false; try{ ok = document.execCommand('copy'); }catch(e2){} a.remove(); return ok; }
+}
+// one state object per open Users view: which person is opened, changes waiting on a row, temporary passwords made in this tab
+const drState = temps => ({open:null, staged:{}, temps:temps || {}});
+function drEff(u, S, sid){
+  const s = S[u.sub]; if(!s) return u;
+  return Object.assign({}, u, {access:s.stores && s.stores[sid] !== undefined ? s.stores[sid] : u.access, perms:Object.assign({}, u.perms, s.perms || {}), isAdmin:s.adminStores && s.adminStores[sid] !== undefined ? s.adminStores[sid] : u.isAdmin,
+    disabled:s.disabled !== undefined ? s.disabled : u.disabled, initials:s.initials !== undefined ? s.initials : u.initials, license:s.license !== undefined ? s.license : u.license,
+    acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty});
+}
+// the whole Users view of one pharmacy: the list (a line per person; open one for its details) and the add-a-person form
+// U = answer of GET /pharmacy/:id/users; o = {st: drState(), me, host, ownerMe, pinRequired, canPin}
+function drUsersHtml(U, o){
+  const sid = U.store.id, can = U.canManage, S = o.st.staged, list = U.users.map(u => drEff(u, S, sid));
+  const priv = (sw_, label, title) => `<span class="priv" title="${esc(title || label)}">${sw_}<span>${esc(label)}</span></span>`;
+  const role = u => u.isOwner ? '<span class="urole">Account Owner</span>' : u.isAdmin ? '<span class="urole">Super user</span>' : u.employee ? '<span class="urole">Also IronLedger</span>' : '';
+  const self = u => o.me && u.login === o.me.login;
+  const canPin = u => o.pinRequired && o.canPin && can && !self(u) && !u.isOwner && !u.employee;
+  const detail = u => {
+    const st = S[u.sub], raw = U.users.find(x => x.sub === u.sub);
+    const acts = !can ? '' : st ? `<button class="btn small" data-upd="${esc(u.sub)}">Update</button> <button class="btn2 small" data-undo="${esc(u.sub)}">Undo</button>`
+      : (self(u) ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`) + (u.isOwner || u.employee || self(u) ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`)
+        + (u.pending && o.st.temps[u.sub] ? ` <button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${DR_COPY}</button>` : '');
+    const signing = `<div class="upriv"><span class="plabel">Signing</span><input type="text" data-uini maxlength="3" value="${esc(u.initials || '')}" style="width:70px;text-transform:uppercase;" aria-label="Initials" placeholder="Initials">
+        <span class="hint">Employee ID <b>${esc(u.empId || '-')}</b>${o.pinRequired ? ` · PIN: ${DR_PIN[u.pin || 'none']}` : ''}</span>
+        ${canPin(u) ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="One-time temporary PIN to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}</div>`;
+    const lic = `<div class="upriv"><span class="plabel">RPh license #</span><input type="text" data-ulic maxlength="20" value="${esc(u.license || '')}" style="width:130px;text-transform:uppercase;" aria-label="RPh license number"> <span class="hint">Pharmacists only. Prints on Rx Intake forms; the Pharmacist-In-Charge’s number prints as PIC.</span></div>`;
+    const others = raw && raw.others ? `<span class="hint">${o.host && raw.otherIds ? 'Also at ' + esc(raw.otherIds.join(', ')) : 'Also has access at ' + raw.others + (raw.others === 1 ? ' other pharmacy' : ' other pharmacies')}</span>` : '';
+    if(u.isOwner) return `<div class="udetail">
+        <div class="upriv"><span class="plabel">Account type</span><span class="hint">Account Owner · primary account holder, full access</span></div>${lic}${signing}
+        ${o.host && can && !self(u) ? `<div class="upriv"><span class="plabel"></span>${acts}</div>` : ''}</div>`;
+    return `<div class="udetail">
+        <div class="upriv"><span class="plabel">Account type</span><select data-utype><option value="">Not set</option>${Object.entries(DR_ACCT).map(([k, l]) => `<option value="${k}"${u.acctType === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+          <span class="hint">Choosing a type sets Submit, Archive, Remove and Backup. Calendar and Documents are set separately.</span></div>
+        ${lic}${signing}
+        ${u.perms.documents ? `<div class="upriv"><span class="plabel">Document duty</span>${u.acctType === 'pic' ? '<span class="hint">Pharmacist-In-Charge: manages and approves documents</span>' : `<select data-udoc>${Object.entries(DR_DUTY).map(([k, l]) => `<option value="${k}"${(u.docDuty || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select>`}</div>` : ''}
+        <div class="upriv"><span class="plabel">This pharmacy</span><span class="pgroup">${priv(sw(`data-ust="${esc(sid)}"`, u.access === true, 'Access to ' + U.store.name), 'Access to ' + sid, 'Access to ' + U.store.name)}</span>${others}</div>
+        <div class="upriv"><span class="plabel">Privileges</span><span class="pgroup">${Object.entries(DR_PERMS).map(([p, l]) => priv(sw(`data-uperm="${p}"`, !!u.perms[p], l + ' at ' + sid), l, l)).join('')}
+          ${self(u) || u.employee ? '' : priv(sw('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on')}</span></div>
+        ${(o.host || o.ownerMe) && u.acctType === 'pic' && u.access ? `<div class="upriv"><span class="plabel">Super user</span><span class="pgroup">${priv(sw(`data-uadm="${esc(sid)}"`, u.isAdmin === true, 'All administrator privileges at ' + U.store.name + ' except billing, the client page and ownership'), sid, 'Super user at ' + U.store.name)}</span>
+          <span class="hint">All administrator privileges except billing, the client page and ownership.</span></div>` : ''}
+        ${acts ? `<div class="upriv"><span class="plabel"></span>${acts}</div>` : ''}</div>`;
+  };
+  const rows = list.map(u => {
+    const open = o.st.open === u.sub;
+    return `<div class="urow${u.disabled ? ' off' : ''}${S[u.sub] ? ' dirty' : ''}${open ? ' open' : ''}" data-sub="${esc(u.sub)}">
+      <div class="ucols urowhead" role="button" tabindex="0" aria-expanded="${open}" data-open="${esc(u.sub)}">
+        <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${role(u)}</div>
+        <div class="ucell mono" data-l="Username">${esc(u.login)}</div>
+        <div class="ucell" data-l="Mobile"><span class="mono">${esc(u.phone || '')}</span>${can && !u.isOwner && !u.employee && open ? ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>` : u.isOwner ? ' <span class="hint" title="Sign-in codes are texted here, so only IronLedger changes it.">🔒</span>' : ''}</div>
+        <div class="ucell" data-l="Status">${drStatus(u)}</div>
+        <div class="ucell acts"><span class="chev" aria-hidden="true">${open ? '▾' : '▸'}</span></div></div>
+      ${open ? detail(u) : ''}</div>`;
+  }).join('');
+  const add = !can ? '' : `<section class="card" style="margin-top:14px"><h2>Add a user</h2>
+      <div class="formgrid grid2">
+        <label class="f"><span>Full name</span><input type="text" data-np="name" maxlength="120"></label>
+        <label class="f"><span>Login ID</span><input type="text" data-np="login" autocapitalize="none" spellcheck="false" maxlength="32"></label>
+        <label class="f"><span>Mobile number (for sign-in codes)</span><input type="tel" data-np="phone" maxlength="20"></label>
+        <label class="f"><span>Temporary password</span><input type="text" data-np="pass" class="mono" maxlength="64" value="${esc(o.st.np || drTemp())}"></label>
+        <label class="f"><span>Initials</span><input type="text" data-np="ini" maxlength="3" style="max-width:90px;text-transform:uppercase;"></label>
+        <label class="f"><span>RPh license # (pharmacists)</span><input type="text" data-np="lic" maxlength="20" style="max-width:150px;text-transform:uppercase;"></label>
+      </div>
+      <div style="margin-top:8px"><b class="hint">Account type:</b> <select data-np="type"><option value="">Not set</option>${Object.entries(DR_ACCT).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select> <span class="hint">sets the switches below; change any of them after</span></div>
+      <div style="margin-top:4px"><b class="hint">May:</b><div>${Object.entries(DR_PERMS).map(([p, l]) => `<label class="chk">${sw(`data-npperm="${p}"`, p !== 'export' && p !== 'calendar' && p !== 'documents')} ${l}</label>`).join('')}</div></div>
+      <label class="chk" style="margin-top:10px"><input type="checkbox" data-np="consent" style="width:18px;height:18px;"> They signed the SMS consent form for this mobile number.</label>
+      <div class="toolbar row" style="margin-top:10px"><button class="btn" data-npadd="1">Add user</button> <button class="btn2" data-npgen="1">New temporary password</button></div>
+      <div class="npmsg msg" data-npmsg role="status"></div></section>`;
+  return `<div class="ulist"><div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div></div>${rows || '<div class="hint" style="padding:10px">No one has access here yet.</div>'}</div>
+    ${can ? '' : '<div class="hint" style="margin-top:10px">View only. Changes to people at this pharmacy are made by its Account Owner or IronLedger.</div>'}${add}`;
+}
+// behaviour: env = {sid, base:'/host'|'/owner', U:()=>answer, st:drState(), me:()=>ME, reload:async()=>…, paint:()=>…, say:text=>…, pass:html=>…}
+function drUsersEvents(root, env){
+  const find = sub => env.U().users.find(x => x.sub === sub);
+  const stg = sub => env.st.staged[sub] || (env.st.staged[sub] = {});
+  const tidy = sub => { if(env.st.staged[sub] && !Object.keys(env.st.staged[sub]).length) delete env.st.staged[sub]; };
+  const put = (sub, grp, k, v, was) => { const s = stg(sub); s[grp] = s[grp] || {}; if(v === was) delete s[grp][k]; else s[grp][k] = v; if(!Object.keys(s[grp]).length) delete s[grp]; tidy(sub); };
+  const sig = u => { return `Pharmacy ID: ${env.sid}\nUser ID: ${u.login}\nTemporary Pass: `; };
+  root.addEventListener('keydown', e => { const h = e.target.closest('[data-open]'); if(h && (e.key === 'Enter' || e.key === ' ') && e.target === h){ e.preventDefault(); h.click(); } });
+  root.addEventListener('change', e => {
+    const row = e.target.closest('[data-sub]'); if(!row){ const t = e.target.closest('[data-np=type]'); if(t){ const pre = DR_PRESETS[t.value]; if(pre) for(const k in pre){ const c = root.querySelector(`[data-npperm="${k}"]`); if(c) c.checked = pre[k]; } } return; }
+    const sub = row.dataset.sub, u = find(sub); if(!u) return;
+    const ty = e.target.closest('select[data-utype]');
+    if(ty){ if(ty.value === (u.acctType || '')) delete stg(sub).acctType; else stg(sub).acctType = ty.value;
+      const pre = DR_PRESETS[ty.value]; if(pre){ const s = stg(sub); s.perms = s.perms || {}; for(const k in pre){ if(pre[k] === !!u.perms[k]) delete s.perms[k]; else s.perms[k] = pre[k]; } if(!Object.keys(s.perms).length) delete s.perms; }
+      tidy(sub); env.say(''); env.paint(); return; }
+    const dd = e.target.closest('select[data-udoc]');
+    if(dd){ if(dd.value === (u.docDuty || '')) delete stg(sub).docDuty; else stg(sub).docDuty = dd.value; tidy(sub); env.say(''); env.paint(); return; }
+    const ini = e.target.closest('input[data-uini]');
+    if(ini){ const v = ini.value.trim().toUpperCase(); if(v === (u.initials || '')) delete stg(sub).initials; else stg(sub).initials = v; tidy(sub); env.say(''); env.paint(); return; }
+    const lic = e.target.closest('input[data-ulic]');
+    if(lic){ const v = lic.value.trim().toUpperCase(); if(v === (u.license || '')) delete stg(sub).license; else stg(sub).license = v; tidy(sub); env.say(''); env.paint(); return; }
+    const c = e.target.closest('input[type=checkbox]'); if(!c) return;
+    if(c.dataset.ust) put(sub, 'stores', c.dataset.ust, c.checked, u.access === true);
+    else if(c.dataset.uperm) put(sub, 'perms', c.dataset.uperm, c.checked, !!u.perms[c.dataset.uperm]);
+    else if(c.dataset.uadm) put(sub, 'adminStores', c.dataset.uadm, c.checked, u.isAdmin === true);
+    else if(c.dataset.uon){ if(!c.checked === !!u.disabled) delete stg(sub).disabled; else stg(sub).disabled = !c.checked; tidy(sub); }
+    env.say(''); env.paint();
+  });
+  const bodyOf = sub => { const s = env.st.staged[sub] || {}, b = {}; if(s.stores) b.stores = s.stores; if(s.perms){ b.perms = s.perms; b.permStore = env.sid; } if(s.adminStores) b.adminStores = s.adminStores;
+    ['disabled', 'initials', 'license', 'acctType', 'docDuty'].forEach(k => { if(s[k] !== undefined) b[k] = s[k]; }); return b; };
+  root.addEventListener('click', async e => {
+    const hd = e.target.closest('[data-open]');
+    if(hd && !e.target.closest('button,input,select,a,label')){ env.st.open = env.st.open === hd.dataset.open ? null : hd.dataset.open; env.paint(); return; }
+    const t = (s) => e.target.closest(s);
+    const up = t('[data-upd]'), un = t('[data-undo]'), rs = t('[data-reset]'), dl = t('[data-del]'), cp = t('[data-copy]'), ph = t('[data-phone]'), pr = t('[data-pinreset]'), na = t('[data-npadd]'), ng = t('[data-npgen]');
+    const nm = u => u.name || u.login, url = u => env.base + '/users/' + encodeURIComponent(u.sub);
+    try{
+      if(ng){ const i = root.querySelector('[data-np=pass]'); i.value = env.st.np = drTemp(); return; }
+      if(na){
+        const g = k => ((root.querySelector(`[data-np=${k}]`) || {}).value || '').trim(), perms = {}; root.querySelectorAll('[data-npperm]').forEach(c => perms[c.dataset.npperm] = c.checked);
+        const say = (m, ok) => { const el = root.querySelector('[data-npmsg]'); el.textContent = m; el.className = 'npmsg msg' + (ok ? ' ok' : ''); };
+        if(!g('name') || !g('login') || !g('phone')) return say('Name, Login ID and mobile number are all needed.');
+        if(!root.querySelector('[data-np=consent]').checked) return say('Tick the box to confirm they signed the SMS consent form for this number.');
+        const body = {name:g('name'), login:g('login').toLowerCase(), phone:g('phone'), tempPassword:g('pass') || undefined, initials:g('ini').toUpperCase(), license:g('lic').toUpperCase(), acctType:g('type'), stores:{[env.sid]:true}, perms, smsConsent:true};
+        busy(na, true);
+        try{ const r = await api('POST', env.base + '/users', body); env.st.temps[r.user.sub] = r.tempPassword; env.st.np = '';
+          env.pass(`<b>${esc(body.name)} can sign in now.</b> Give them:<br>Pharmacy ID: <b class="mono">${esc(env.sid)}</b><br>Login ID: <b class="mono">${esc(r.user.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b><br><span class="hint">They choose their own password the first time they sign in. The temporary password isn’t shown again.</span>`);
+          await env.reload(); env.say('Added ' + body.name + '. They are Pending until they first sign in.'); }
+        catch(err){ if(!err.auth) say('Not added: ' + err.message); } finally{ busy(na, false); }
+        return;
+      }
+      const sub = (t('[data-sub]') || {}).dataset && t('[data-sub]').dataset.sub, u = sub && find(sub);
+      if(!u) return;
+      if(un){ delete env.st.staged[sub]; env.say(''); env.paint(); return; }
+      if(up){
+        const body = bodyOf(sub);
+        if(body.disabled === true && !confirm(`Switch off ${nm(u)}'s login? They are signed out everywhere and can't sign in until it's switched back on.`)) return;
+        busy(up, true);
+        try{ await api('POST', url(u), body); delete env.st.staged[sub]; await env.reload(); env.say(body.disabled === true ? `${nm(u)}'s login was switched off. They were signed out.` : `${nm(u)}'s account access was updated. It takes effect after they sign out and sign back in.`); }
+        catch(err){ busy(up, false); if(!err.auth) alert(err.message); }
+        return;
+      }
+      if(pr){
+        if(!confirm(`Issue a temporary PIN for ${nm(u)}?\n\nTheir current PIN stops working. They enter the temporary one and choose their own the next time they sign something. Give it to them in person.`)) return;
+        busy(pr, true);
+        try{ const r = await api('POST', url(u) + '/pin-reset', {}); await env.reload();
+          env.pass(`<b>Temporary PIN for ${esc(nm(u))}:</b> <span class="mono" style="font-size:20px;letter-spacing:.2em;">${esc(r.tempPin)}</span><br><span class="hint">Shown once. Give it to them in person; they choose their own PIN when they next sign something.</span>`); }
+        catch(err){ busy(pr, false); if(!err.auth) alert(err.message); }
+        return;
+      }
+      if(cp){ if(!env.st.temps[sub]) return; const ok = await drCopy(sig(u) + env.st.temps[sub]); env.pass(ok ? `<b>Copied ${esc(nm(u))}’s sign-in details.</b> Paste them where you need them.` : 'Couldn’t copy. Select the text instead.'); return; }
+      if(dl){
+        const typed = prompt(u.pending ? `Cancel ${nm(u)}'s invitation?\n\nThey haven't signed in yet. Their login and temporary password are removed, and the Login ID can be used again.\n\nType their Login ID (${u.login}) to cancel it:` : `Delete ${nm(u)} for good?\n\nTheir login is removed and can't be switched back on. Orders and archive lines they entered stay, under their name.\nTo just stop them signing in for now, switch their login off instead.\n\nType their Login ID (${u.login}) to delete:`);
+        if(typed === null) return;
+        if(typed.trim().toLowerCase() !== u.login) return alert('The Login ID didn’t match. Nothing was deleted.');
+        await api('POST', url(u) + '/delete', {}); env.st.open = null; await env.reload(); env.say(u.pending ? `${nm(u)}'s invitation was cancelled.` : `${nm(u)} was deleted.`); return;
+      }
+      if(ph){
+        const v = prompt(`New mobile number for ${nm(u)} (sign-in codes are texted here):`, u.phone); if(!v) return;
+        if(!confirm(`Has ${nm(u)} signed a new SMS consent form for ${v}?`)) return alert('Have them sign the SMS consent form for the new number first.');
+        await api('POST', url(u), {phone:v, smsConsent:true}); await env.reload(); env.say('Mobile number saved.'); return;
+      }
+      if(rs){
+        if(!confirm(`Give ${nm(u)} a new temporary password? Their current password stops working and they're signed out everywhere.`)) return;
+        const r = await api('POST', url(u) + '/reset-password', {}); env.st.temps[sub] = r.tempPassword; await env.reload();
+        env.pass(`<b>New temporary password for ${esc(nm(u))}</b><br>Login ID: <b class="mono">${esc(u.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b><br><span class="hint">They choose their own password when they next sign in. The copy button on their row copies their sign-in details.</span>`);
+      }
+    }catch(err){ if(!err.auth) alert(err.message); }
+  });
+}
+/* ---------- one pharmacy's billing ---------- o = {edit: bool (IronLedger only), sid, filter} */
+function drBillingHtml(B, o){
+  const S = B.summary, tile = (l, x, cls) => `<div class="bt ${cls || ''}"><span>${l}</span><b>${x.count}</b><em>${money(x.cents)}</em></div>`;
+  const st = i => i.status === 'paid' ? `<span class="ust ok">Paid${i.paidOn ? ' ' + esc(i.paidOn) : ''}</span>` : i.status === 'void' ? '<span class="ust off">Void</span>' : i.delinquent ? '<span class="ust bad">Delinquent</span>' : '<span class="ust wait">Unpaid</span>';
+  const fl = o.filter || 'all', keep = i => fl === 'all' || (fl === 'paid' && i.status === 'paid') || (fl === 'delinquent' && i.delinquent && i.status !== 'paid' && i.status !== 'void') || (fl === 'unpaid' && i.status !== 'paid' && i.status !== 'void');
+  const rows = B.invoices.filter(keep).map(i => `<tr data-inv="${esc(i.id)}"><td>${esc(i.number)}</td><td>${esc(i.issued)}</td><td>${esc(i.due)}</td><td class="num">${money(i.cents)}</td><td>${esc(i.description)}</td><td>${st(i)}</td>${o.edit ? `<td class="acts">${i.status !== 'paid' && i.status !== 'void' ? `<button type="button" class="btn2 small" data-invpaid="${esc(i.id)}">Mark paid</button> <button type="button" class="btn2 small" data-invvoid="${esc(i.id)}">Void</button>` : i.status === 'paid' ? `<button type="button" class="btn2 small" data-invunpaid="${esc(i.id)}">Undo</button>` : ''}</td>` : ''}</tr>`).join('');
+  const fb = (k, l) => `<button type="button" class="${fl === k ? 'btn' : 'btn2'} small" data-bfil="${k}">${l}</button>`;
+  return `<div class="btiles">${tile('New this month', S.newThisMonth)}${tile('Paid this month', S.paidThisMonth, 'ok')}${tile('Unpaid', S.unpaid)}${tile('Delinquent', S.delinquent, S.delinquent.count ? 'bad' : '')}</div>
+    <div class="toolbar row" style="margin:10px 0">${fb('all', 'All invoices')}${fb('unpaid', 'Unpaid')}${fb('delinquent', 'Delinquent')}${fb('paid', 'Paid')}</div>
+    <div class="tscroll"><table class="invt"><thead><tr><th>Invoice</th><th>Issued</th><th>Due</th><th class="num">Amount</th><th>For</th><th>Status</th>${o.edit ? '<th></th>' : ''}</tr></thead><tbody>${rows || `<tr><td colspan="7" class="hint">${B.invoices.length ? 'None in this list.' : 'No invoices yet.'}</td></tr>`}</tbody></table></div>
+    ${o.edit ? `<div class="invadd"><b class="clh">Add an invoice</b><div class="pfields"><label><span>Issued</span><input type="date" data-iv="issued"></label><label><span>Due</span><input type="date" data-iv="due"></label>
+      <label><span>Amount ($)</span><input type="text" inputmode="decimal" data-iv="amount" maxlength="12"></label><label><span>For</span><input type="text" data-iv="description" maxlength="200"></label></div>
+      <button type="button" class="btn2 small" data-invadd="1">Add invoice</button></div>` : '<div class="hint">Read only. Questions about an invoice go to IronLedger.</div>'}`;
+}
+// env = {sid, B:()=>answer, o:{edit}, paint:()=>…, reload:async()=>…, say:text=>…}
+function drBillingEvents(root, env){
+  root.addEventListener('click', async e => {
+    const f = e.target.closest('[data-bfil]'); if(f){ env.o.filter = f.dataset.bfil; env.paint(); return; }
+    const ia = e.target.closest('[data-invadd]'), pd = e.target.closest('[data-invpaid]'), vd = e.target.closest('[data-invvoid]'), up = e.target.closest('[data-invunpaid]');
+    if(!(ia || pd || vd || up) || !env.o.edit) return;
+    const base = '/host/stores/' + encodeURIComponent(env.sid) + '/invoices';
+    try{
+      if(ia){ const g = k => root.querySelector(`[data-iv=${k}]`).value.trim(); await api('POST', base, {issued:g('issued') || undefined, due:g('due'), amount:g('amount'), description:g('description')}); }
+      else if(pd) await api('POST', base + '/' + encodeURIComponent(pd.dataset.invpaid), {status:'paid'});
+      else if(up) await api('POST', base + '/' + encodeURIComponent(up.dataset.invunpaid), {status:'unpaid'});
+      else { const why = prompt('Why is this invoice voided?'); if(!why) return; await api('POST', base + '/' + encodeURIComponent(vd.dataset.invvoid), {status:'void', note:why}); }
+      await env.reload(); env.say('Invoices updated.');
+    }catch(err){ if(!err.auth) alert(err.message); }
+  });
+}
+
+/* ---------------- Account tab: client, pharmacy, users and billing ----------------
+   One tab for every role a person holds (Client Account Owner, pharmacy Account Owner, Pharmacist-in-Charge super user).
+   Opening it needs the password again (never the signing PIN); one unlock covers all of it, and it locks after 5 minutes without activity.
+   The server enforces the same rule and decides what each role may see and change, so the lock and the limits can't be skipped by changing the page.
+   Drill-down: client (if you hold one) → its pharmacies → one pharmacy's account, Users and Billing, one pharmacy at a time. */
 const OWN_MS = 5 * 60 * 1000;
 let OWN_UNTIL = 0, ownLastAct = 0, ownPingAt = 0;
 const ownerTabActive = () => !!document.querySelector('#tabs [data-tab="owner"].active');
@@ -1764,40 +1960,122 @@ function showOwnLock(msg){
 function ownerLockNow(msg, serverSaid){
   const was = OWN_UNTIL > 0; OWN_UNTIL = 0;
   if(was && !serverSaid) api('POST', '/owner-lock', {}).catch(() => {});
-  for(const k in STAGED) delete STAGED[k]; peopleMsg('');
-  OWN = {stores:[], users:[]}; $('ownPeople').innerHTML = ''; $('ownStores').innerHTML = ''; $('ownClientView').innerHTML = ''; CLI = null;   // nothing left on screen
+  AC_ST.open = null; for(const k in AC_ST.staged) delete AC_ST.staged[k]; AC = {client:null, pharm:null, view:'acct'}; ACD = {client:null, stores:[], users:[], U:null, B:null};
+  ['acClient', 'acPharm', 'acUsers', 'acBill', 'acSide'].forEach(k => $(k).innerHTML = ''); $('acCrumb').innerHTML = '';   // nothing left on screen
   if(ownerTabActive()) showOwnLock(msg);
 }
-// Client page (the client's Account Owner only): setup information, pharmacies, billing and invoices, read-only. Same password step-up as the rest of this tab.
-let OWN_VIEW = 'pharm', CLI = null;
-function ownShowView(v){
-  const onlyClient = !(STORE && STORE.owner);                                        // a Client Account Owner who owns no pharmacy here sees just the client page
-  OWN_VIEW = onlyClient ? 'client' : v;
-  $('ownSwitch').style.display = ME && ME.clientOwner && !onlyClient ? '' : 'none';
-  $('ownPharmView').style.display = OWN_VIEW === 'pharm' ? '' : 'none'; $('ownClientView').style.display = OWN_VIEW === 'client' ? '' : 'none';
-  $('ownSwPharm').className = OWN_VIEW === 'pharm' ? 'btn small' : 'btn2 small'; $('ownSwClient').className = OWN_VIEW === 'client' ? 'btn small' : 'btn2 small';
-  if(OWN_VIEW === 'client') loadClientPage(); else loadOwner();
+const TEMPS = {};                       // temporary passwords made on this screen, kept only in this page (never saved anywhere) so they can be copied again while the person is pending
+const AC_ST = drState(TEMPS);           // the open Users view: which person is opened, changes waiting on a row
+let AC = {client:null, pharm:null, view:'acct'};         // client: id | null; pharm: id | null; view: acct | users | billing
+let ACD = {client:null, stores:[], users:[], U:null, B:null};   // client: answer of GET /client/:id; stores/users: the pharmacies and people this login manages; U/B: the open pharmacy's people / billing
+const acMsg = t => { $('acMsg').textContent = t || ''; };
+const acEnc = encodeURIComponent;
+const managed = () => (ME.stores || []).filter(s => s.owner);                 // pharmacies this login runs (Account Owner or super user)
+const ownedHere = id => !!(ME.stores || []).find(s => s.id === id && s.isOwner);
+// what this login may open at a pharmacy: from the client page when it is one of the client's, else from the role held there
+function reachOf(id){
+  const c = ((ACD.client || {}).pharmacies || []).find(p => p.id === id);
+  if(c) return c.reach;
+  const m = managed().find(s => s.id === id); return m ? {users:true, billing:!!m.isOwner, manage:true} : {users:false, billing:false, manage:false};
 }
-async function loadClientPage(){
-  const list = (ME && ME.clients) || []; if(!list.length){ $('ownClientView').innerHTML = '<div class="hint">No client account.</div>'; return; }
-  const id = (CLI && CLI.id && list.some(c => c.id === CLI.id) ? CLI.id : list[0].id);
-  $('ownClientView').innerHTML = '<div class="hint"><span class="spin"></span>Loading…</div>';
+const acName = id => { const m = (ME.stores || []).find(s => s.id === id), c = ((ACD.client || {}).pharmacies || []).find(p => p.id === id); return (m && m.name) || (c && c.name) || id; };
+async function acLoad(){
   try{
-    const r = await api('GET', '/client/' + encodeURIComponent(id));
-    CLI = { id, data: r };
-    const people = r.pharmacies.filter(p => p.owner).map(p => ({ name: p.owner, login: p.owner, ownerStores: { [p.id]: true } })).concat(r.owner ? [{ name: r.owner.name, login: r.owner.login, ownerClients: { [id]: true } }] : []);
-    r.client.pharmacies = r.pharmacies.map(p => p.id);
-    const pick = list.length > 1 ? `<div class="toolbar" style="margin-bottom:8px;"><select id="cliPick">${list.map(c => `<option value="${esc(c.id)}"${c.id === id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>` : '';
-    $('ownClientView').innerHTML = pick + `<div class="pcard" data-client="${esc(id)}">${clientCardHtml(r.client, { ro: true, host: false, stores: r.pharmacies, people, billing: r.billing })}</div>`;
-    clientFreeze($('ownClientView').querySelector('.pcard'));
-    const sel = $('cliPick'); if(sel) sel.onchange = () => { CLI = { id: sel.value }; loadClientPage(); };
-  }catch(e){ if(!e.auth) $('ownClientView').innerHTML = `<div class="hint">Couldn’t open the client page: ${esc(e.message)}</div>`; }
+    const jobs = [];
+    const cl = ME.clientOwner ? (ME.clients || []) : [];
+    if(cl.length){ if(!AC.client || !cl.some(c => c.id === AC.client)) AC.client = cl[0].id; jobs.push(api('GET', '/client/' + acEnc(AC.client)).then(r => { ACD.client = r; })); } else { AC.client = null; ACD.client = null; }
+    if(managed().length) jobs.push(api('GET', '/owner/stores').then(r => { ACD.stores = r.stores; }), api('GET', '/owner/users').then(r => { ACD.users = r.users; }));
+    else { ACD.stores = []; ACD.users = []; }
+    await Promise.all(jobs);
+    for(const k in TEMPS) if(!ACD.users.some(x => x.sub === k && x.pending)) delete TEMPS[k];
+    const all = acPharmIds();
+    if(AC.pharm && !all.includes(AC.pharm)) AC.pharm = null;
+    if(!AC.pharm && !AC.client && all.length === 1){ AC.pharm = all[0]; AC.view = 'acct'; }       // one pharmacy and no client: open it straight away
+    for(const st of ACD.stores) if(st.hasLogo && LOGOS[st.id] === undefined) loadLogo(st.id).then(() => acPaint());
+    await acLoadPharm();
+    acPaint();
+  }catch(e){ if(!e.auth) $('acClient').innerHTML = `<div class="banner warn">${esc(e.message)}</div>`; }
 }
-$('ownSwPharm').onclick = () => ownShowView('pharm'); $('ownSwClient').onclick = () => ownShowView('client');
+// every pharmacy this login can open: its client's, and the ones it runs itself
+function acPharmIds(){ const ids = new Set(((ACD.client || {}).pharmacies || []).map(p => p.id)); managed().forEach(s => ids.add(s.id)); return [...ids]; }
+async function acLoadPharm(){
+  ACD.U = ACD.B = null;
+  if(!AC.pharm || AC.view === 'acct') return;
+  const r = reachOf(AC.pharm);
+  try{
+    if(AC.view === 'users' && r.users){ ACD.U = await api('GET', '/pharmacy/' + acEnc(AC.pharm) + '/users'); for(const k in AC_ST.staged) if(!ACD.U.users.some(x => x.sub === k)) delete AC_ST.staged[k]; }
+    else if(AC.view === 'billing' && r.billing) ACD.B = await api('GET', '/billing/' + acEnc(AC.pharm));
+    else AC.view = 'acct';
+  }catch(e){ if(e.auth) throw e; acMsg(e.message); }
+}
+function acGo(client, pharm, view){ AC.client = client; AC.pharm = pharm || null; AC.view = view || 'acct'; AC_ST.open = null; acMsg(''); acLoad(); }
+function acPaint(){
+  const cl = ME.clientOwner ? (ME.clients || []) : [], k = ACD.client, id = AC.pharm;
+  // breadcrumb
+  const lk = (w, t) => `<button class="lk" data-crumb="${w}">${esc(t)}</button>`, parts = [];
+  if(k){ parts.push(id ? lk('client', k.client.dba || k.client.legalName) : `<b>${esc(k.client.dba || k.client.legalName)}</b>`); }
+  else if(acPharmIds().length > 1) parts.push(id ? lk('home', 'Pharmacies') : '<b>Pharmacies</b>');
+  if(id) parts.push(AC.view === 'acct' ? `<b>${esc(acName(id))}</b>` : lk('pharm', acName(id)));
+  if(id && AC.view !== 'acct') parts.push(`<b>${AC.view === 'users' ? 'Users' : 'Billing'}</b>`);
+  $('acCrumb').innerHTML = (cl.length > 1 ? `<select id="acPick" aria-label="Client">${cl.map(c => `<option value="${esc(c.id)}"${c.id === AC.client ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select> ` : '') + parts.join(' › ');
+  // the right-hand list is always the next level down
+  const row = (attr, v, title, sub, on, big) => `<button type="button" class="qrow${on ? ' on' : ''}${big ? ' big' : ''}" ${attr}="${esc(v)}"><b>${esc(title)}</b><span>${esc(sub)}</span></button>`;
+  const prof = list => list.map(p => row('data-qs', p.id, p.name || p.id, [p.id, [p.city, p.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))).join('') || '<div class="hint">No pharmacies.</div>';
+  if(id){ const r = reachOf(id);
+    $('acSide').innerHTML = `<div class="cqh"><h2>${esc(id)}</h2></div>` + [['acct', 'Account', 'Details'], ['users', 'Users', 'People at this pharmacy']].concat(r.billing ? [['billing', 'Billing', 'Invoices and payments']] : []).filter(x => x[0] !== 'users' || r.users).map(([v, t, sub]) => row('data-view', v, t, sub, AC.view === v, true)).join('');
+  }else{
+    const own = managed().filter(s => !k || !k.pharmacies.some(p => p.id === s.id));
+    $('acSide').innerHTML = `<div class="cqh"><h2>Profiles</h2></div>` + (k ? prof(k.pharmacies) : '') + (own.length ? (k ? '<div class="sub">Also yours</div>' : '') + prof(own) : '') + (!k && !own.length ? '<div class="hint">No pharmacies.</div>' : '');
+  }
+  const show = v => ['acClient', 'acPharm', 'acUsers', 'acBill'].forEach(x => $(x).hidden = x !== v);
+  const ownerPage = id && AC.view === 'acct' && ACD.stores.some(s => s.id === id);
+  $('impCard').style.display = ownerPage && ownedHere(id) ? '' : 'none';
+  if(ownerPage) $('impStore').innerHTML = `<option value="${esc(id)}">${esc(id)} · ${esc(acName(id))}</option>`;
+  if(id){
+    if(AC.view === 'users'){
+      show('acUsers'); if(!ACD.U){ $('acUsers').innerHTML = '<div class="hint"><span class="spin"></span>Loading…</div>'; return; }
+      $('acUsers').innerHTML = `<div class="dtitle"><h2>Users · ${esc(acName(id))}</h2><span class="hint">${ACD.U.users.length} ${ACD.U.users.length === 1 ? 'person' : 'people'}</span></div><div id="acUsersBody">${drUsersHtml(ACD.U, acUsersOpts())}</div>`;
+    }else if(AC.view === 'billing'){
+      show('acBill'); if(!ACD.B){ $('acBill').innerHTML = '<div class="hint"><span class="spin"></span>Loading…</div>'; return; }
+      $('acBill').innerHTML = `<div class="dtitle"><h2>Billing · ${esc(acName(id))}</h2></div>${drBillingHtml(ACD.B, AC_BO)}`;
+    }else{
+      show('acPharm');
+      const st = ACD.stores.find(s => s.id === id), holder = u => { const h = (ACD.users || []).find(x => x.ownerStores && x.ownerStores[id] === true); return h ? (h.name || h.login) + ' (' + h.login + ')' : ''; };
+      if(st) $('acPharm').innerHTML = `<div class="pcard" data-store="${esc(id)}">${pharmCardHtml(st, {logo:LOGOS[id], holder:holder(), people:ACD.users, picInfo:true, stores:ACD.stores})}</div>`;
+      else{ const p = ((ACD.client || {}).pharmacies || []).find(x => x.id === id) || {id};
+        $('acPharm').innerHTML = `<div class="card"><h2>${esc(p.name || id)}</h2><div class="pid">Pharmacy ID: <b>${esc(id)}</b></div><div class="hint">${esc([p.city, p.state].filter(Boolean).join(', '))}</div><div class="pid" style="margin-top:6px">Account Owner: <b>${esc(p.owner || 'Not set')}</b></div></div>`; }
+    }
+    return;
+  }
+  if(k){ show('acClient'); const people = k.pharmacies.filter(p => p.owner).map(p => ({name:p.owner, login:p.owner, ownerStores:{[p.id]:true}})).concat(k.owner ? [{name:k.owner.name, login:k.owner.login, ownerClients:{[k.client.id]:true}}] : []);
+    k.client.pharmacies = k.pharmacies.map(p => p.id);
+    $('acClient').innerHTML = `<div class="pcard" data-client="${esc(k.client.id)}">${clientCardHtml(k.client, {ro:true, host:false, stores:k.pharmacies, people})}</div>`; clientFreeze($('acClient').querySelector('.pcard')); return; }
+  show('acClient'); $('acClient').innerHTML = '<div class="hint">Pick a pharmacy from the list on the right.</div>';
+}
+const AC_BO = {edit:false, filter:'all'};
+const acUsersOpts = () => ({st:AC_ST, me:ME, host:false, ownerMe:ownedHere(AC.pharm), pinRequired:!!ME.pinRequired, canPin:true});
+$('acSide').addEventListener('click', e => {
+  const p = e.target.closest('[data-qs]'), v = e.target.closest('[data-view]');
+  if(p) acGo(AC.client, p.dataset.qs, 'acct'); else if(v){ AC.view = v.dataset.view; AC_ST.open = null; AC_BO.filter = 'all'; acMsg(''); acLoad(); }
+});
+$('acCrumb').addEventListener('click', e => { const b = e.target.closest('[data-crumb]'); if(!b) return; const w = b.dataset.crumb; if(w === 'pharm') acGo(AC.client, AC.pharm, 'acct'); else acGo(AC.client, null); });
+$('acCrumb').addEventListener('change', e => { const s = e.target.closest('#acPick'); if(s) acGo(s.value, null); });
+// pharmacy account page (Account Owner): the same card and events as before
+pharmCardEvents($('acPharm'), {base:'/owner', stores:() => ACD.stores, say:toast, after: async () => { await refreshMe(); await acLoad(); }});
+$('acPharm').addEventListener('click', async e => {
+  const nl = e.target.closest('[data-nologo]');
+  if(nl && confirm('Remove this pharmacy’s logo?')){
+    try{ await api('POST', '/owner/stores/' + acEnc(nl.dataset.nologo) + '/logo', {dataUrl:null}); LOGOS[nl.dataset.nologo] = ''; paintStore(); acLoad(); }catch(err){ if(!err.auth) alert(err.message); }
+  }
+});
+const acEnv = {get sid(){ return AC.pharm; }, base:'/owner', U:() => ACD.U, st:AC_ST, me:() => ME, say:acMsg, pass:showPassBox, paint:() => { $('acUsersBody').innerHTML = drUsersHtml(ACD.U, acUsersOpts()); }, reload: async () => { await acLoad(); }};
+drUsersEvents($('acUsers'), acEnv);
+drBillingEvents($('acBill'), {get sid(){ return AC.pharm; }, B:() => ACD.B, o:AC_BO, paint:() => acPaint(), reload: async () => { await acLoad(); }, say:acMsg});
+function showPassBox(html){ $('passBox').innerHTML = html; $('passBox').style.display = 'block'; $('passBox').scrollIntoView({block:'center'}); }
 function openOwnerTab(){
   if(!(OWN_UNTIL > Date.now())) return showOwnLock('');
   $('ownLock').style.display = 'none'; $('ownBody').style.display = '';
-  ownLastAct = Date.now(); ownShowView(OWN_VIEW);
+  ownLastAct = Date.now(); acLoad();
 }
 $('ownUnlock').onclick = async () => {
   const pw = $('ownPw').value; if(!pw) return showOwnLock('Enter your password.');
@@ -1817,283 +2095,6 @@ setInterval(() => {
   if(now - ownLastAct > OWN_MS || now > OWN_UNTIL){ ownerLockNow('Locked after 5 minutes without activity. Re-enter your password.'); return; }
   if(ownLastAct > ownPingAt && now - ownPingAt > 60000){ ownPingAt = now; api('POST', '/owner/keepalive', {}).catch(() => {}); }
 }, 15000);
-const PERM_LABELS = {submit:'Submit orders', archive:'View archive', remove:'Remove lines', export:'Download backup', calendar:'Calendar', documents:'Documents'};
-const PERM_HEADS = {submit:'Submit', archive:'Archive', remove:'Remove', export:'Backup', calendar:'Calendar', documents:'Documents'};
-const DOC_DUTY_PICK = {'':'Staff (view and print only)', dp:'Designated Person', ctech:'Compliance Technician'};
-let OWN = {stores:[], users:[]};
-// temporary passwords made on this screen, kept only in this page (never saved anywhere) so they can be copied again
-// while the person is still pending; gone on sign-out or reload, or once the person has signed in
-const TEMPS = {};
-// switch changes on a person's row wait here until Update is pressed on that row (Undo puts them back)
-const STAGED = {};
-function effUser(u){
-  const s = STAGED[u.sub]; if(!s) return u;
-  return Object.assign({}, u, {stores:Object.assign({}, u.stores, s.stores || {}), perms:Object.assign({}, u.perms, s.perms || {}), adminStores:Object.assign({}, u.adminStores, s.adminStores || {}), acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty, initials:s.initials !== undefined ? s.initials : u.initials, license:s.license !== undefined ? s.license : u.license,
-    disabled:s.disabled !== undefined ? s.disabled : u.disabled});
-}
-// owner of at least one of the pharmacies this page covers (a login can own one pharmacy and still be staff at another)
-const OWN_IS_OWNER = id => !!(ME && ME.stores || []).find(x => x.id === id && x.isOwner);
-const ownsHere = u => !u.host && !!u.owner && (OWN.stores || []).some(s => u.ownerStores && u.ownerStores[s.id] === true);
-const ownedList = u => (OWN.stores || []).filter(s => u.ownerStores && u.ownerStores[s.id] === true).map(s => s.id);
-const PIN_LABEL = {none:'Not set', set:'Set', temp:'Temporary (they must choose their own)', locked:'Locked'};
-const canIssuePin = u => !!ME && u.login !== ME.login && (ME.host ? ME.hostRole !== 'rep' : (STORE && STORE.owner && !ownsHere(u) && !u.host));
-const pinLine = u => `<span class="hint">Employee ID <b>${esc(u.empId || '-')}</b>${ME && ME.pinRequired ? ` · PIN: ${PIN_LABEL[u.pin || 'none']}` : ''}</span> ${ME && ME.pinRequired && canIssuePin(u) ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="Makes a one-time temporary PIN for you to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}`;
-const stageBtns = sub => `<button class="btn small" data-upd="${esc(sub)}">Update</button> <button class="btn2 small" data-undo="${esc(sub)}">Undo</button>`;
-function peopleMsg(m){ $('ownPeopleMsg').textContent = m || ''; }
-const COPY_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
-function signInText(u, pw){
-  const on = (OWN.stores || []).filter(s => u.stores && u.stores[s.id] === true).map(s => s.id);
-  const here = typeof STORE !== 'undefined' && STORE && on.includes(STORE.id) ? STORE.id : null;
-  return `Pharmacy ID: ${here || on.join(' or ') || '(switch a pharmacy on first)'}\nUser ID: ${u.login}\nTemporary Pass: ${pw}`;
-}
-async function copyText(t){
-  try{ await navigator.clipboard.writeText(t); return true; }
-  catch(e){ const a = document.createElement('textarea'); a.value = t; a.style.position = 'fixed'; a.style.opacity = '0'; document.body.appendChild(a); a.select();
-    let ok = false; try{ ok = document.execCommand('copy'); }catch(e2){} a.remove(); return ok; }
-}
-async function loadOwner(){
-  if(!ME || !STORE || !STORE.owner) return;
-  $('ownStores').innerHTML = $('ownPeople').innerHTML = '<div class="hint"><span class="spin"></span>Loading…</div>';
-  try{
-    const [s, u] = await Promise.all([api('GET', '/owner/stores'), api('GET', '/owner/users')]);
-    OWN = {stores:s.stores, users:u.users};
-    for(const k in TEMPS) if(!OWN.users.some(x => x.sub === k && x.pending)) delete TEMPS[k];
-    for(const k in STAGED) if(!OWN.users.some(x => x.sub === k)) delete STAGED[k];
-    for(const st of OWN.stores) if(st.hasLogo && LOGOS[st.id] === undefined) loadLogo(st.id).then(renderOwnStores);
-    renderOwner();
-  }catch(e){ if(!e.auth) $('ownPeople').innerHTML = `<div class="banner warn">${esc(e.message)}</div>`; }
-}
-let npStoresSig = '';
-function renderOwner(){ renderOwnStores(); renderOwnPeople();
-  const sig = OWN.stores.map(s => s.id + ':' + s.name).join('|');
-  if(sig !== npStoresSig || !$('npPerms').innerHTML){ npStoresSig = sig; paintNewPerson(); }   // don't undo switches someone is setting for the next person
-  $('impStore').innerHTML = OWN.stores.map(s => `<option value="${esc(s.id)}">${esc(s.id)} · ${esc(s.name)}</option>`).join(''); }
-const ACCT_LABELS = {pic:'Pharmacist-in-Charge', pharmacist:'Staff Pharmacist', tech:'Pharmacy Technician', staff:'Pharmacy Associate'};
-// choosing a type switches these on or off (the Calendar privilege is never changed by a type; it is set on its own)
-const ACCT_PRESETS = {pic:{submit:true, archive:true, remove:true, export:true}, pharmacist:{submit:true, archive:true, remove:true, export:false},
-  tech:{submit:true, archive:true, remove:true, export:false}, staff:{submit:true, archive:false, remove:false, export:false}};
-function renderOwnStores(){
-  const holderOf = s => { const h = (OWN.users || []).find(u => u.ownerStores && u.ownerStores[s.id] === true); return h ? (h.name || h.login) + ' (' + h.login + ')' : ''; };
-  $('ownStores').innerHTML = OWN.stores.map(s => `<div class="pcard" data-store="${esc(s.id)}">${pharmCardHtml(s, { logo: LOGOS[s.id], holder: holderOf(s), people: OWN.users, picInfo: true, stores: OWN.stores })}</div>`).join('') || '<div class="hint">No pharmacies yet.</div>';
-}
-const fmtDay = iso => { try{ return new Date(iso).toLocaleDateString('en-US', {month:'short', day:'numeric'}); }catch(e){ return ''; } };
-function statusBadge(u){
-  if(u.disabled) return '<span class="ustat off">Login off</span>';
-  if(u.pending && u.tempExpired) return `<span class="ustat bad">Expired</span><div class="maker">Temp password expired</div>`;
-  if(u.pending) return `<span class="ustat wait">Pending</span><div class="maker">${u.tempExpires ? 'Temp password until ' + fmtDay(u.tempExpires) : 'Hasn’t signed in yet'}</div>`;
-  return '<span class="ustat ok">Active</span>';
-}
-function renderOwnPeople(){
-  const st = OWN.stores, P = Object.keys(PERM_LABELS);
-  const priv = (sw_, label, title) => `<span class="priv" title="${esc(title || label)}">${sw_}<span>${esc(label)}</span></span>`;
-  const head = u => `
-      <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${u.initials ? ` <span class="hint" title="Initials on printed copies">(${esc(u.initials)})</span>` : ''}${ownsHere(u) ? '<span class="urole">Account Owner</span>' : u.host ? '<span class="urole">Host (IronLedger)</span>' : ''}</div>
-      <div class="ucell mono" data-l="Username">${esc(u.login)}</div>
-      <div class="ucell" data-l="Mobile">${esc(u.phone)}${ownsHere(u) ? ' <span class="hint" title="Sign-in codes are texted here, so only IronLedger changes it. Contact IronLedger.">🔒</span>' : u.host ? '' : ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>`}</div>
-      <div class="ucell" data-l="Status">${statusBadge(u)}</div>`;
-  const acts = u => `<div class="ucell acts">${STAGED[u.sub] ? stageBtns(u.sub) : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button> <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`}</div>
-      <div class="ucell copycell">${u.pending && TEMPS[u.sub] ? `<button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${COPY_SVG}</button>` : ''}</div>`;
-  const rowCls = u => `urow${u.disabled ? ' off' : ''}${STAGED[u.sub] ? ' dirty' : ''}`;
-  $('ownPeople').innerHTML = `<div class="ulist">
-    <div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div><div></div></div>
-    ${OWN.users.map(effUser).map(u => ownsHere(u)
-      ? `<div class="urow"><div class="ucols">${head(u)}<div class="ucell acts"></div><div class="ucell copycell"></div></div>
-         <div class="upriv"><span class="plabel">Account type</span><span class="hint">Account Owner · primary account holder</span></div>
-         <div class="upriv"><span class="plabel">Pharmacies</span><span class="hint">Account Owner of ${esc(ownedList(u).join(', '))}</span></div>
-         <div class="upriv"><span class="plabel">Privileges</span><span class="hint">Full access</span></div>
-         <div class="upriv"><span class="plabel">RPh license #</span><input type="text" data-ulic maxlength="20" value="${esc(u.license || '')}" style="width:130px;text-transform:uppercase;" aria-label="RPh license number"> <span class="hint">Pharmacists only. Prints on Rx Intake forms; the Pharmacist-In-Charge's number prints as PIC.</span></div>
-         <div class="upriv"><span class="plabel">Signing</span>${pinLine(u)}</div></div>`
-      : u.host
-      ? `<div class="${rowCls(u)}" data-sub="${esc(u.sub)}"><div class="ucols">${head(u)}<div class="ucell acts">${STAGED[u.sub] ? stageBtns(u.sub) : ''}</div><div class="ucell copycell"></div></div>
-         <div class="upriv"><span class="plabel">Pharmacies</span>
-           <span class="pgroup">${st.map(s => priv(sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Let the host open ' + s.name), s.id, 'Let the host open ' + s.name)).join('')}</span></div>
-         <div class="upriv"><span class="plabel">Privileges</span>
-           <span class="pgroup">${P.map(p => priv(sw(`data-uperm="${p}"`, u.perms[p], PERM_LABELS[p] + ' (host)'), PERM_LABELS[p], PERM_LABELS[p])).join('')}</span>
-           <span class="hint">IronLedger support · only in pharmacies switched on above</span></div></div>`
-      : `<div class="${rowCls(u)}" data-sub="${esc(u.sub)}"><div class="ucols">${head(u)}${acts(u)}</div>
-         <div class="upriv"><span class="plabel">Account type</span>
-           <select data-utype><option value="">Not set</option>${Object.entries(ACCT_LABELS).map(([k, l]) => `<option value="${k}"${u.acctType === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
-           <span class="hint">Choosing a type sets Submit, Archive, Remove and Backup. Calendar and Documents are set separately.</span></div>
-         <div class="upriv"><span class="plabel">Initials</span><input type="text" data-uini maxlength="3" value="${esc(u.initials || '')}" style="width:70px;text-transform:uppercase;" aria-label="Initials"> <span class="hint">2 to 3 letters, stamped on printed documents. Each person needs their own.</span></div>
-         <div class="upriv"><span class="plabel">Signing</span>${pinLine(u)}</div>
-         ${u.perms.documents ? `<div class="upriv"><span class="plabel">Document duty</span>${u.acctType === 'pic' ? '<span class="hint">Pharmacist-In-Charge: manages and approves documents</span>' : `<select data-udoc>${Object.entries(DOC_DUTY_PICK).map(([k, l]) => `<option value="${k}"${(u.docDuty || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select> <span class="hint">Designated Person approves; Compliance Technician uploads drafts.</span>`}</div>` : ''}
-         <div class="upriv"><span class="plabel">Pharmacies</span>
-           <span class="pgroup">${st.map(s => priv(sw(`data-ust="${esc(s.id)}"`, u.stores[s.id] === true, 'Access to ' + s.name), s.id, 'Access to ' + s.name)).join('')}</span></div>
-         <div class="upriv"><span class="plabel">Privileges</span>
-           <span class="pgroup">${P.map(p => priv(sw(`data-uperm="${p}"`, u.perms[p], PERM_LABELS[p]), PERM_LABELS[p], PERM_LABELS[p])).join('')}
-           ${priv(sw('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on')}</span></div>
-         ${u.acctType === 'pic' && (ME.stores || []).some(x => x.isOwner) ? `<div class="upriv"><span class="plabel">Super user</span>
-           <span class="pgroup">${st.filter(s => u.stores[s.id] === true && OWN_IS_OWNER(s.id)).map(s => priv(sw(`data-uadm="${esc(s.id)}"`, (u.adminStores || {})[s.id] === true, 'All administrator privileges at ' + s.name + ' except billing, the client page and ownership'), s.id, 'All administrator privileges at ' + s.name + ' except billing, the client page and ownership')).join('')}</span>
-           <span class="hint">All administrator privileges except billing, the client page and ownership.</span></div>` : ''}</div>`).join('')}
-  </div>`;
-}
-function fitPeople(){}   // the two-line layout fits any width; nothing to switch
-function paintNewPerson(){
-  $('npType').innerHTML = '<option value="">Not set</option>' + Object.entries(ACCT_LABELS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('');
-  $('npType').onchange = () => { const pre = ACCT_PRESETS[$('npType').value]; if(pre) for(const k in pre){ const c = document.querySelector(`[data-npperm="${k}"]`); if(c) c.checked = pre[k]; } };
-  $('npStores').innerHTML = OWN.stores.map(s => `<label class="chk">${sw(`data-npst="${esc(s.id)}"`, OWN.stores.length === 1)} ${esc(s.id)} · ${esc(s.name)}</label>`).join('');
-  $('npPerms').innerHTML = Object.entries(PERM_LABELS).map(([p, l]) => `<label class="chk">${sw(`data-npperm="${p}"`, p !== 'export' && p !== 'calendar' && p !== 'documents')} ${l}</label>`).join('');
-}
-function genTemp(){ const L = 'abcdefghjkmnpqrstuvwxyz', D = '23456789', A = L + D; let p = L[Math.random()*23|0] + D[Math.random()*8|0]; while(p.length < 12) p += A[Math.random()*A.length|0]; return p; }
-function showPassBox(html){ $('passBox').innerHTML = html; $('passBox').style.display = 'block'; $('passBox').scrollIntoView({block:'center'}); }
-$('npAdd').onclick = async () => {
-  const stores = {}; document.querySelectorAll('[data-npst]').forEach(c => stores[c.dataset.npst] = c.checked);
-  const perms = {}; document.querySelectorAll('[data-npperm]').forEach(c => perms[c.dataset.npperm] = c.checked);
-  const acctType = $('npType').value;
-  const body = {name:$('npName').value.trim(), initials:$('npIni').value.trim().toUpperCase(), license:$('npLic').value.trim().toUpperCase(), login:$('npLogin').value.trim().toLowerCase(), phone:$('npPhone').value.trim(), tempPassword:$('npPass').value.trim() || undefined, stores, perms, acctType, smsConsent:$('npConsent').checked};
-  const say = (m, ok) => { $('npMsg').textContent = m; $('npMsg').className = 'npmsg' + (ok ? ' ok' : ''); };
-  say('');
-  if(!body.name || !body.login || !body.phone) return say('Name, Login ID and mobile number are all needed.');
-  if(!body.smsConsent) return say('Tick the box to confirm they signed the SMS consent form for this number.');
-  busy($('npAdd'), true);
-  try{
-    const r = await api('POST', '/owner/users', body);
-    TEMPS[r.user.sub] = r.tempPassword;
-    const ids = Object.keys(stores).filter(k => stores[k]);
-    showPassBox(`<b>${esc(body.name)} can sign in now.</b> Give them:<br>Pharmacy ID: <b class="mono">${esc(ids.join(' or ') || '(switch one on first)')}</b><br>
-      Login ID: <b class="mono">${esc(r.user.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b><br>
-      <span class="hint">They choose their own password the first time they sign in. The temporary password works for 3 days and isn’t shown again.</span>`);
-    ['npName','npIni','npLic','npLogin','npPhone'].forEach(k => $(k).value = ''); $('npPass').value = genTemp(); $('npConsent').checked = false;
-    say(`Added ${body.name}. They are at the top of the list as Pending until they sign in for the first time. The form is clear for the next user.`, true);
-    paintNewPerson(); $('npName').focus({preventScroll: true});      // pharmacies and permissions back to their defaults too, straight away
-    await loadOwner();
-  }catch(e){ if(!e.auth) say('Not added: ' + e.message); }
-  finally{ busy($('npAdd'), false); }
-};
-$('npGen').onclick = () => { $('npPass').value = genTemp(); };
-$('ownPeople').addEventListener('change', async e => {
-  const ty = e.target.closest('select[data-utype]');
-  if(ty){                                                         // an account type: stage it and the privileges that go with it
-    const sub = ty.closest('[data-sub]').dataset.sub, u = OWN.users.find(x => x.sub === sub); if(!u) return;
-    const stg = STAGED[sub] || (STAGED[sub] = {});
-    if(ty.value === (u.acctType || '')) delete stg.acctType; else stg.acctType = ty.value;
-    const pre = ACCT_PRESETS[ty.value];
-    if(pre){ stg.perms = stg.perms || {}; for(const k in pre){ if(pre[k] === !!(u.perms || {})[k]) delete stg.perms[k]; else stg.perms[k] = pre[k]; } if(!Object.keys(stg.perms).length) delete stg.perms; }
-    if(!Object.keys(stg).length) delete STAGED[sub];
-    peopleMsg(''); renderOwnPeople(); return;
-  }
-  const ini = e.target.closest('input[data-uini]');
-  if(ini){                                                        // initials: staged like the switches
-    const sub = ini.closest('[data-sub]').dataset.sub, u = OWN.users.find(x => x.sub === sub); if(!u) return;
-    const v = ini.value.trim().toUpperCase(), stg = STAGED[sub] || (STAGED[sub] = {});
-    if(v === (u.initials || '')) delete stg.initials; else stg.initials = v;
-    if(!Object.keys(stg).length) delete STAGED[sub];
-    peopleMsg(''); renderOwnPeople(); return;
-  }
-  const lic = e.target.closest('input[data-ulic]');
-  if(lic){                                                        // RPh license number: staged like the initials
-    const sub = lic.closest('[data-sub]').dataset.sub, u = OWN.users.find(x => x.sub === sub); if(!u) return;
-    const v = lic.value.trim().toUpperCase(), stg = STAGED[sub] || (STAGED[sub] = {});
-    if(v === (u.license || '')) delete stg.license; else stg.license = v;
-    if(!Object.keys(stg).length) delete STAGED[sub];
-    peopleMsg(''); renderOwnPeople(); return;
-  }
-  const dd = e.target.closest('select[data-udoc]');
-  if(dd){                                                         // the person's document duty: staged like the switches
-    const sub = dd.closest('[data-sub]').dataset.sub, u = OWN.users.find(x => x.sub === sub); if(!u) return;
-    const stg = STAGED[sub] || (STAGED[sub] = {});
-    if(dd.value === (u.docDuty || '')) delete stg.docDuty; else stg.docDuty = dd.value;
-    if(!Object.keys(stg).length) delete STAGED[sub];
-    peopleMsg(''); renderOwnPeople(); return;
-  }
-  const c = e.target.closest('input[type=checkbox]'); if(!c) return;
-  const sub = c.closest('[data-sub]').dataset.sub, u = OWN.users.find(x => x.sub === sub); if(!u) return;
-  stageChange(STAGED, u, c); peopleMsg(''); renderOwnPeople();   // nothing is saved until Update is pressed on the row
-});
-// record one switch change against the person's saved settings; a change back to the saved value cancels itself
-function stageChange(staged, u, c){
-  const s = staged[u.sub] || (staged[u.sub] = {});
-  const put = (grp, k, v, was) => { s[grp] = s[grp] || {}; if(v === was) delete s[grp][k]; else s[grp][k] = v; if(!Object.keys(s[grp]).length) delete s[grp]; };
-  if(c.dataset.ust) put('stores', c.dataset.ust, c.checked, (u.stores || {})[c.dataset.ust] === true);
-  else if(c.dataset.uperm) put('perms', c.dataset.uperm, c.checked, !!(u.perms || {})[c.dataset.uperm]);
-  else if(c.dataset.uadm) put('adminStores', c.dataset.uadm, c.checked, (u.adminStores || {})[c.dataset.uadm] === true);
-  else if(c.dataset.uon){ if(!c.checked === !!u.disabled) delete s.disabled; else s.disabled = !c.checked; }
-  if(!Object.keys(s).length) delete staged[u.sub];
-}
-$('ownPeople').addEventListener('click', async e => {
-  const r = e.target.closest('[data-reset]'), ph = e.target.closest('[data-phone]'), dl = e.target.closest('[data-del]'), cp = e.target.closest('[data-copy]');
-  const up = e.target.closest('[data-upd]'), un = e.target.closest('[data-undo]');
-  const pr = e.target.closest('[data-pinreset]');
-  if(pr){
-    const u = OWN.users.find(x => x.sub === pr.dataset.pinreset); if(!u) return;
-    if(!confirm(`Issue a temporary PIN for ${u.name || u.login}?\n\nTheir current PIN stops working. They enter the temporary one and choose their own the next time they sign something. Give it to them in person.`)) return;
-    busy(pr, true);
-    try{ const r = await api('POST', '/owner/users/' + encodeURIComponent(u.sub) + '/pin-reset', {});
-      showPassBox(`<b>Temporary PIN for ${esc(u.name || u.login)}:</b> <span class="mono" style="font-size:20px;letter-spacing:.2em;">${esc(r.tempPin)}</span><br><span class="hint">Shown once. Give it to them in person; they choose their own PIN when they next sign something.</span>`);
-      await loadOwner();
-    }catch(err){ busy(pr, false); if(!err.auth) alert(err.message); }
-    return;
-  }
-  if(un){ delete STAGED[un.dataset.undo]; peopleMsg(''); renderOwnPeople(); return; }
-  if(up){
-    const u = OWN.users.find(x => x.sub === up.dataset.upd), body = STAGED[up.dataset.upd]; if(!u || !body) return;
-    if(body.disabled === true && !confirm(`Switch off ${u.name || u.login}'s login? They are signed out everywhere and can't sign in until you switch it back on.`)) return;
-    busy(up, true);
-    try{
-      await api('POST', '/owner/users/' + encodeURIComponent(u.sub), body);
-      delete STAGED[u.sub];
-      peopleMsg(body.disabled === true ? `${u.name || u.login}'s login was switched off. They were signed out.`
-        : `${u.name || u.login}'s account access was updated. It takes effect after they sign out and sign back in.`);
-      await loadOwner();
-    }catch(err){ busy(up, false); if(!err.auth) alert(err.message); }
-    return;
-  }
-  if(cp){
-    const u = OWN.users.find(x => x.sub === cp.dataset.copy); if(!u || !TEMPS[u.sub]) return;
-    toast(await copyText(signInText(u, TEMPS[u.sub])) ? `Copied ${u.name || u.login}'s sign-in details.` : 'Couldn’t copy. Select the text in the box at the top instead.');
-    return;
-  }
-  if(dl){
-    const u = OWN.users.find(x => x.sub === dl.dataset.del);
-    const typed = prompt(u.pending ? `Cancel ${u.name || u.login}'s invitation?\n\nThey haven't signed in yet. Their login and temporary password are removed, and the Login ID can be used again.\n\nType their Login ID (${u.login}) to cancel it:` : `Delete ${u.name || u.login} for good?\n\nTheir login is removed and can't be switched back on. Orders and archive lines they entered stay, under their name.\nTo just stop them signing in for now, switch their login off instead.\n\nType their Login ID (${u.login}) to delete:`);
-    if(typed === null) return;
-    if(typed.trim().toLowerCase() !== u.login) return alert('The Login ID didn’t match. Nothing was deleted.');
-    try{ await api('POST', '/owner/users/' + encodeURIComponent(u.sub) + '/delete', {}); toast(u.pending ? `${u.name || u.login}'s invitation was cancelled.` : `${u.name || u.login} was deleted.`); loadOwner(); }catch(err){ if(!err.auth) alert(err.message); }
-  }
-  if(ph){
-    const u = OWN.users.find(x => x.sub === ph.dataset.phone);
-    const v = prompt(`New mobile number for ${u.name || u.login} (sign-in codes are texted here):`, u.phone); if(!v) return;
-    if(!confirm(`Has ${u.name || u.login} signed a new SMS consent form for ${v}?`)) return toast('Have them sign the SMS consent form for the new number first.');
-    try{ await api('POST', '/owner/users/' + encodeURIComponent(u.sub), {phone:v, smsConsent:true}); toast('Mobile number saved.'); loadOwner(); }catch(err){ if(!err.auth) alert(err.message); }
-  }
-  if(r){
-    const u = OWN.users.find(x => x.sub === r.dataset.reset);
-    if(!confirm(`Give ${u.name || u.login} a new temporary password? Their current password stops working and they're signed out everywhere.`)) return;
-    try{ const res = await api('POST', '/owner/users/' + encodeURIComponent(u.sub) + '/reset-password', {});
-      TEMPS[u.sub] = res.tempPassword;
-      showPassBox(`<b>New temporary password for ${esc(u.name || u.login)}</b> (Login ID <b class="mono">${esc(u.login)}</b>): <b class="mono">${esc(res.tempPassword)}</b><br><span class="hint">They choose their own password when they next sign in. Use the copy button on their row to copy their sign-in details.</span>`);
-      await loadOwner(); }
-    catch(err){ if(!err.auth) alert(err.message); }
-  }
-});
-// pharmacies
-pharmCardEvents($('ownStores'), { base:'/owner', stores:() => OWN.stores, say:toast, after: async () => { await refreshMe(); await loadOwner(); } });
-$('ownStores').addEventListener('click', async e => {
-  const nl = e.target.closest('[data-nologo]');
-  if(nl && confirm('Remove this pharmacy’s logo?')){
-    try{ await api('POST', '/owner/stores/' + encodeURIComponent(nl.dataset.nologo) + '/logo', {dataUrl:null}); LOGOS[nl.dataset.nologo] = ''; paintStore(); loadOwner(); }catch(err){ if(!err.auth) alert(err.message); }
-  }
-});
-// shrink the picture to at most 256 px so it loads instantly on the sign-in screen
-function shrinkImage(file){
-  return new Promise((res, rej) => {
-    const img = new Image(), url = URL.createObjectURL(file);
-    img.onload = () => {
-      const k = Math.min(1, 256 / Math.max(img.width, img.height)), c = document.createElement('canvas');
-      c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
-      let d = c.toDataURL('image/png'); if(d.length > 200000) d = c.toDataURL('image/jpeg', 0.85);
-      res(d);
-    };
-    img.onerror = () => rej(new Error('That file isn’t a picture this browser can read.')); img.src = url;
-  });
-}
-$('ownStores').addEventListener('change', async e => {
-  const f = e.target.closest('[data-logo]'); if(!f || !f.files[0]) return;
-  try{ const d = await shrinkImage(f.files[0]); await api('POST', '/owner/stores/' + encodeURIComponent(f.dataset.logo) + '/logo', {dataUrl:d});
-    LOGOS[f.dataset.logo] = d; paintStore(); renderOwnStores(); toast('Logo saved. It shows on the sign-in screen for this Pharmacy ID.'); }
-  catch(err){ if(!err.auth) alert(err.message); }
-});
 async function refreshMe(){ ME = await api('GET', '/me'); STORE = ME.stores.find(s => s.id === STORE.id) || STORE; paintStore(); }
 // bring in the old shared-drive file (nortex_reorder_data.json) — adds only, never overwrites
 $('impGo').onclick = async () => {
@@ -2741,7 +2742,6 @@ setInterval(async () => {
   showLogin(`Signed out after ${IDLE_MIN} minutes without use.`);
 }, 1000);
 if('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
-$('npPass').value = genTemp();
 docsInit();
 
 (async function start(){
