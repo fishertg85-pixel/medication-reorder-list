@@ -85,7 +85,7 @@ with sync_playwright() as pw:
     p.on('pageerror', lambda e: errs.append(str(e))); p.on('console', lambda m: errs.append('console: ' + m.text) if m.type == 'error' else None)
     p.on('request', lambda rq: posted.append((rq.method, rq.url, rq.post_data or '')) if rq.method != 'GET' else None)
     signin(p, "pha", "phapass12345")
-    tabs = p.locator('#tabs button:visible').all_inner_texts(); check("tab order", tabs, ["Calendar", "Documents", "Rx Intake", "Reorder List"])
+    tabs = p.locator('#tabs button:visible').all_inner_texts(); check("tab order", tabs, ["Dashboard", "Calendar", "Documents", "Reorder List", "Rx Intake"])
     p.click('#tabs [data-tab=rx]'); p.wait_for_selector('#rxFrame'); fr = p.frame_locator('#rxFrame'); fr.locator('#rcv_name').wait_for(timeout=8000); p.wait_for_timeout(800)
     check("receiving pharmacy shown from setup", (fr.locator('#rcv_addr').inner_text(), fr.locator('#rcv_fax').inner_text(), fr.locator('#rcv_dea').inner_text()), ("5796 E State Hwy 114, Suite 5A", "817-549-8796", "AB1234563"))
     check("receiving pharmacist and PIC filled from the logins", (fr.locator('#rp_rph').input_value(), fr.locator('#rp_lic').input_value(), fr.locator('#rp_pic').input_value(), fr.locator('#rp_piclic').input_value()), ("PHA LASTNAME", "59985", "OWNER LASTNAME" if False else fr.locator('#rp_pic').input_value(), "40291"))
@@ -111,7 +111,7 @@ with sync_playwright() as pw:
     check("no pharmacists editor any more", f2.locator('#staffBtn').count(), 0)
     p2.screenshot(path='screenshots/rx_4_owner.png')
     p3 = ctx.new_page(); signin(p3, "tch", "tchpass12345")
-    check("technician's tabs", p3.locator('#tabs button:visible').all_inner_texts(), ["Calendar", "Documents", "Reorder List"])
+    check("technician's tabs", p3.locator('#tabs button:visible').all_inner_texts(), ["Dashboard", "Calendar", "Documents", "Reorder List"])
     # sign out clears the form page
     p.click('#signOut') if p.locator('#signOut').count() else None
     b.close()

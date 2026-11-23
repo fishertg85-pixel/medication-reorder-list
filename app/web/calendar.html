@@ -150,7 +150,7 @@ footer.foot b{color:var(--ink)}
 .sec{font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin:14px 0 6px;padding-top:10px;border-top:1px solid var(--line)}
 .cmts{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}.cmt{padding:6px 8px;background:var(--soft);border-radius:6px}
 .att{display:flex;gap:10px;align-items:center;padding:4px 0}.att a{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.att .mut{flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.badge{display:inline-block;min-width:18px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:11.5px;font-weight:700;text-align:center}
+body.suite nav.tabs{display:none}body.suite .brand small{display:none}body.suite .ctl-me{display:none}.pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px;align-items:start}.subbar{display:flex;gap:6px;margin:0 0 12px}.subbar button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}.badge{display:inline-block;min-width:18px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:11.5px;font-weight:700;text-align:center}
 .sr .tx .pl{display:block;margin-top:3px}
 .dayside{width:380px}
 .btn:disabled{opacity:.5;cursor:not-allowed}
@@ -175,7 +175,7 @@ footer.foot b{color:var(--ink)}
 .serh{font:600 12px var(--sans);color:var(--mut);margin-bottom:4px}
 
 .chip.plan.rem{border-style:dotted;font-style:italic}
-</style><style>header.top .brand .mark{display:none}</style></head><body>
+</style><style>header.top .brand .mark{display:none}</style><link rel="stylesheet" href="fields.css"></head><body>
 <div id="app"></div><div id="modal"></div>
 <script>
 window.IL_BLANK=true;
@@ -763,7 +763,7 @@ function checklistHtml(){
 function liveDate(pred,fallback){ const o=D.occs.find(x=>!x.done&&x.due&&pred(x)); return o?o.due:fallback; }
 
 /* ===== dashboard ===== */
-function vDashboard(){
+function vDashboardOld(){
   const today=D.today, open=openOccs();
   const over=open.filter(o=>o.status==='overdue'), soon=open.filter(o=>o.status==='due-soon'), nob=open.filter(o=>o.status==='nobaseline');
   const next30=open.filter(o=>(o.status==='upcoming'||o.status==='due-soon')&&o.days<=30);
@@ -860,7 +860,7 @@ const sizeTxt=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round((
 const failedRes=(ob,res)=>!!(ob&&ob.res&&ob.res.length&&res&&res!==ob.res[0]);
 function workTag(tk,k){ const W=workOf(tk,k); if(!W)return ''; const o=findOcc(tk,k); return failedRes(o&&o.track.ob,W.result)?pill('overdue',W.result):pill('upcoming','In Progress'); }
 const workPill=o=>{ const x=workTag(o.trackKey,o.key); return x?' '+x:''; };
-const revPill=o=>{ const r=o.done&&o.rec&&o.rec.review; if(!r)return ''; return ' '+(r.status==='pending'?pill('late-done','Awaiting Review'):pill('done','Reviewed')); };
+const revPill=o=>{ const r=o.done&&o.rec&&o.rec.review; if(!r)return ''; return ' '+(r.status==='dp'?pill('late-done','Awaiting DP Review'):r.status==='pending'?pill('late-done',HXS()?'Awaiting Approval':'Awaiting Review'):r.status==='returned'?pill('overdue','Returned'):pill('done','Reviewed')); };
 const fileUrl=f=>'/_blob/'+f.id;
 function attHtml(files,canRemove){ return (files&&files.length)?files.map((f,i)=>'<div class="att"><a href="'+esc(fileUrl(f))+'" target="_blank" rel="noopener" title="'+esc(f.name)+'">'+esc(f.name)+'</a><span class="mut">'+sizeTxt(f.size)+' · '+esc(f.by||'')+' · '+esc(fmtTs(f.at))+'</span>'+(canRemove?'<button class="btn sm" data-act="rmatt" data-i="'+i+'">Remove</button>':'')+'</div>').join(''):'<div class="mut">No Documentation Attached.</div>'; }
 function commentsHtml(list){ return (list&&list.length)?list.map(c=>'<div class="cmt"><div class="mut" style="font-size:12px">'+esc(c.by||'Unspecified User')+' · '+esc(fmtTs(c.at))+'</div><div style="white-space:pre-wrap">'+esc(c.text)+'</div></div>').join(''):'<div class="mut">No Comments Yet.</div>'; }
@@ -896,7 +896,7 @@ function navBar(){
   const [y,m]=UI.calMonth.split('-').map(Number); const atL=UI.calMonth<=launchMonth();
   return '<div class="row navbar"><button class="btn sm" data-act="calnav" data-u="y" data-d="-1" aria-label="Previous year"'+(atL?' disabled':'')+'>« Year</button><button class="btn sm" data-act="calnav" data-u="m" data-d="-1" aria-label="Previous month"'+(atL?' disabled':'')+'>‹ Month</button>'+MONSEL(m,y)+'<input type="number" data-chg="caly" min="'+launchDate().slice(0,4)+'" max="2999" value="'+y+'" aria-label="Year" style="width:88px"><button class="btn sm" data-act="calnav" data-u="m" data-d="1" aria-label="Next month">Month ›</button><button class="btn sm" data-act="calnav" data-u="y" data-d="1" aria-label="Next year">Year »</button><button class="btn sm" data-act="calnav" data-u="t">Today</button>'+(atL?'<span class="mut" style="font-size:12px">Calendar starts '+fmt(launchDate())+' (account launch)</span>':'')+(US.isLeap(y)?'<span class="pill p-upcoming">Leap Year</span>':'')+'</div>';
 }
-function vCalendar(){
+function vCalendarMonth(){
   const today=D.today; if(!UI.calMonth)UI.calMonth=today.slice(0,7); UI.calMonth=clampMonth(UI.calMonth); if(UI.selDay)UI.selDay=clampDay(UI.selDay);
   const togs='<div class="row togs"><button class="btn sm pri" data-act="addsched" data-d="'+(UI.selDay||'')+'">Add To Schedule</button><span class="mut" style="font-size:12px">Tip: Right-Click A Task To See Its Series</span><label class="ctl"><input type="checkbox" data-chg="showHol"'+(UI.showHol?' checked':'')+'> Federal And Bank Holidays</label><label class="ctl"><input type="checkbox" data-chg="showObs"'+(UI.showObs?' checked':'')+'> Other Observances</label><label class="ctl"><input type="checkbox" data-chg="showProj"'+(UI.showProj?' checked':'')+'> Projected Items</label></div>';
   let h=calHead(); h+='<div class="body calbar"><div>'+navBar()+'</div>'+togs+'</div>';
@@ -1091,6 +1091,154 @@ function vSetup(){
   return h;
 }
 
+
+/* ===== suite: approval chain, Due For Me, compliance health, delegation and time off =====
+   The server (the signed-in person's own account) decides who may review and approve; this page only shows the right buttons. */
+const HX=()=>(window.ILHOST&&ILHOST.ctx)||null;
+const HXS=()=>!!(window.ILHOST&&ILHOST.suite);
+const chapterOf=k=>{ const m=/^u(795|797|800)-/.exec(String(k||'').split('|')[0]); return m?m[1]:''; };
+const mayDP=r=>{ const h=HX(); return h?h.me.dpChapters.indexOf(chapterOf(r.track))>=0:canReview(meP()); };
+const mayFinal=()=>{ const h=HX(); return h?!!h.me.canFinal:canReview(meP()); };
+const hoursSince=iso=>{ const t=Date.parse(iso); return isFinite(t)?(Date.now()-t)/3600000:0; };
+const waitPill=r=>{ const s=(r.review&&r.review.since)||r.createdAt; if(!s)return ''; const h=hoursSince(s); const c=h>=48?'p-overdue':h>=24?'p-due-soon':'p-upcoming'; const t=h<1?'Under 1 H':h<48?Math.floor(h)+' H':Math.floor(h/24)+' D'; return '<span class="pill '+c+'" title="Waiting since '+esc(fmtTs(s))+'">'+t+'</span>'; };
+function fmtMs(ms){ try{ return new Intl.DateTimeFormat('en-US',{timeZone:S.profile.tz,month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date(ms)); }catch(e){ return ''; } }
+function pharmNow(addMin){ const d=new Date(Date.now()+(addMin||0)*60000), o={}; new Intl.DateTimeFormat('en-CA',{timeZone:S.profile.tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(d).forEach(x=>o[x.type]=x.value); return o.year+'-'+o.month+'-'+o.day+'T'+o.hour+':'+o.minute; }
+const recTitle=r=>{ const t=D.tracks.find(x=>x.key===r.track); return t?t.ob.title:r.track; };
+const recSubj=r=>{ const t=D.tracks.find(x=>x.key===r.track); return t?subjName(t):''; };
+const recVisible=r=>{ const t=D.tracks.find(x=>x.key===r.track); return !t||inSite(t); };
+const sinceKey=r=>String((r.review&&r.review.since)||r.createdAt||'');
+function myQueues(){
+  const recs=S.records.filter(r=>r.review&&r.status!=='void'&&recVisible(r)), me=String(whoAmI()||'').toLowerCase();
+  const dp=recs.filter(r=>r.review.status==='dp').sort((a,b)=>sinceKey(a)<sinceKey(b)?-1:1), fin=recs.filter(r=>r.review.status==='pending').sort((a,b)=>sinceKey(a)<sinceKey(b)?-1:1);
+  const ret=recs.filter(r=>r.review.status==='returned').sort((a,b)=>sinceKey(a)<sinceKey(b)?-1:1);
+  const forMe=dp.filter(mayDP).concat(mayFinal()?fin:[]), retMe=ret.filter(r=>String(r.by||r.completedBy||'').toLowerCase()===me);
+  return {dp:dp,fin:fin,ret:ret,forMe:forMe,retMe:retMe,n:forMe.length+retMe.length};
+}
+const rqRow=(r,extra)=>'<tr class="click" data-act="viewrec" data-id="'+esc(r.id)+'"><td>'+esc(recTitle(r))+'</td><td>'+esc(recSubj(r))+'</td><td class="num">'+fmt(r.completedOn)+'</td><td>'+esc(r.completedBy||'—')+'</td><td>'+waitPill(r)+'</td>'+(extra||'')+'<td><button class="btn sm pri" data-act="viewrec" data-id="'+esc(r.id)+'">Open</button></td></tr>';
+const rqHead='<tr><th>Item</th><th>For</th><th>Completed</th><th>Completed By</th><th>Waiting</th><th></th></tr>';
+function reviewCard(q){
+  const h=HX(); if(h&&!(h.me.boss||h.me.canFinal||h.me.dpChapters.length))return '';
+  const sec=(t,list,empt,extra)=>'<div class="sec" style="padding:8px 14px 0">'+t+' ('+list.length+')</div>'+(list.length?'<div class="tw"><table>'+rqHead+list.map(r=>rqRow(r)).join('')+'</table></div>':'<div class="body mut" style="padding-top:4px">'+empt+'</div>');
+  const retRows=q.ret.length?'<div class="tw"><table><tr><th>Item</th><th>For</th><th>Completed</th><th>Returned By</th><th>Reason</th><th></th></tr>'+q.ret.map(r=>{ const l=(r.review.hist||[]).slice(-1)[0]||{}; return '<tr class="click" data-act="viewrec" data-id="'+esc(r.id)+'"><td>'+esc(recTitle(r))+'</td><td>'+esc(recSubj(r))+'</td><td class="num">'+fmt(r.completedOn)+'</td><td>'+esc(l.by||'—')+'</td><td style="white-space:normal">'+esc(l.reason||'')+'</td><td><button class="btn sm" data-act="viewrec" data-id="'+esc(r.id)+'">Open</button></td></tr>'; }).join('')+'</table></div>':'<div class="body mut" style="padding-top:4px">Nothing is waiting for correction.</div>';
+  return '<div class="card"><div class="hd"><h2>Review Queue</h2><span class="sub">Technician To Designated Person To Final Approval</span></div>'+sec('Awaiting Designated Person Review',q.dp,'Nothing is waiting for the Designated Person.')+sec('Awaiting Final Approval',q.fin,'Nothing is waiting for final approval.')+'<div class="sec" style="padding:8px 14px 0">Returned For Correction ('+q.ret.length+')</div>'+retRows+'</div>';
+}
+function dueForMeCard(q){
+  const today=D.today, open=openOccs(), mine=open.filter(o=>(o.status==='overdue'||o.status==='due-soon'||o.days<=0)&&mayDo(o.track.ob)).sort((a,b)=>(a.due||'0000')<(b.due||'0000')?-1:1);
+  const h=HX(), now=Date.now(), team=h?h.team:[], meT=h?team.find(p=>p.sub===h.me.sub):null;
+  const cov=h?h.delegations.filter(d=>d.toSub===h.me.sub&&!d.canceled&&d.endMs>now):[];
+  const lic=meT&&meT.licExpires&&meT.licExpires<=IL.addDays(today,60)?meT.licExpires:'';
+  let b='';
+  if(q.forMe.length)b+='<div class="sec" style="padding:8px 14px 0">Awaiting My Review Or Approval ('+q.forMe.length+')</div><div class="tw"><table>'+rqHead+q.forMe.slice(0,15).map(r=>rqRow(r)).join('')+'</table></div>';
+  if(q.retMe.length)b+='<div class="sec" style="padding:8px 14px 0">Returned To Me ('+q.retMe.length+')</div><div class="tw"><table>'+rqHead+q.retMe.map(r=>rqRow(r)).join('')+'</table></div>';
+  if(mine.length)b+='<div class="sec" style="padding:8px 14px 0">My Tasks Due Today Or Overdue ('+mine.length+')</div><div class="tw"><table>'+occHead(true)+mine.slice(0,12).map(o=>occRow(o,true)).join('')+'</table></div>'+(mine.length>12?'<div class="body mut">Showing 12 of '+mine.length+'. The Calendar tab has the rest.</div>':'');
+  if(cov.length)b+='<div class="sec" style="padding:8px 14px 0">Covering For Others</div><div class="body">'+cov.map(d=>'<div>'+esc(d.fromName)+' · '+(d.step==='dp'?'Designated Person Review':'Final Approval')+' · '+esc(fmtMs(d.startMs))+' To '+esc(fmtMs(d.endMs))+'</div>').join('')+'</div>';
+  if(lic)b+='<div class="body"><span class="pill p-due-soon">Registration</span> Your registration or license expires '+esc(fmt(lic))+'.</div>';
+  return '<div class="card"><div class="hd"><h2>Due For Me</h2><span class="sub">What needs me today</span></div>'+(b||empty('Nothing is waiting on you.'))+'</div>';
+}
+function healthCard(q,open){
+  const h=HX(), today=D.today, now=Date.now();
+  const over=open.filter(o=>o.status==='overdue').length, week=open.filter(o=>(o.status==='upcoming'||o.status==='due-soon')&&o.days<=7).length;
+  const exp=open.filter(o=>o.track.ob.rec.kind==='expiry'&&o.days<=30).length+(h?h.expiring.registrations:0);
+  const out=h?h.timeoff.filter(t=>t.startMs<=now&&now<t.endMs).map(t=>t.name):[];
+  const byCat={}; D.occs.filter(o=>inSite(o.track)&&!o.projected&&o.due&&o.due<=today&&o.due>=IL.addDays(today,-365)&&o.status!=='na').forEach(o=>{ const c=o.track.ob.cat||'Other'; const x=byCat[c]=byCat[c]||{n:0,done:0,late:0}; x.n++; if(o.done){ x.done++; if(o.status==='late-done')x.late++; } });
+  const cats=Object.keys(byCat).sort();
+  const tile=(c,n,l)=>'<div class="tile '+c+'"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>';
+  return '<div class="card"><div class="hd"><h2>Compliance Health</h2><span class="sub">Counts for the whole pharmacy</span><span class="spacer"></span><button class="btn sm" data-act="auditopen">Audit Report</button></div><div class="body"><div class="tiles" style="margin-bottom:0">'+
+    tile(over?'bad':'ok',over,'Overdue')+tile(week?'warn':'ok',week,'Due This Week')+tile(exp?'warn':'ok',exp,'Expiring In 30 Days')+tile(q.dp.length?'warn':'ok',q.dp.length,'Awaiting DP Review')+tile(q.fin.length?'warn':'ok',q.fin.length,'Awaiting Final Approval')+tile(q.ret.length?'bad':'ok',q.ret.length,'Returned')+'</div>'+
+    (out.length?'<p class="mut" style="margin:10px 0 0">Out Now: '+out.map(esc).join(', ')+'</p>':'')+'</div>'+
+    (cats.length?'<div class="tw"><table><tr><th>Area</th><th>Due, Last 12 Months</th><th>Completed</th><th>Done Late</th><th>Not Done</th></tr>'+cats.map(c=>{ const x=byCat[c]; return '<tr><td>'+esc(c)+'</td><td class="num">'+x.n+'</td><td class="num">'+x.done+'</td><td class="num">'+x.late+'</td><td class="num">'+(x.n-x.done)+'</td></tr>'; }).join('')+'</table></div>':'')+'</div>';
+}
+function coverCard(){
+  const h=HX(); if(!h)return ''; const now=Date.now(), me=h.me;
+  const off=h.timeoff.filter(t=>t.endMs>now).sort((a,b)=>a.startMs-b.startMs), dl=h.delegations.filter(d=>!d.canceled&&d.endMs>now).sort((a,b)=>a.startMs-b.startMs);
+  const mayDeleg=me.boss||me.canFinal||me.dpChapters.length||Object.values(me.dp||{}).some(v=>v);
+  const mine=t=>t.sub===me.sub||me.boss;
+  return '<div class="card"><div class="hd"><h2>Time Off And Coverage</h2><span class="sub">Pharmacy time</span><span class="spacer"></span><button class="btn sm" data-act="toffopen">Add Time Off</button>'+(mayDeleg?'<button class="btn sm pri" data-act="delegopen">Delegate Approving</button>':'')+'</div>'+
+   (off.length||dl.length?'<div class="tw"><table><tr><th>Who</th><th>What</th><th>From</th><th>To</th><th></th></tr>'+
+    off.map(t=>'<tr><td>'+esc(t.name)+'</td><td>'+pill('upcoming','Time Off')+'</td><td>'+esc(fmtMs(t.startMs))+'</td><td>'+esc(fmtMs(t.endMs))+'</td><td>'+(mine(t)?'<button class="btn sm" data-act="toffdel" data-id="'+esc(t.id)+'">Remove</button>':'')+'</td></tr>').join('')+
+    dl.map(d=>'<tr><td>'+esc(d.fromName)+' → '+esc(d.toName)+'</td><td>'+(d.step==='dp'?'Designated Person Review':'Final Approval')+' '+(d.active?pill('done','Running'):pill('upcoming','Scheduled'))+'</td><td>'+esc(fmtMs(d.startMs))+'</td><td>'+esc(fmtMs(d.endMs))+'</td><td>'+((d.fromSub===me.sub||me.boss)?'<button class="btn sm" data-act="delegdel" data-id="'+esc(d.id)+'">Cancel</button>':'')+'</td></tr>').join('')+'</table></div>':empty('No time off or coverage is scheduled.'))+'</div>';
+}
+function vDashboard(){
+  if(!HXS()||!HX())return vDashboardOld();
+  const q=myQueues(), open=openOccs();
+  return dueForMeCard(q)+healthCard(q,open)+reviewCard(q)+coverCard()+vDashboardOld();
+}
+function vCalendar(){
+  if(!HXS())return vCalendarMonth();
+  const sub=UI.calSub||'month';
+  const bar='<div class="subbar"><button class="btn sm" data-act="calsub" data-v="month" aria-pressed="'+(sub==='month')+'">Calendar</button><button class="btn sm" data-act="calsub" data-v="list" aria-pressed="'+(sub==='list')+'">List</button><button class="btn sm" data-act="calsub" data-v="files" aria-pressed="'+(sub==='files')+'">Task Files</button></div>';
+  return bar+(sub==='list'?vObligations():sub==='files'?vDocs():vCalendarMonth());
+}
+async function chainSave(){
+  if(!(window.ILHOST&&ILHOST.sync)){ Store.saveLocal(); return ''; }
+  clearTimeout(Store.hostTimer); let err='';
+  Store.chain=Store.chain.then(async()=>{ try{ await ILHOST.save(S); }catch(e){ err=(e&&e.message)||'Not saved.'; } });
+  await Store.chain;
+  try{ const x=await ILHOST.sync(); if(x){ S.records=x.records; S.log=x.log; } }catch(e){}
+  recompute(); return err;
+}
+async function reviewAct(kind){
+  const r0=MODAL&&MODAL.rec; if(!r0)return; const r=S.records.find(x=>x.id===r0.id)||r0, rv=r.review||{}, o=MODAL.occ, subj=subjLine(o.track)+' ('+fmt(r.completedOn)+')';
+  if(!(window.ILHOST&&ILHOST.sync))return acceptRec();
+  const note=V('rvnote'), reason=V('rvreason'); let to='', act='';
+  if(kind==='dpok'){ if(rv.status!=='dp')return merr('This Record Is Not Waiting For The Designated Person.'); to='pending'; act='Designated Person Review: Passed To Final Approval'; }
+  else if(kind==='accept'){ to='accepted'; act='Accepted'; if(rv.status==='dp'){ if(!reason)return merr('Enter A Reason For Reviewing In Place.'); act='Accepted Without Designated Person Review: '+reason; } }
+  else { if(!reason)return merr('A Reason Is Required To Return A Record.'); to='returned'; act='Returned: '+reason; }
+  const prev=JSON.stringify(r.review);
+  r.review=Object.assign({},rv,{status:to,note:note,reason:kind==='return'?reason:'',bypassReason:(kind==='accept'&&rv.status==='dp')?reason:''});
+  logAct(act,subj);
+  const err=await chainSave(); if(err){ logAct('Not Saved',err); return merr(err); }
+  closeModal(); toast(to==='pending'?'Passed to final approval.':to==='accepted'?'Accepted. The task is complete and documented.':'Returned for correction.'); changed('rec');
+}
+function resubModal(r){
+  openModal('Correct And Resubmit','<p class="mut" style="margin:0">'+esc(recTitle(r))+' · '+esc(recSubj(r))+'</p>'+fld('Result',inp('res',r.result||''))+fld('Evidence',inp('evid',r.evidence||''))+fld('What Was Corrected',area('fix','','Required')),FOOT_SAVE('Resubmit'),{save:async()=>{
+    const fix=V('fix'); if(!fix)return merr('Say What Was Corrected.');
+    const x=S.records.find(y=>y.id===r.id)||r, at=nowIso(); x.result=V('res'); x.evidence=V('evid');
+    if(x.task){ x.task.comments=(x.task.comments||[]).concat([{at:at,by:whoAmI(),text:'Corrected: '+fix}]); x.task.hist=(x.task.hist||[]).concat([{at:at,by:whoAmI(),act:'Corrected And Resubmitted'}]); }
+    x.review=Object.assign({},x.review,{status:'pending'}); logAct('Corrected And Resubmitted',recTitle(x)+' ('+fmt(x.completedOn)+')');
+    const err=await chainSave(); if(err)return merr(err); closeModal(); toast('Resubmitted for review.'); changed('rec'); }});
+  MODAL.rec=r;
+}
+function chainSection(r,rv){
+  if(!rv||r.status==='void')return '';
+  if(!HXS()){ const pend=rv.status==='pending'; if(!pend)return ''; const me=meP(), may=canReview(me); return '<div class="sec">Review</div>'+(me&&me.name&&(r.completedBy||'').toLowerCase()===me.name.toLowerCase()?'<div class="warnbox" style="margin:0 0 8px">You completed this task. A different supervisor is usually expected to review it. It is recorded if you accept it yourself.</div>':'')+(!may?'<div class="warnbox" style="margin:0 0 8px">Only a person with PIC or Reviewer duty can accept. Choose one in Acting As (top right).</div>':'')+fld('Reviewer Comment',area('rvnote','','Optional')); }
+  const st=rv.status, canAct=(st==='dp'&&(mayDP(r)||mayFinal()))||(st==='pending'&&mayFinal());
+  let h=''; const hist=(rv.hist||[]); const hx=HX(), seeH=hx&&(hx.me.boss||hx.me.canFinal||hx.me.dpChapters.length);
+  if(rv.dp)h+='<dt>Designated Person Review</dt><dd>'+esc(rv.dp.by)+' · '+esc(fmtTs(rv.dp.at))+(rv.dp.onBehalfOf?' · On Behalf Of '+esc(rv.dp.onBehalfOf):'')+(rv.sameAsDp?' · Same Person As Final Approver':'')+'</dd>';
+  if(rv.bypassed)h+='<dt>Reviewed In Place</dt><dd style="white-space:normal">Designated Person review bypassed: '+esc(rv.bypassed.reason)+'</dd>';
+  let out=(h?'<dl class="kv">'+h+'</dl>':'');
+  if(seeH&&hist.length)out+='<div class="sec">Review History</div><div class="cmts">'+hist.map(x=>'<div class="cmt"><span class="mut" style="font-size:12px">'+esc(fmtTs(x.at))+' · '+esc(x.by)+(x.onBehalfOf?' (For '+esc(x.onBehalfOf)+')':'')+'</span> Returned At The '+(x.step==='dp'?'Designated Person':'Final Approval')+' Step: '+esc(x.reason)+'</div>').join('')+'</div>';
+  if(st==='returned'){ const l=hist.slice(-1)[0]||{}; out+='<div class="warnbox" style="margin:8px 0">Returned: '+esc(l.reason||'')+'</div>'; }
+  if(canAct)out+='<div class="sec">Review</div>'+(st==='dp'&&!mayDP(r)?'<div class="warnbox" style="margin:0 0 8px">The Designated Person has not reviewed this. You can accept it in place; a reason is required and it is recorded.</div>':'')+(String(r.completedBy||'').toLowerCase()===String(whoAmI()).toLowerCase()?'<div class="warnbox" style="margin:0 0 8px">You completed this task. It is recorded if you review or accept it yourself.</div>':'')+fld('Reviewer Comment',area('rvnote','','Optional'))+fld('Reason (Required To Return Or To Review In Place)',inp('rvreason','','text',''));
+  return out;
+}
+function chainFoot(r,rv){
+  const close='<button class="btn" data-act="close">Close</button>';
+  if(!rv||r.status==='void')return '<button class="btn pri" data-act="close">Close</button>';
+  if(!HXS()){ return rv.status==='pending'?close+'<button class="btn pri" data-act="maccept"'+(canReview(meP())?'':' disabled')+'>Accept</button>':'<button class="btn pri" data-act="close">Close</button>'; }
+  const st=rv.status;
+  if(st==='dp'){ return close+(mayDP(r)||mayFinal()?'<button class="btn" data-act="mreturn">Return</button>':'')+(mayDP(r)?'<button class="btn pri" data-act="mdpok">Pass To Final Approval</button>':mayFinal()?'<button class="btn pri" data-act="maccept">Accept In Place</button>':''); }
+  if(st==='pending'){ return close+(mayFinal()?'<button class="btn" data-act="mreturn">Return</button><button class="btn pri" data-act="maccept">Accept</button>':''); }
+  if(st==='returned'){ const mine=String(r.by||r.completedBy||'').toLowerCase()===String(whoAmI()).toLowerCase()||mayDo({id:String(r.track||'').split('|')[0]}); return close+(mine?'<button class="btn pri" data-act="mresub">Correct And Resubmit</button>':''); }
+  return '<button class="btn pri" data-act="close">Close</button>';
+}
+// time off and delegation forms
+function peopleOpts(filter){ const h=HX(); return (h?h.team:[]).filter(filter||(()=>true)).map(p=>[p.sub,p.name]); }
+function toffModal(){
+  const h=HX(), boss=h&&h.me.boss;
+  openModal('Add Time Off','<p class="mut" style="margin:0">Everyone sees your name and the dates, not a reason. Times are pharmacy time.</p>'+(boss?fld('Who',sel('who',[[h.me.sub,'Me']].concat(peopleOpts(p=>p.sub!==h.me.sub)),h.me.sub)):'')+fld('Starts',inp('s',pharmNow(),'datetime-local'))+fld('Ends',inp('e',pharmNow(60*24),'datetime-local')),FOOT_SAVE('Add'),{save:async()=>{
+    const b={start:V('s'),end:V('e')}; if(boss&&V('who')&&V('who')!==h.me.sub)b.for=V('who');
+    try{ const r=await ILHOST.call('timeoff','','',b); closeModal(); changed('rec'); toast('Time off added.'); if(r&&r.promptDelegation&&(!b.for||b.for===h.me.sub))setTimeout(()=>delegModal({s:b.start,e:b.end}),50); }catch(e){ merr(e.message); } }});
+}
+function delegModal(pre){
+  const h=HX(); if(!h)return; pre=pre||{}; const me=h.me, boss=me.boss;
+  const steps=[]; if(me.dpChapters.length||Object.values(me.dp||{}).some(v=>v))steps.push(['dp','Designated Person Review']); if(me.canFinal||me.boss)steps.push(['final','Final Approval']);
+  if(!steps.length)steps.push(['dp','Designated Person Review'],['final','Final Approval']);
+  openModal('Delegate Approving','<p class="mut" style="margin:0">Give your approving power to someone for a span. It ends at the exact time below. They cannot pass it on.</p>'+(boss?fld('For',sel('for',[[me.sub,'Me']].concat(peopleOpts(p=>p.sub!==me.sub)),me.sub),'To set it for someone else, a reason is required.'):'')+fld('Step',sel('step',steps,steps[0][0]))+fld('To',sel('to',peopleOpts(p=>p.sub!==me.sub&&(p.acctType==='pic'||p.acctType==='pharmacist'||p.acctType==='tech')),''))+fld('Starts',inp('s',pre.s||pharmNow(),'datetime-local'))+fld('Ends',inp('e',pre.e||pharmNow(60*24),'datetime-local'))+(boss?fld('Reason (Only When Set For Someone Else)',inp('why','')):''),FOOT_SAVE('Delegate'),{save:async()=>{
+    const b={step:V('step'),to:V('to'),start:V('s'),end:V('e')}; if(boss&&V('for')&&V('for')!==me.sub){ b.for=V('for'); b.reason=V('why'); }
+    try{ await ILHOST.call('delegations','','',b); closeModal(); changed('rec'); toast('Delegation set.'); }catch(e){ merr(e.message); } }});
+}
+
 /* ===== render ===== */
 const TABS=[['dashboard','Dashboard'],['calendar','Calendar'],['obligations','Obligations'],['review','Review Queue'],['docs','Documentation'],['people','People & Assets'],['audit','Audit Record'],['setup','Setup']];
 function render(){
@@ -1098,17 +1246,19 @@ function render(){
   if(UI.loading||(!D&&!(BLANK&&S.mode!=='live'))){ root.innerHTML='<div class="wrap"><p class="mut" style="padding:40px 0">Loading…</p></div>'; return; }
   if(BLANK&&S.mode!=='live'){ root.innerHTML='<header class="top"><div class="wrap"><div class="bar"><div class="brand"><span class="mark">Iron<b>Ledger</b></span><small>Compliance Calendar</small></div></div></div></header><main><div class="wrap"><div class="card" style="max-width:640px;margin:40px auto"><div class="hd"><h2>Set Up A New Pharmacy</h2></div><div class="body"><p style="margin-top:0">This calendar is empty. Nothing is scheduled yet. Enter the pharmacy basics and the programs it runs, then add people, equipment, rooms and documents. The calendar fills in from what you add.</p>'+((window.ILHOST&&ILHOST.canStart===false)?'<p><b>This pharmacy’s calendar has not been started.</b> Ask the Account Owner to start it.</p>':'<button class="btn pri" data-act="wizard">Start My Pharmacy</button>')+(Store.kind==='local'&&Store.err?'<p class="mut" style="margin-bottom:0">'+esc(Store.err)+'</p>':'')+''+((window.ILHOST&&ILHOST.canStart===false)?'':'<p class="mut" style="margin:14px 0 0">Have a backup file? <label class="btn sm" style="cursor:pointer">Restore From Backup<input type="file" id="restore" accept=".json,application/json" hidden></label></p>')+'</div></div></div></main>'; const rs=$('#restore'); if(rs)rs.onchange=e=>restoreFile(e.target.files[0]); return; }
   let view=''; try{ view={dashboard:vDashboard,calendar:vCalendar,obligations:vObligations,review:vReview,docs:vDocs,people:vPeople,audit:vAudit,setup:vSetup}[UI.tab](); }catch(e){ view='<div class="banner bad">This view could not be drawn: '+esc(e.message)+'</div>'; }
-  const NPEND=S.records.filter(r=>r.review&&r.review.status==='pending'&&r.status!=='void').length;
+  const NPEND=S.records.filter(r=>r.review&&(r.review.status==='pending'||r.review.status==='dp')&&r.status!=='void').length;
+  document.body.classList.toggle('suite',HXS());
   const sites=S.sites.filter(s=>!s.archived);
   const people=S.people.filter(p=>!p.archived);
   root.innerHTML='<header class="top"><div class="wrap"><div class="bar"><div class="brand"><span class="mark">Iron<b>Ledger</b></span><small>Compliance Calendar'+(S.profile.name&&S.mode==='live'?' · '+esc(S.profile.name):'')+'</small></div><div class="spacer"></div><button class="clock" id="clock" data-act="hours" title="Time zone and hours of operation"><span id="clkD" class="mut"></span><span id="clkT" class="num"></span><span id="clkS" class="pill"></span></button>'+
    (sites.length>1?'<span class="ctl">Pharmacy <select data-chg="site"><option value="">All</option>'+sites.map(s=>'<option value="'+esc(s.id)+'"'+(UI.site===s.id?' selected':'')+'>'+esc(s.name)+'</option>').join('')+'</select></span>':'')+
-   (people.length?'<span class="ctl">Acting As <select data-chg="me"><option value="">Unspecified</option>'+people.map(p=>'<option value="'+esc(p.id)+'"'+(ME===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></span>':'')+
-   '</div><nav class="tabs" role="tablist">'+TABS.map(t=>'<button role="tab" aria-selected="'+(UI.tab===t[0])+'" data-act="tab" data-v="'+t[0]+'">'+t[1]+(t[0]==='review'&&NPEND?' <span class="badge">'+NPEND+'</span>':'')+'</button>').join('')+'</nav></div></header>'+
+   (people.length?'<span class="ctl ctl-me">Acting As <select data-chg="me"><option value="">Unspecified</option>'+people.map(p=>'<option value="'+esc(p.id)+'"'+(ME===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></span>':'')+
+   '</div><nav class="tabs" role="tablist">'+TABS.map(t=>'<button role="tab" aria-selected="'+(UI.tab===t[0])+'" data-act="tab" data-v="'+t[0]+'">'+t[1]+(t[0]==='review'&&NPEND?' <span class="badge">'+NPEND+'</span>':'')+'</button>').join('')+'</nav></div></header>'+(HXS()&&(UI.tab==='audit'||UI.tab==='people'||UI.tab==='setup')?'<div class="wrap" style="padding-top:12px"><button class="btn sm" data-act="back">← Back</button></div>':'')+
    '<main><div class="wrap'+(UI.tab==='calendar'?' wide':'')+'">'+(S.mode!=='live'?'<div class="banner demo"><span>Sample Data. Nothing is saved until you start your own pharmacy.</span><button class="btn sm pri" data-act="wizard">Start My Pharmacy</button></div><div style="height:12px"></div>':(Store.kind==='local'?'<div class="banner info">'+esc(Store.err||'Saved in this browser only.')+'</div><div style="height:12px"></div>':''))+view+'</div></main>'+
    '<footer class="foot"><div class="wrap" style="display:flex;gap:8px;align-items:baseline"><span class="mark">Iron<b>Ledger</b></span><span>2026 IronLedger LLC</span></div></footer>';
   const rs=$('#restore'); if(rs)rs.onchange=e=>restoreFile(e.target.files[0]);
   updateClock();
+  if(HXS()&&D){ try{ parent.postMessage({ilcal:'badge',n:myQueues().n},location.origin); }catch(e){} }
 }
 
 /* ===== form + modal helpers ===== */
@@ -1281,17 +1431,17 @@ function saveRec(o,na,alsoIds){
 function prompt_na(){ return V('note'); }
 
 function detailModal(o){
-  const t=o.track, r=o.rec, tk=r.task, rv=r.review; const pend=!!(rv&&rv.status==='pending'&&r.status!=='void'); const me=meP(), may=canReview(me);
-  const body=(rv&&r.status!=='void'?'<div class="banner '+(pend?'info':'info')+'" style="margin:0">'+(pend?'<b>Completed And Locked.</b> Waiting for a supervisor to review.':'<b>Accepted.</b> This task is complete and documented. It cannot be changed.')+'</div>':'')+
+  const t=o.track, r=o.rec, tk=r.task, rv=r.review; const pend=!!(rv&&(rv.status==='pending'||rv.status==='dp')&&r.status!=='void'); const me=meP(), may=canReview(me);
+  const body=(rv&&r.status!=='void'?'<div class="banner '+(pend?'info':'info')+'" style="margin:0">'+(pend?'<b>Completed And Locked.</b> '+(HXS()?(rv.status==='dp'?'Waiting for the Designated Person to review.':'Waiting for final approval.'):'Waiting for a supervisor to review.'):rv.status==='returned'?'<b>Returned For Correction.</b> It goes back through review once it is corrected.':'<b>Accepted.</b> This task is complete and documented. It cannot be changed.')+'</div>':'')+
    '<dl class="kv"><dt>Item</dt><dd>'+esc(t.ob.title)+'</dd><dt>For</dt><dd>'+esc(t.subj.name)+'</dd><dt>Due</dt><dd>'+fmt(o.due)+'</dd><dt>Status</dt><dd>'+pill(o.status)+revPill(o)+(o.lateDays?' ('+o.lateDays+' days late)':'')+'</dd>'+
    (tk?'<dt>Entered By</dt><dd>'+esc(tk.enteredBy||'—')+' · '+esc(fmtTs(tk.enteredAt))+'</dd><dt>Started By</dt><dd>'+esc(tk.startedBy||'—')+' · '+esc(fmtTs(tk.startedAt))+'</dd>':'')+
    '<dt>Completed On</dt><dd>'+fmt(r.completedOn)+'</dd><dt>Completed By</dt><dd>'+esc(r.completedBy||'—')+'</dd>'+
    (rv&&rv.status==='accepted'?'<dt>Reviewed By</dt><dd>'+esc(rv.by||'—')+' · '+esc(fmtTs(rv.at))+(rv.note?'<div style="white-space:normal">'+esc(rv.note)+'</div>':'')+'</dd>':'')+
    '<dt>Result</dt><dd>'+esc(r.result||'—')+'</dd><dt>Evidence</dt><dd style="white-space:normal">'+esc(r.evidence||'—')+'</dd>'+(r.lateReason?'<dt>Late Reason</dt><dd style="white-space:normal">'+esc(r.lateReason)+'</dd>':'')+(r.naReason?'<dt>Not Applicable Because</dt><dd style="white-space:normal">'+esc(r.naReason)+'</dd>':'')+(r.nextDue?'<dt>New Expiration</dt><dd>'+fmt(r.nextDue)+'</dd>':'')+(r.note?'<dt>Completion Notes</dt><dd style="white-space:normal">'+esc(r.note)+'</dd>':'')+(tk?'':'<dt>Entered</dt><dd>'+esc((r.createdAt||'').slice(0,10))+(r.by?' by '+esc(r.by):'')+'</dd>')+'</dl>'+(r.data&&formOf(t.ob)?formOf(t.ob).view(r.data,t):'')+
-   (tk?'<div class="sec">Comments</div><div class="cmts">'+commentsHtml(tk.comments)+'</div><div class="sec">Documentation</div>'+attHtml(tk.files,false)+'<div class="sec">Activity</div><div class="cmts">'+histHtml((tk.hist||[]).concat(rv&&rv.status==='accepted'?[{at:rv.at,by:rv.by,act:'Reviewed: Accepted'}]:[]))+'</div>':'')+
-   (pend?'<div class="sec">Review</div>'+(me&&me.name&&(r.completedBy||'').toLowerCase()===me.name.toLowerCase()?'<div class="warnbox" style="margin:0 0 8px">You completed this task. A different supervisor is usually expected to review it. It is recorded if you accept it yourself.</div>':'')+(!may?'<div class="warnbox" style="margin:0 0 8px">Only a person with PIC or Reviewer duty can accept. Choose one in Acting As (top right).</div>':'')+fld('Reviewer Comment',area('rvnote','','Optional')):'')+
+   (tk?'<div class="sec">Comments</div><div class="cmts">'+commentsHtml(tk.comments)+'</div><div class="sec">Documentation</div>'+attHtml(tk.files,false)+'<div class="sec">Activity</div><div class="cmts">'+histHtml((tk.hist||[]).concat(rv&&rv.status==='accepted'?[{at:rv.at,by:rv.by,act:'Reviewed: Accepted'+(rv.onBehalfOf?' (On Behalf Of '+rv.onBehalfOf+')':'')}]:[]))+'</div>':'')+
+   chainSection(r,rv)+
    (r.status==='void'?'':fld('Reason To Void (Only If Entered In Error)',inp('void','','text','Required to void')));
-  openModal('Completed Item',body,(r.status==='void'?'':'<button class="btn danger" data-act="mvoid" style="margin-right:auto">Void This Record</button>')+'<button class="btn" data-act="series" data-t="'+esc(o.trackKey)+'" data-k="'+esc(o.key)+'">View Series</button><button class="btn" data-act="mtrack" data-t="'+esc(o.trackKey)+'">Open Track</button>'+(pend?'<button class="btn" data-act="close">Close</button><button class="btn pri" data-act="maccept"'+(may?'':' disabled')+'>Accept</button>':'<button class="btn pri" data-act="close">Close</button>'),{nofocus:true,wide:true});
+  openModal('Completed Item',body,(r.status==='void'?'':'<button class="btn danger" data-act="mvoid" style="margin-right:auto">Void This Record</button>')+'<button class="btn" data-act="series" data-t="'+esc(o.trackKey)+'" data-k="'+esc(o.key)+'">View Series</button><button class="btn" data-act="mtrack" data-t="'+esc(o.trackKey)+'">Open Track</button>'+chainFoot(r,rv),{nofocus:true,wide:true});
   MODAL.rec=r; MODAL.occ=o;
 }
 function acceptRec(){
@@ -1456,7 +1606,7 @@ function wizard(){
      const st=emptyState(); st.mode='live'; st.profile={name:v.name,state:'TX',features:{},trackingStart:v.start,launchedAt:todayIn(v.tz),tz:v.tz,hours:(HP&&Array.isArray(HP.hours)&&HP.hours.length===7)?HP.hours:defHours(),holClosed:defHolClosed()}; FEATURES.forEach(f=>st.profile.features[f[0]]=v.feat.includes(f[0]));
      st.sites=[{id:'s1',name:v.name}]; if(v.owner)st.people.push({id:'p1',name:v.owner,role:'Owner',duties:['Owner'],tags:[],siteId:''}); if(v.pic)st.people.push({id:'p2',name:v.pic,role:'Pharmacist',duties:['PIC','Designated Person'],tags:[],siteId:'s1'});
      S=st; ME=''; UI.site=''; UI.calMonth=null; UI.selDay=null; if(Store.db){ Store.kind='db'; Store.subscribe(); } else { Store.kind=window.ILHOST?'host':'local'; }
-     persistAll(); logAct('Started Pharmacy',v.name); UI.tab='setup'; location.hash='#setup'; changed('config'); toast('Started. Add people, equipment and documents next.'); }});
+     persistAll(); logAct('Started Pharmacy',v.name); UI.tab=HXS()?'dashboard':'setup'; location.hash='#'+UI.tab; changed('config'); toast('Started. Add people, equipment and documents next.'); }});
 }
 function persistAll(){
   if(S.mode!=='live')return; if(!Store.db){ Store.saveLocal(); return; }
@@ -1658,8 +1808,21 @@ function pecModal(id){
   $('#f_pt').addEventListener('change',sync); $('#f_pl').addEventListener('change',sync); $('#f_pr').addEventListener('change',note); if($('#f_ps'))$('#f_ps').addEventListener('change',()=>{rooms();note();}); sync(); note();
 }
 
+Object.assign(ACT,{
+  maccept(){ reviewAct('accept'); }, mdpok(){ reviewAct('dpok'); }, mreturn(){ reviewAct('return'); },
+  mresub(){ const r0=MODAL&&MODAL.rec; if(!r0)return; const r=S.records.find(x=>x.id===r0.id)||r0; closeModal(); resubModal(r); },
+  calsub(el){ UI.calSub=el.dataset.v; render(); },
+  auditopen(){ UI.from=UI.tab; UI.tab='audit'; render(); window.scrollTo(0,0); },
+  back(){ if(UI.tab==='audit'){ UI.tab=UI.from||'dashboard'; render(); return; } try{ parent.postMessage({ilcal:'close-view'},location.origin); }catch(e){} UI.tab='dashboard'; render(); },
+  toffopen(){ toffModal(); }, delegopen(){ delegModal(); },
+  async toffdel(el){ try{ await ILHOST.call('timeoff',el.dataset.id,'cancel',{}); changed('rec'); toast('Removed.'); }catch(e){ toast(e.message); } },
+  async delegdel(el){ try{ await ILHOST.call('delegations',el.dataset.id,'cancel',{}); changed('rec'); toast('Cancelled.'); }catch(e){ toast(e.message); } }
+});
+window.addEventListener('message',e=>{ if(e.origin!==location.origin)return; const m=e.data||{}; if(m.ilcal==='view'&&TABS.some(t=>t[0]===m.v)){ UI.tab=m.v; if(m.sub)UI.calSub=m.sub; if(!UI.loading)render(); window.scrollTo(0,0); } });
+
 /* ===== boot ===== */
 (async function boot(){
+  const qv=new URLSearchParams(location.search).get('view'); if(qv&&TABS.some(t=>t[0]===qv))UI.tab=qv;
   const h=location.hash.slice(1); if(TABS.some(t=>t[0]===h))UI.tab=h;
   render();
   try{ await Store.init(); }catch(e){ Store.kind='memory'; }

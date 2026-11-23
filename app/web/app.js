@@ -249,9 +249,10 @@ function paintStore(){
   if(ME) sel.innerHTML = ME.stores.map(s => `<option value="${esc(s.id)}"${STORE && s.id === STORE.id ? ' selected' : ''}>${esc(s.id)} · ${esc(s.name)}</option>`).join('');
   $('whoLabel').textContent = ME ? (ME.name || ME.login) + (STORE && STORE.isOwner ? ' (Account Owner)' : STORE && STORE.owner ? ' (Administrator)' : '') : '';
   // what this login may do
-  document.querySelector('#tabs [data-tab="archive"]').style.display = PERM('archive') && !(STORE && STORE.reorder === false) ? '' : 'none';
+  document.querySelector('#tabs [data-tab="archive"]').style.display = PERM('archive') && !(STORE && STORE.reorder === false) && !(ME && ME.acctType === 'staff' && (ME.subs || []).some(x => x === 'cashier' || x === 'driver') && !(STORE && STORE.owner)) ? '' : 'none';
   document.querySelector('#tabs [data-tab="owner"]').style.display = (STORE && STORE.owner) || (ME && ME.clientOwner) ? '' : 'none';
-  const lt = document.querySelector('#tabs [data-tab="list"]'); const noReo = !!(STORE && STORE.reorder === false); if(lt) lt.style.display = noReo ? 'none' : '';   // Reorder List switched off for this pharmacy
+  const lt = document.querySelector('#tabs [data-tab="list"]'); const noReo = !!(STORE && STORE.reorder === false) || !!(ME && ME.acctType === 'staff' && (ME.subs || []).some(x => x === 'cashier' || x === 'driver') && !(STORE && STORE.owner));
+  if(lt) lt.style.display = noReo ? 'none' : '';   // hidden when switched off for the pharmacy, and for Cashier and Driver
   if(noReo && document.querySelector('#tabs [data-tab="list"].active, #tabs [data-tab="archive"].active')) homeTab();
   $('submitBtn').style.display = PERM('submit') ? '' : 'none';
   $('submitOff').style.display = ME && !PERM('submit') ? '' : 'none';
@@ -261,7 +262,7 @@ function paintStore(){
   $('archOpen').style.display = PERM('archive') ? '' : 'none';
   $('acctBtn').style.display = (STORE && STORE.owner) || (ME && ME.clientOwner) ? '' : 'none';
   if(!LANDED && ME && STORE){ LANDED = true;                  // first screen after sign-in = the first tab the person has (Calendar, Documents, Reorder List)
-    const first = [...document.querySelectorAll('#tabs button')].find(b => !b.classList.contains('tabx') && b.style.display !== 'none');
+    const first = [...document.querySelectorAll('#tabs button')].find(b => !b.classList.contains('tabx') && b.style.display !== 'none');       // Dashboard, Calendar, Documents, Reorder List, Rx Intake
     if(first && first.dataset.tab !== 'list') first.click(); }
 }
 const SVC_NAMES = {retail:'Retail dispensing', controlled:'Controlled substances', nonsterile:'Nonsterile compounding', sterile:'Sterile compounding', hazardous:'Hazardous drug compounding', immunizations:'Immunizations', delivery:'Delivery', ltc:'Long-term care', specialty:'Specialty', infusion:'Home infusion'};
@@ -1240,11 +1241,11 @@ function layoutGridHtml(page, L, body){
    Built on the layout engine (layout_engine.js). PHARM_LAYOUT is set once by Neo with the layout editor and is the same for everyone. */
 const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
 const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['own', 'Account Owner And PIC'], ['mgr', 'Who Can Manage Users'], ['act', 'Modules And Save']];
-const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,50],"contact":[5,1,4,36],"hrs":[9,1,4,50],"reg":[5,37,4,60],"own":[1,51,4,34],"mgr":[1,85,4,16],"act":[9,51,4,40],"svc":[1,102,12,19]}};
+const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,40],"own":[1,41,4,49],"contact":[5,1,4,37],"reg":[5,38,4,52],"hrs":[9,1,4,71],"mgr":[9,72,4,18],"svc":[1,90,8,26],"act":[9,90,4,26]}};
 const PHARM_PAGE = { id: 'pharm', title: 'Host Pharmacy Setup Page', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
   render: (sample, panels) => pharmCardHtml(sample, { logo: '', holder: 'Pat Owner (owner)', host: true, clients: [{ id: 'IL-000001', legalName: 'NorTex Holdings LLC', entityType: 'llc', ein: '12-3456789' }] }, { panels }) };
 // The Account Owner's version of the same page has its own layout (Neo arranges it separately in the layout editor: page key pharm_owner).
-const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,44],"contact":[5,1,4,35],"hrs":[9,1,4,55],"reg":[5,36,4,50],"own":[1,45,4,26],"act":[9,56,4,25],"svc":[1,87,12,16]}};
+const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,41],"own":[1,42,4,12],"act":[1,54,4,20],"contact":[5,1,4,42],"reg":[5,43,4,31],"hrs":[9,1,4,73],"svc":[1,74,12,9]}};
 const PHARM_OWNER_PANELS = PHARM_PANELS.filter(p => p[0] !== 'mgr');      // the switches are IronLedger's alone
 const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_OWNER_PANELS, layout: PHARM_OWNER_LAYOUT,
   render: (sample, panels) => pharmCardHtml(Object.assign({}, sample, { ein: '', einMasked: '••-•••4321' }), { logo: '', holder: 'Pat Owner (owner)' }, { panels }) };
@@ -1312,7 +1313,6 @@ const ownLabel = u => u ? (u.name || u.login) + ' (' + u.login + ')' : '';
 const cardField = (s, k, l, t, c) => IDENT.includes(k) ? (c.host ? field(s, k, l, t, !c.isNew && !!s[k] && !c.rep && !c.repView) : roField(s, k, l, t)) : (c.host || AM_EDIT.includes(k) ? field(s, k, l, t) : roField(s, k, l, t));
 const LOCKED = 'Set by IronLedger. Contact your IronLedger representative to change this.';
 const LOCKED_ID = 'Name, address, license and identifiers must match your license and billing, so IronLedger sets them. Phone, fax, email, time zone, hours and expiration dates are yours to keep current.';
-const deaStat = s => s.deaVerified ? 'Checked on the DEA site ' + esc((s.deaVerified.at || '').slice(0, 10)) + (s.deaVerified.by ? ' by ' + esc(s.deaVerified.by) : '') : 'Not checked yet.';
 // Licensed entity (the entity named on the license, DEA and NPI; the EIN is required) and the client (the bill-to account, IL- number).
 const ENT_TYPES = [['corporation', 'Corporation'], ['llc', 'LLC'], ['sole_prop', 'Sole proprietor'], ['partnership', 'Partnership'], ['other', 'Other']];
 const entTypeLabel = v => (ENT_TYPES.find(x => x[0] === v) || [0, ''])[1];
@@ -1349,12 +1349,12 @@ const PHARM_BODY = {
         <div class="fbtn"><label><span>NPI (10 digits)</span><input type="text" inputmode="numeric" autocomplete="off" data-sf="npi" data-dig="10" maxlength="10" value="${esc(s.npi || '')}"${lock('npi') ? ' readonly data-ident="1"' : ''}></label>${c.rep ? '' : '<button class="btn2 small" type="button" data-npilook="1" title="Checks the NPI against the public registry. Nothing changes until you save.">Look up</button>'}</div><div class="fe" data-err="npi" hidden></div>
         <div class="npirow" data-npires></div>
         ${digitField(s, 'ncpdp', 'NCPDP ID (7 digits)', 7, lock('ncpdp'))}
-        <div class="fbtn"><label><span>DEA number</span><input type="text" data-sf="dea" maxlength="9" autocomplete="off" value="${esc(s.dea || '')}"${lock('dea') ? ' readonly data-ident="1"' : ''}></label>${c.rep ? '' : '<a class="btn2 small" href="https://apps.deadiversion.usdoj.gov/webforms2/spring/validationLogin" target="_blank" rel="noopener noreferrer" title="Opens the DEA registration check">DEA check</a>' + (c.isNew ? '' : '<button class="btn2 small" type="button" data-deaok="1" data-deastat title="' + deaStat(s) + '">I checked it</button>')}</div>
+        <label><span>DEA number</span><input type="text" data-sf="dea" maxlength="9" autocomplete="off" value="${esc(s.dea || '')}"${lock('dea') ? ' readonly data-ident="1"' : ''}></label>
         ${field(s, 'deaExpires', 'DEA expires', 'date')}
-        ${c.rep ? '<div class="lockhint">A rep drafts changes and a supervisor reviews them. The NPI registry lookup and the DEA check are done by a supervisor.</div>' : ''}</div>`;
+        ${c.rep ? '<div class="lockhint">A rep drafts changes and a supervisor reviews them. The NPI registry lookup is done by a supervisor.</div>' : ''}</div>`;
     }
     return `<div class="pfields">${licRo(s, c)}${roField(s, 'npi', 'NPI')}${roField(s, 'ncpdp', 'NCPDP ID')}${roField(s, 'dea', 'DEA number')}${cardField(s, 'deaExpires', 'DEA expires', 'date', c)}
-        <div class="lockhint">License numbers, NPI, DEA and NCPDP are set by IronLedger. Expiration dates are yours to keep current.</div><div class="pid npirow hint">DEA check: ${deaStat(s)}</div></div>`;
+        <div class="lockhint">License numbers, NPI, DEA and NCPDP are set by IronLedger. Expiration dates are yours to keep current.</div></div>`;
   },
   svc: (s, c) => c.host && !c.rep
     ? `<div class="pfields"><div class="svcs">${Object.entries(SVC_LABELS).map(([k, l]) => `<label class="chk">${sw(`data-svc="${k}"`, (s.services || []).includes(k))} ${l}</label>`).join('')}</div>
@@ -1362,8 +1362,8 @@ const PHARM_BODY = {
     : `<div class="pfields"><div class="chips">${(s.services || []).map(k => `<span class="chip">${esc(SVC_LABELS[k] || k)}</span>`).join('') || '<span class="hint">None set yet.</span>'}</div>
           ${s.servicesOther ? `<div class="pid">Other: ${esc(s.servicesOther)}</div>` : ''}<div class="lockhint">${LOCKED}</div></div>`,
   hrs: s => `<div class="pfields"><div class="hrs">${s.hours ? '' : '<div class="hint">Not set yet; these are suggestions until you save.</div>'}
-          ${hoursOf(s).map((h, i) => `<div class="hrow"><span>${DAYS[i]}</span><input type="time" data-ho="${i}" value="${h ? h.o : '09:00'}"><input type="time" data-hc="${i}" value="${h ? h.c : '18:00'}"><label class="chk">${sw(`data-hx="${i}"`, !h)} Closed</label></div>`).join('')}</div>
-          <details class="hdrop"><summary data-hsum>${holLabel(holOf(s).length)}</summary><div class="hdlist">${FED_HOL.map(([k, l]) => `<label class="chk">${sw(`data-hol="${k}"`, holOf(s).includes(k))} ${l}</label>`).join('')}</div></details>
+          ${hoursOf(s).map((h, i) => `<div class="hrow"><span title="${DAYS[i]}">${DAYS[i].slice(0, 3)}</span><input type="time" data-ho="${i}" value="${h ? h.o : '09:00'}"><input type="time" data-hc="${i}" value="${h ? h.c : '18:00'}"><label class="chk">${sw(`data-hx="${i}"`, !h)} Closed</label></div>`).join('')}</div>
+          <div class="hdrop"><b class="clh">Federal holidays closed</b><div class="hdlist">${FED_HOL.map(([k, l]) => `<label class="chk">${sw(`data-hol="${k}"`, holOf(s).includes(k))} ${l}</label>`).join('')}</div></div>
           <div class="closed" data-cl='${esc(JSON.stringify(closuresOf(s).days))}'><b class="clh">Additional closed days</b>
             <div class="cllist" data-cllist>${closeRows(closuresOf(s).days)}</div>
             <div class="cladd"><input type="date" data-cld title="Date"><input type="text" data-cln maxlength="60" placeholder="Name, e.g. Mardi Gras"><label class="chk">${sw('data-cly')} Every year</label> <button type="button" class="btn2 small" data-cladd="1">Add</button></div>
@@ -1400,10 +1400,10 @@ const PHARM_BODY = {
       <label class="chk">${sw('data-mgr="mgrPic"', s.mgrPic !== false)} Pharmacist-in-Charge super user</label>
       <label class="chk">${sw('data-mgr="mgrClient"', s.mgrClient === true)} Client Account Owner</label></div>`,
   act: (s, c) => `<div class="pfields"><div class="calsw">${c.host && !c.rep
-        ? `<label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar</label> <span class="hint">(people also need the Calendar privilege)</span>`
+        ? `<label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar</label> <span class="hint" title="People also need the Calendar privilege">(needs privilege)</span>`
         : `Calendar: <b>${s.calendar ? 'On' : 'Off'}</b>`}</div>
         <div class="calsw">${c.host && !c.rep
-        ? `<label class="chk">${sw(`data-sfdocs="1"`, s.documents, 'Documents tab for this pharmacy')} Documents</label> <span class="hint">(people also need the Documents privilege)</span>`
+        ? `<label class="chk">${sw(`data-sfdocs="1"`, s.documents, 'Documents tab for this pharmacy')} Documents</label> <span class="hint" title="People also need the Documents privilege">(needs privilege)</span>`
         : `Documents: <b>${s.documents ? 'On' : 'Off'}</b>`}</div>
         <div class="calsw">${c.host && !c.rep
         ? `<label class="chk">${sw(`data-sfreo="1"`, s.reorder !== false, 'Reorder List tab for this pharmacy')} Reorder List</label>`
@@ -1414,10 +1414,9 @@ const PHARM_BODY = {
         ${c.host ? '' : `<div class="lockhint">${LOCKED}</div>`}
         <div style="margin-top:10px;">${c.rep ? `<label class="reason"><span>Why (required, the supervisor reads this)</span><input type="text" data-draftnote maxlength="300"></label> <button class="btn small" data-draftstore="${esc(s.id)}">Submit for review</button>`
           : c.isNew ? '<button class="btn small" data-createstore="1">Create pharmacy</button>' : `<button class="btn small" data-savestore="${esc(s.id)}">Save details</button>`}</div>
-        ${c.host && !c.isNew && !c.rep ? `<div class="identbar"><button class="btn2 small" data-unlockident="1">Change name, address, license or identifiers…</button>
-          <div class="hint">Locked on purpose: they must match the license and billing. A reason is required and every change is kept in the history.</div>
-          <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label>
-          <div style="margin-top:8px"><button class="btn2 small" data-hist="${esc(s.id)}">Change history</button><div data-histout></div></div></div>` : ''}</div>`
+        ${c.host && !c.isNew && !c.rep ? `<div class="identbar"><button class="btn2 small" data-unlockident="1" title="Name, address, license and identifiers are locked once on file. A reason is required and every change is kept in the history.">Unlock fields</button>
+          <button class="btn2 small" data-hist="${esc(s.id)}">Change history</button>
+          <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label><div data-histout></div></div>` : ''}</div>`
 };
 // the whole card, built by the layout engine
 function pharmCardHtml(s, c, L){ return layoutGridHtml(c.host ? PHARM_PAGE : PHARM_OWNER_PAGE, L, id => PHARM_BODY[id](s, c)); }
@@ -1425,9 +1424,6 @@ function pharmCardHtml(s, c, L){ return layoutGridHtml(c.host ? PHARM_PAGE : PHA
 // ---------------- behaviour shared by the Account Owner page and the host page ----------------
 // o = { base: '/owner' | '/host', stores: () => [store, …], say: text => …, after: async () => … }
 const normNm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-// the federal-holiday list is a floating popover: it opens over the page and never pushes anything down; a click elsewhere or Escape closes it
-document.addEventListener('click', e => document.querySelectorAll('details.hdrop[open]').forEach(d => { if(!d.contains(e.target)) d.open = false; }));
-document.addEventListener('keydown', e => { if(e.key === 'Escape') document.querySelectorAll('details.hdrop[open]').forEach(d => { d.open = false; }); });
 function showFieldErr(card, k, msg){ const el = card.querySelector(`[data-err=${k}]`); if(!el) return; el.textContent = msg || ''; el.hidden = !msg; const i = card.querySelector(`[data-sf=${k}]`); if(i) i.classList.toggle('bad', !!msg); }
 function pharmCardEvents(root, o){
   root.addEventListener('input', e => {
@@ -1443,14 +1439,14 @@ function pharmCardEvents(root, o){
     if(e.target.closest('[data-lic-exp]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.licTouched = '1'; }
     const pk = e.target.closest('[data-ownpick]'); if(pk) pk.closest('.pcard').querySelector('[data-ownnew]').hidden = pk.value !== '@new';
     const py = e.target.closest('[data-picyes]'); if(py) py.closest('.pcard').querySelector('[data-picwho]').hidden = py.value !== 'no'; if(e.target.closest('[data-ho],[data-hc],[data-hx]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.hrTouched = '1'; }
-    if(e.target.closest('[data-hol]')){ const c = e.target.closest('.pcard'); if(c){ c.dataset.hcTouched = '1'; c.querySelector('[data-hsum]').textContent = holLabel(holOfCard(c).length); } } });
+    if(e.target.closest('[data-hol]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.hcTouched = '1'; } });
   root.addEventListener('click', async e => {
     const la = e.target.closest('[data-licadd]'), ld = e.target.closest('[data-licdel]'), osv = e.target.closest('[data-ownsave]'), psv = e.target.closest('[data-picsave]');
     if(la || ld){
       const card = e.target.closest('.pcard'), list = card.querySelector('[data-liclist]');
       if(ld){
         const row = ld.closest('[data-licrow]');
-        if(row.querySelector('[data-ident]') && !card.dataset.unlocked){ alert('Licenses on file are locked. Press “Change name, address, license or identifiers…” first; a reason is required.'); return; }
+        if(row.querySelector('[data-ident]') && !card.dataset.unlocked){ alert('Licenses on file are locked. Press “Unlock fields” first; a reason is required.'); return; }
         row.remove(); card.dataset.licTouched = '1'; if(!list.querySelector('[data-licrow]')) list.innerHTML = '<div class="hint" data-licnone>None yet. Add the license for each state the pharmacy is licensed in.</div>'; return;
       }
       const none = list.querySelector('[data-licnone]'); if(none) none.remove();
@@ -1484,7 +1480,7 @@ function pharmCardEvents(root, o){
       catch(err){ if(!err.auth) alert(err.message); } finally{ busy(psv, false); }
       return;
     }
-    const lk = e.target.closest('[data-npilook]'), us = e.target.closest('[data-npiuse]'), dk = e.target.closest('[data-deaok]');
+    const lk = e.target.closest('[data-npilook]'), us = e.target.closest('[data-npiuse]');
     const dsub = e.target.closest('[data-draftstore]');
     const cla = e.target.closest('[data-cladd]'), cld = e.target.closest('[data-cldel]');
     if(cla || cld){
@@ -1536,12 +1532,6 @@ function pharmCardEvents(root, o){
       }catch(err){ if(!err.auth) out.innerHTML = `<div class="npibox bad">${esc(err.message)}</div>`; }
       return;
     }
-    if(dk){
-      const dea = val('dea'); if(!dea){ alert('Type the DEA number first.'); return; }
-      if(!confirm('Confirm you looked up ' + dea.toUpperCase() + ' on the DEA registration check and the name, address and expiration match this pharmacy?')) return;
-      try{ await api('POST', o.base + '/stores/' + encodeURIComponent(card.dataset.store), {dea, deaVerified:true}); o.say('DEA check recorded.'); await o.after(); }catch(err){ if(!err.auth) alert(err.message); }
-      return;
-    }
     if(lk){
       const out = card.querySelector('[data-npires]'), npi = val('npi');
       if(!/^\d{10}$/.test(npi)){ out.innerHTML = '<div class="npibox bad">Type the 10-digit NPI first.</div>'; return; }
@@ -1566,7 +1556,7 @@ function pharmCardEvents(root, o){
     }
     if(us){
       const r = card._npi; if(!r || !r.found) return;
-      if(card.querySelector('[data-ident]') && !card.dataset.unlocked){ alert('The name and address are locked. Press “Change name, address, license or identifiers…” first.'); return; }
+      if(card.querySelector('[data-ident]') && !card.dataset.unlocked){ alert('The name and address are locked. Press “Unlock fields” first.'); return; }
       const set = (k, v) => { const i = card.querySelector(`[data-sf=${k}]`); if(i && v) i.value = v; };
       set('name', r.name); set('address', r.address.address); set('suite', r.address.suite); set('city', r.address.city); set('state', r.address.state); set('zip', r.address.zip); set('phone', r.address.phone); set('fax', r.address.fax);
       o.say('Filled in from the registry. Press ' + (card.dataset.isNew ? 'Create pharmacy' : 'Save details') + ' to keep it.'); return;
@@ -1601,7 +1591,7 @@ function pharmCardEvents(root, o){
    A client is the bill-to account: the legal entity that pays, its EIN, addresses and contacts, and the generated IL- account number (the client's key;
    it never changes). Pharmacies belong to a client; each pharmacy also carries its own licensed entity (that EIN can differ). */
 const CLIENT_PANELS = [['ent', 'Client And Legal Entity'], ['addr', 'Addresses'], ['contact', 'Phone, Fax And Contacts'], ['own', 'Account Owner'], ['act', 'Save']];
-const CLIENT_LAYOUT = {"v":2,"cols":12,"panels":{"ent":[1,1,6,30],"own":[1,31,6,24],"addr":[7,1,6,44],"contact":[1,56,12,24],"act":[1,81,12,10]}};
+const CLIENT_LAYOUT = {"v":2,"cols":12,"panels":{"ent":[1,1,6,18],"addr":[1,19,6,23],"act":[1,42,6,14],"own":[7,1,6,27],"contact":[7,28,6,28]}};
 const CLIENT_SAMPLE = {id:'IL-000001', legalName:'NorTex Holdings LLC', dba:'NorTex Pharmacy', entityType:'llc', ein:'12-3456789', address:'100 Main St', suite:'Suite 5', city:'Haslet', state:'TX', zip:'76052', billingSame:false, bAddress:'PO Box 12', bCity:'Haslet', bState:'TX', bZip:'76052', phone:'817-555-0100', fax:'817-555-0101',
   contacts:[{role:'relations', name:'Pat Owner', title:'Owner', email:'pat@example.com', phone:'817-555-0102'},{role:'billing', name:'Sam Books', title:'Bookkeeper', email:'sam@example.com', phone:''}], pharmacies:['NTX1','NTX2']};
 const CLIENT_PAGE = { id: 'client', title: 'Host Account (Client) Setup Page', panels: CLIENT_PANELS, layout: CLIENT_LAYOUT,
@@ -1610,17 +1600,16 @@ const money = c => '$' + (c / 100).toLocaleString('en-US', { minimumFractionDigi
 const CONTACT_ROLE_LABELS = { relations: 'Client relations', billing: 'Billing', other: 'Other' };
 const clientLocked = (k, cl, c) => !c.isNew && !!cl[k];                 // identity values already on file are locked until the host unlocks them with a reason
 const cfIn = (cl, k, l, c, o) => { o = o || {}; const lk = o.ident && clientLocked(k, cl, c);
-  return `<label><span>${l}</span><input type="${o.type || 'text'}" data-cf="${k}" value="${esc(cl[k] || '')}"${o.max ? ` maxlength="${o.max}"` : ''}${o.ph ? ` placeholder="${o.ph}"` : ''}${lk ? ' readonly data-ident="1"' : ''}></label>`; };
+  return `<label${o.w2 ? ' class="w2"' : ''}><span>${l}</span><input type="${o.type || 'text'}" data-cf="${k}" value="${esc(cl[k] || '')}"${o.max ? ` maxlength="${o.max}"` : ''}${o.ph ? ` placeholder="${o.ph}"` : ''}${lk ? ' readonly data-ident="1"' : ''}></label>`; };
 const contactRows = list => list.map((x, i) => `<div class="clrow"><span class="cld">${esc(CONTACT_ROLE_LABELS[x.role] || x.role)}</span><span class="cln"><b>${esc(x.name)}</b>${x.title ? ', ' + esc(x.title) : ''}${x.email ? ' · ' + esc(x.email) : ''}${x.phone ? ' · ' + esc(x.phone) : ''}</span><button type="button" class="edit" data-ctdel="${i}" title="Remove this contact">✕</button></div>`).join('');
 const contactsOfCard = card => { const el = card.querySelector('[data-ctcs]'); try{ return JSON.parse(el.dataset.ctcs); }catch(_){ return []; } };
 const CLIENT_BODY = {
-  ent: (cl, c) => `<div class="pfields">${c.isNew ? '<div class="hint">The account number (IL-…) is generated when you create the client and never changes.</div>' : `<div class="pid">Account number: <b>${esc(cl.id)}</b></div><div class="hint">(generated once; never changes)</div>`}
+  ent: (cl, c) => `<div class="pfields">${c.isNew ? '<div class="hint">The account number (IL-…) is generated when you create the client.</div>' : `<div class="pid">Account number: <b>${esc(cl.id)}</b> <span class="hint">(never changes)</span></div>`}
       <label><span>Entity type (required)</span>${entTypeSelect(`data-cf="entityType"${clientLocked('entityType', cl, c) ? ' disabled data-ident="1"' : ''}`, cl.entityType)}</label>
-      ${cfIn(cl, 'legalName', 'Legal name of the entity (required)', c, { ident: true, max: 160 })}
-      ${cfIn(cl, 'dba', 'DBA (doing business as), if any', c, { max: 160 })}
+      ${cfIn(cl, 'legalName', 'Legal name of the entity (required)', c, { ident: true, max: 160, w2: true })}
+      ${cfIn(cl, 'dba', 'DBA (doing business as), if any', c, { max: 160, w2: true })}
       ${cfIn(cl, 'ein', 'EIN (required)', c, { ident: true, max: 11, ph: '12-3456789' })}
-      ${!c.isNew && !c.ro ? `<div class="identbar"><button type="button" class="btn2 small" data-unlockclient="1">Change legal name, entity type or EIN…</button>
-        <div class="hint">Locked on purpose: billing follows the client’s identity. A reason is required and every change is kept in the history.</div>
+      ${!c.isNew && !c.ro ? `<div class="identbar"><button type="button" class="btn2 small" data-unlockclient="1" title="Legal name, entity type and EIN are locked once on file. A reason is required and every change is kept in the history.">Unlock fields</button>
         <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label></div>` : ''}</div>`,
   addr: (cl, c) => `<div class="pfields"><b class="clh">Business address</b>
       ${cfIn(cl, 'address', 'Street address', c, { max: 200 })}${cfIn(cl, 'suite', 'Suite / unit (if any)', c, { max: 40 })}${cfIn(cl, 'city', 'City', c, { max: 80 })}
@@ -1630,7 +1619,7 @@ const CLIENT_BODY = {
       ${cfIn(cl, 'bAddress', 'Street address', c, { max: 200 })}${cfIn(cl, 'bSuite', 'Suite / unit (if any)', c, { max: 40 })}${cfIn(cl, 'bCity', 'City', c, { max: 80 })}
       <label><span>State</span>${stateSelect('data-cf="bState"', cl.bState)}</label>${cfIn(cl, 'bZip', 'ZIP code', c, { max: 10 })}</div></div>`,
   contact: (cl, c) => `<div class="pfields">${cfIn(cl, 'phone', 'Telephone', c, { type: 'tel', max: 30 })}${cfIn(cl, 'fax', 'Fax', c, { type: 'tel', max: 30 })}
-      <b class="clh">Contacts</b><div class="hint">Client relations and billing contacts. They don’t need a login.</div>
+      <b class="clh">Contacts</b><div class="hint">They don’t need a login.</div>
       <div class="cllist" data-ctlist>${contactRows(cl.contacts || [])}</div>
       <div class="cladd ctadd"><select data-ctrole>${Object.entries(CONTACT_ROLE_LABELS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select>
         <input type="text" data-ctname maxlength="80" placeholder="Name"><input type="text" data-cttitle maxlength="60" placeholder="Title">
@@ -1640,7 +1629,7 @@ const CLIENT_BODY = {
   own: (cl, c) => {
     const owner = (c.people || []).find(u => u.ownerClients && u.ownerClients[cl.id] === true);
     const pool = (c.people || []).filter(u => !u.employeeOnly && !u.disabled);
-    const head = c.isNew ? '' : `<div class="pid">Client Account Owner: <b>${owner ? esc(ownLabel(owner)) : 'Not set'}</b></div><div class="hint">Sees this client page and each pharmacy’s billing (read only) behind a password step-up. Often the same person who owns the pharmacy.</div>`;
+    const head = c.isNew ? '' : `<div class="pid">Client Account Owner: <b>${owner ? esc(ownLabel(owner)) : 'Not set'}</b></div><div class="hint">Sees this page and each pharmacy’s billing, read only.</div>`;
     if(!c.host || c.ro) return `<div class="pfields" style="display:block">${head}${c.host ? '' : '<div class="lockhint">Set by IronLedger.</div>'}</div>`;
     return `<div class="pfields" style="display:block">${head}<div class="ownbox">${c.isNew ? '<b class="clh">Account Owner (optional now; can be set later)</b>' : '<b class="clh">Change the client’s Account Owner</b>'}
       <label><span>Pick a login</span><select data-cownpick><option value="">—</option>${pool.map(u => `<option value="${esc(u.login)}">${esc(ownLabel(u))}</option>`).join('')}<option value="@new">New login…</option></select></label>
@@ -1738,6 +1727,10 @@ const DR_ACCT = {pic:'Pharmacist-in-Charge', pharmacist:'Staff Pharmacist', tech
 const DR_PRESETS = {pic:{submit:true, archive:true, remove:true, export:true}, pharmacist:{submit:true, archive:true, remove:true, export:false},
   tech:{submit:true, archive:true, remove:true, export:false}, staff:{submit:true, archive:false, remove:false, export:false}};
 const DR_DUTY = {'':'Staff (view and print only)', dp:'Designated Person', ctech:'Compliance Technician'};
+// sub-roles: job-function switches inside the account type (combinable); Designated Person has a box per USP chapter
+const DR_SUBS = {pic:{}, pharmacist:{lead:'Lead', supervisor:'Supervisor', immunizer:'Immunizer', sterile:'Sterile Compounding'}, tech:{lead:'Lead', sterile:'Sterile Compounding', nonsterile:'Nonsterile Compounding'},
+  staff:{cashier:'Cashier', driver:'Driver', warehouse:'Warehouse', student:'Student Technician'}};
+const DR_CHAPTERS = ['795', '797', '800'];
 const DR_PIN = {none:'Not set', set:'Set', temp:'Temporary (they must choose their own)', locked:'Locked'};
 const DR_COPY = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
 const drDay = iso => { try{ return new Date(iso).toLocaleDateString('en-US', {month:'short', day:'numeric'}); }catch(e){ return ''; } };
@@ -1760,14 +1753,17 @@ function drEff(u, S, sid){
   const s = S[u.sub]; if(!s) return u;
   return Object.assign({}, u, {access:s.stores && s.stores[sid] !== undefined ? s.stores[sid] : u.access, perms:Object.assign({}, u.perms, s.perms || {}), isAdmin:s.adminStores && s.adminStores[sid] !== undefined ? s.adminStores[sid] : u.isAdmin,
     disabled:s.disabled !== undefined ? s.disabled : u.disabled, initials:s.initials !== undefined ? s.initials : u.initials, license:s.license !== undefined ? s.license : u.license,
-    acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty});
+    acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty,
+    subs:s.subs !== undefined ? s.subs : (s.acctType !== undefined && s.acctType !== u.acctType ? [] : (u.subs || [])), dp:s.dp !== undefined ? s.dp : (s.acctType !== undefined && s.acctType !== u.acctType ? {} : (u.dp || {})),
+    approver:s.approver !== undefined ? s.approver : (u.approver === true), licExpires:s.licExpires !== undefined ? s.licExpires : (u.licExpires || '')});
 }
 // the whole Users view of one pharmacy: the list (a line per person; open one for its details) and the add-a-person form
 // U = answer of GET /pharmacy/:id/users; o = {st: drState(), me, host, ownerMe, pinRequired, canPin}
 function drUsersHtml(U, o){
   const sid = U.store.id, can = U.canManage, S = o.st.staged, list = U.users.map(u => drEff(u, S, sid));
   const priv = (sw_, label, title) => `<span class="priv" title="${esc(title || label)}">${sw_}<span>${esc(label)}</span></span>`;
-  const role = u => u.isOwner ? '<span class="urole">Account Owner</span>' : u.isAdmin ? '<span class="urole">Super user</span>' : u.employee ? '<span class="urole">Also IronLedger</span>' : '';
+  const dpOf = u => DR_CHAPTERS.filter(c => u.dp && u.dp[c] === true), subName = u => (u.subs || []).map(k => (DR_SUBS[u.acctType] || {})[k]).filter(Boolean);
+  const role = u => u.isOwner ? '<span class="urole">Account Owner</span>' : (u.isAdmin ? '<span class="urole">Super user</span>' : u.employee ? '<span class="urole">Also IronLedger</span>' : '') + (dpOf(u).length ? ` <span class="urole">Designated Person ${dpOf(u).join(', ')}</span>` : '') + (subName(u).length ? ` <span class="urole">${esc(subName(u).join(', '))}</span>` : '');
   const self = u => o.me && u.login === o.me.login;
   const canPin = u => o.pinRequired && o.canPin && can && !self(u) && !u.isOwner && !u.employee;
   const detail = u => {
@@ -1778,7 +1774,11 @@ function drUsersHtml(U, o){
     const signing = `<div class="upriv"><span class="plabel">Signing</span><input type="text" data-uini maxlength="3" value="${esc(u.initials || '')}" style="width:70px;text-transform:uppercase;" aria-label="Initials" placeholder="Initials">
         <span class="hint">Employee ID <b>${esc(u.empId || '-')}</b>${o.pinRequired ? ` · PIN: ${DR_PIN[u.pin || 'none']}` : ''}</span>
         ${canPin(u) ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="One-time temporary PIN to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}</div>`;
-    const lic = `<div class="upriv"><span class="plabel">RPh license #</span><input type="text" data-ulic maxlength="20" value="${esc(u.license || '')}" style="width:130px;text-transform:uppercase;" aria-label="RPh license number"> <span class="hint">Pharmacists only. Prints on Rx Intake forms; the Pharmacist-In-Charge’s number prints as PIC.</span></div>`;
+    const isTech = u.acctType === 'tech', lic = `<div class="upriv"><span class="plabel">${isTech ? 'Registration #' : 'RPh license #'}</span><input type="text" data-ulic maxlength="20" value="${esc(u.license || '')}" style="width:130px;text-transform:uppercase;" aria-label="${isTech ? 'Technician registration number' : 'RPh license number'}"> ${isTech ? `<span class="plabel" style="margin-left:10px">Expires</span><input type="date" data-uexp value="${esc(u.licExpires || '')}" aria-label="Registration expiry date"> <span class="hint">The expiry date goes on the calendar.</span>` : '<span class="hint">Pharmacists only. Prints on Rx Intake forms; the Pharmacist-In-Charge’s number prints as PIC.</span>'}</div>`;
+    const subKeys = Object.entries(DR_SUBS[u.acctType] || {}), dpOk = u.acctType === 'pic' || u.acctType === 'pharmacist' || u.acctType === 'tech', mayGrant = o.host || o.ownerMe || o.picMe;
+    const subsRow = subKeys.length ? `<div class="upriv"><span class="plabel">Sub-roles</span><span class="pgroup">${subKeys.map(([k, l]) => priv(sw(`data-usub="${k}"`, (u.subs || []).includes(k), l), l, l)).join('')}</span></div>` : '';
+    const dpRow = dpOk ? `<div class="upriv"><span class="plabel">Designated Person</span><span class="pgroup">${DR_CHAPTERS.map(c => priv(sw(`data-udp="${c}"`, !!(u.dp && u.dp[c]), 'Designated Person for USP <' + c + '>'), '<' + c + '>', 'Designated Person for USP <' + c + '>')).join('')}</span><span class="hint">Reviews compliance records for the chapter before final approval.</span></div>` : '';
+    const appRow = (u.acctType === 'pharmacist' && (o.host || o.ownerMe || (o.me && o.me.acctType === 'pic'))) ? `<div class="upriv"><span class="plabel">Final approver</span><span class="pgroup">${priv(sw('data-uapp="1"', u.approver === true, 'May give final approval (the pharmacist in charge always can)'), 'Approves', 'May give final approval')}</span><span class="hint">The pharmacist in charge is the final approver by default.</span></div>` : '';
     const others = raw && raw.others ? `<span class="hint">${o.host && raw.otherIds ? 'Also at ' + esc(raw.otherIds.join(', ')) : 'Also has access at ' + raw.others + (raw.others === 1 ? ' other pharmacy' : ' other pharmacies')}</span>` : '';
     if(u.isOwner) return `<div class="udetail">
         <div class="upriv"><span class="plabel">Account type</span><span class="hint">Account Owner · primary account holder, full access</span></div>${lic}${signing}
@@ -1786,12 +1786,12 @@ function drUsersHtml(U, o){
     return `<div class="udetail">
         <div class="upriv"><span class="plabel">Account type</span><select data-utype><option value="">Not set</option>${Object.entries(DR_ACCT).map(([k, l]) => `<option value="${k}"${u.acctType === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
           <span class="hint">Choosing a type sets Submit, Archive, Remove and Backup. Calendar and Documents are set separately.</span></div>
-        ${lic}${signing}
+        ${lic}${signing}${subsRow}${dpRow}${appRow}
         ${u.perms.documents ? `<div class="upriv"><span class="plabel">Document duty</span>${u.acctType === 'pic' ? '<span class="hint">Pharmacist-In-Charge: manages and approves documents</span>' : `<select data-udoc>${Object.entries(DR_DUTY).map(([k, l]) => `<option value="${k}"${(u.docDuty || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select>`}</div>` : ''}
         <div class="upriv"><span class="plabel">This pharmacy</span><span class="pgroup">${priv(sw(`data-ust="${esc(sid)}"`, u.access === true, 'Access to ' + U.store.name), 'Access to ' + sid, 'Access to ' + U.store.name)}</span>${others}</div>
         <div class="upriv"><span class="plabel">Privileges</span><span class="pgroup">${Object.entries(DR_PERMS).map(([p, l]) => priv(sw(`data-uperm="${p}"`, !!u.perms[p], l + ' at ' + sid), l, l)).join('')}
           ${self(u) || u.employee ? '' : priv(sw('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on')}</span></div>
-        ${(o.host || o.ownerMe) && u.acctType === 'pic' && u.access ? `<div class="upriv"><span class="plabel">Super user</span><span class="pgroup">${priv(sw(`data-uadm="${esc(sid)}"`, u.isAdmin === true, 'All administrator privileges at ' + U.store.name + ' except billing, the client page and ownership'), sid, 'Super user at ' + U.store.name)}</span>
+        ${(o.host || o.ownerMe || o.picMe) && (u.acctType === 'pic' ? (o.host || o.ownerMe) : (u.acctType === 'pharmacist' || u.acctType === 'tech')) && u.access ? `<div class="upriv"><span class="plabel">Super user</span><span class="pgroup">${priv(sw(`data-uadm="${esc(sid)}"`, u.isAdmin === true, 'All administrator privileges at ' + U.store.name + ' except billing, the client page and ownership'), sid, 'Super user at ' + U.store.name)}</span>
           <span class="hint">All administrator privileges except billing, the client page and ownership.</span></div>` : ''}
         ${acts ? `<div class="upriv"><span class="plabel"></span>${acts}</div>` : ''}</div>`;
   };
@@ -1806,69 +1806,80 @@ function drUsersHtml(U, o){
         <div class="ucell acts"><span class="chev" aria-hidden="true">${open ? '▾' : '▸'}</span></div></div>
       ${open ? detail(u) : ''}</div>`;
   }).join('');
-  const add = !can ? '' : `<section class="card" style="margin-top:14px"><h2>Add a user</h2>
+  const top = !can ? '' : '<div class="toolbar row utop"><button class="btn" data-npopen="1">Add user</button></div>';
+  const add = !can || !o.st.addOpen ? '' : `<div class="drmodal" data-npmodal role="dialog" aria-modal="true" aria-label="Add a user"><div class="drbox">
+      <div class="drhead"><b>Add a user</b><button type="button" class="btn2 small" data-npclose="1" aria-label="Close">✕</button></div>
       <div class="formgrid grid2">
         <label class="f"><span>Full name</span><input type="text" data-np="name" maxlength="120"></label>
         <label class="f"><span>Login ID</span><input type="text" data-np="login" autocapitalize="none" spellcheck="false" maxlength="32"></label>
         <label class="f"><span>Mobile number (for sign-in codes)</span><input type="tel" data-np="phone" maxlength="20"></label>
         <label class="f"><span>Temporary password</span><input type="text" data-np="pass" class="mono" maxlength="64" value="${esc(o.st.np || drTemp())}"></label>
+        <label class="f"><span>Account type</span><select data-np="type"><option value="">Not set</option>${Object.entries(DR_ACCT).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
         <label class="f"><span>Initials</span><input type="text" data-np="ini" maxlength="3" style="max-width:90px;text-transform:uppercase;"></label>
-        <label class="f"><span>RPh license # (pharmacists)</span><input type="text" data-np="lic" maxlength="20" style="max-width:150px;text-transform:uppercase;"></label>
+        <label class="f"><span>RPh license # or technician registration #</span><input type="text" data-np="lic" maxlength="20" style="max-width:150px;text-transform:uppercase;"></label>
       </div>
-      <div style="margin-top:8px"><b class="hint">Account type:</b> <select data-np="type"><option value="">Not set</option>${Object.entries(DR_ACCT).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select> <span class="hint">sets the switches below; change any of them after</span></div>
-      <div style="margin-top:4px"><b class="hint">May:</b><div>${Object.entries(DR_PERMS).map(([p, l]) => `<label class="chk">${sw(`data-npperm="${p}"`, p !== 'export' && p !== 'calendar' && p !== 'documents')} ${l}</label>`).join('')}</div></div>
       <label class="chk" style="margin-top:10px"><input type="checkbox" data-np="consent" style="width:18px;height:18px;"> They signed the SMS consent form for this mobile number.</label>
-      <div class="toolbar row" style="margin-top:10px"><button class="btn" data-npadd="1">Add user</button> <button class="btn2" data-npgen="1">New temporary password</button></div>
-      <div class="npmsg msg" data-npmsg role="status"></div></section>`;
-  return `<div class="ulist"><div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div></div>${rows || '<div class="hint" style="padding:10px">No one has access here yet.</div>'}</div>
+      <div class="toolbar row" style="margin-top:10px"><button class="btn" data-npadd="1">Add user</button> <button class="btn2" data-npgen="1">New temporary password</button> <button class="btn2" data-npclose="1">Cancel</button></div>
+      <div class="npmsg msg" data-npmsg role="status"></div></div></div>`;
+  return `${top}<div class="ulist"><div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div></div>${rows || '<div class="hint" style="padding:10px">No one has access here yet.</div>'}</div>
     ${can ? '' : '<div class="hint" style="margin-top:10px">View only. Changes to people at this pharmacy are made by its Account Owner or IronLedger.</div>'}${add}`;
 }
 // behaviour: env = {sid, base:'/host'|'/owner', U:()=>answer, st:drState(), me:()=>ME, reload:async()=>…, paint:()=>…, say:text=>…, pass:html=>…}
 function drUsersEvents(root, env){
   const find = sub => env.U().users.find(x => x.sub === sub);
+  const raw0 = sub => find(sub) || {};
   const stg = sub => env.st.staged[sub] || (env.st.staged[sub] = {});
   const tidy = sub => { if(env.st.staged[sub] && !Object.keys(env.st.staged[sub]).length) delete env.st.staged[sub]; };
   const put = (sub, grp, k, v, was) => { const s = stg(sub); s[grp] = s[grp] || {}; if(v === was) delete s[grp][k]; else s[grp][k] = v; if(!Object.keys(s[grp]).length) delete s[grp]; tidy(sub); };
   const sig = u => { return `Pharmacy ID: ${env.sid}\nUser ID: ${u.login}\nTemporary Pass: `; };
-  root.addEventListener('keydown', e => { const h = e.target.closest('[data-open]'); if(h && (e.key === 'Enter' || e.key === ' ') && e.target === h){ e.preventDefault(); h.click(); } });
+  root.addEventListener('keydown', e => { if(e.key === 'Escape' && env.st.addOpen){ env.st.addOpen = false; env.paint(); return; }
+     const h = e.target.closest('[data-open]'); if(h && (e.key === 'Enter' || e.key === ' ') && e.target === h){ e.preventDefault(); h.click(); } });
   root.addEventListener('change', e => {
     const row = e.target.closest('[data-sub]'); if(!row){ const t = e.target.closest('[data-np=type]'); if(t){ const pre = DR_PRESETS[t.value]; if(pre) for(const k in pre){ const c = root.querySelector(`[data-npperm="${k}"]`); if(c) c.checked = pre[k]; } } return; }
     const sub = row.dataset.sub, u = find(sub); if(!u) return;
     const ty = e.target.closest('select[data-utype]');
     if(ty){ if(ty.value === (u.acctType || '')) delete stg(sub).acctType; else stg(sub).acctType = ty.value;
       const pre = DR_PRESETS[ty.value]; if(pre){ const s = stg(sub); s.perms = s.perms || {}; for(const k in pre){ if(pre[k] === !!u.perms[k]) delete s.perms[k]; else s.perms[k] = pre[k]; } if(!Object.keys(s.perms).length) delete s.perms; }
-      tidy(sub); env.say(''); env.paint(); return; }
+      delete stg(sub).subs; delete stg(sub).dp; delete stg(sub).approver; tidy(sub); env.say(''); env.paint(); return; }
     const dd = e.target.closest('select[data-udoc]');
     if(dd){ if(dd.value === (u.docDuty || '')) delete stg(sub).docDuty; else stg(sub).docDuty = dd.value; tidy(sub); env.say(''); env.paint(); return; }
     const ini = e.target.closest('input[data-uini]');
     if(ini){ const v = ini.value.trim().toUpperCase(); if(v === (u.initials || '')) delete stg(sub).initials; else stg(sub).initials = v; tidy(sub); env.say(''); env.paint(); return; }
+    const ex = e.target.closest('input[data-uexp]');
+    if(ex){ const v = ex.value.trim(); if(v === (u.licExpires || '')) delete stg(sub).licExpires; else stg(sub).licExpires = v; tidy(sub); env.say(''); env.paint(); return; }
     const lic = e.target.closest('input[data-ulic]');
     if(lic){ const v = lic.value.trim().toUpperCase(); if(v === (u.license || '')) delete stg(sub).license; else stg(sub).license = v; tidy(sub); env.say(''); env.paint(); return; }
     const c = e.target.closest('input[type=checkbox]'); if(!c) return;
     if(c.dataset.ust) put(sub, 'stores', c.dataset.ust, c.checked, u.access === true);
     else if(c.dataset.uperm) put(sub, 'perms', c.dataset.uperm, c.checked, !!u.perms[c.dataset.uperm]);
+    else if(c.dataset.usub){ const cur = new Set(u.subs || []); c.checked ? cur.add(c.dataset.usub) : cur.delete(c.dataset.usub); const arr = [...cur].sort(), was = (raw0(sub).subs || []).slice().sort(); if(JSON.stringify(arr) === JSON.stringify(was)) delete stg(sub).subs; else stg(sub).subs = arr; tidy(sub); }
+    else if(c.dataset.udp){ const cur = Object.assign({}, u.dp || {}); if(c.checked) cur[c.dataset.udp] = true; else delete cur[c.dataset.udp]; const was = raw0(sub).dp || {}; if(JSON.stringify(Object.keys(cur).sort()) === JSON.stringify(Object.keys(was).filter(k => was[k]).sort())) delete stg(sub).dp; else stg(sub).dp = cur; tidy(sub); }
+    else if(c.dataset.uapp){ if(c.checked === (raw0(sub).approver === true)) delete stg(sub).approver; else stg(sub).approver = c.checked; tidy(sub); }
     else if(c.dataset.uadm) put(sub, 'adminStores', c.dataset.uadm, c.checked, u.isAdmin === true);
     else if(c.dataset.uon){ if(!c.checked === !!u.disabled) delete stg(sub).disabled; else stg(sub).disabled = !c.checked; tidy(sub); }
     env.say(''); env.paint();
   });
   const bodyOf = sub => { const s = env.st.staged[sub] || {}, b = {}; if(s.stores) b.stores = s.stores; if(s.perms){ b.perms = s.perms; b.permStore = env.sid; } if(s.adminStores) b.adminStores = s.adminStores;
-    ['disabled', 'initials', 'license', 'acctType', 'docDuty'].forEach(k => { if(s[k] !== undefined) b[k] = s[k]; }); return b; };
+    ['disabled', 'initials', 'license', 'acctType', 'docDuty', 'subs', 'dp', 'approver', 'licExpires'].forEach(k => { if(s[k] !== undefined) b[k] = s[k]; }); return b; };
   root.addEventListener('click', async e => {
     const hd = e.target.closest('[data-open]');
     if(hd && !e.target.closest('button,input,select,a,label')){ env.st.open = env.st.open === hd.dataset.open ? null : hd.dataset.open; env.paint(); return; }
     const t = (s) => e.target.closest(s);
+    const no = t('[data-npopen]'), nc = e.target.closest('[data-npclose]') || (e.target.matches('[data-npmodal]') ? e.target : null);
+    if(no){ env.st.addOpen = true; env.paint(); const f = root.querySelector('[data-np=name]'); if(f) f.focus(); return; }
+    if(nc){ env.st.addOpen = false; env.paint(); return; }
     const up = t('[data-upd]'), un = t('[data-undo]'), rs = t('[data-reset]'), dl = t('[data-del]'), cp = t('[data-copy]'), ph = t('[data-phone]'), pr = t('[data-pinreset]'), na = t('[data-npadd]'), ng = t('[data-npgen]');
     const nm = u => u.name || u.login, url = u => env.base + '/users/' + encodeURIComponent(u.sub);
     try{
       if(ng){ const i = root.querySelector('[data-np=pass]'); i.value = env.st.np = drTemp(); return; }
       if(na){
-        const g = k => ((root.querySelector(`[data-np=${k}]`) || {}).value || '').trim(), perms = {}; root.querySelectorAll('[data-npperm]').forEach(c => perms[c.dataset.npperm] = c.checked);
+        const g = k => ((root.querySelector(`[data-np=${k}]`) || {}).value || '').trim(), perms = Object.assign({submit:true, archive:true, remove:true, export:false, calendar:true, documents:true}, DR_PRESETS[g('type')] || {});
         const say = (m, ok) => { const el = root.querySelector('[data-npmsg]'); el.textContent = m; el.className = 'npmsg msg' + (ok ? ' ok' : ''); };
         if(!g('name') || !g('login') || !g('phone')) return say('Name, Login ID and mobile number are all needed.');
         if(!root.querySelector('[data-np=consent]').checked) return say('Tick the box to confirm they signed the SMS consent form for this number.');
         const body = {name:g('name'), login:g('login').toLowerCase(), phone:g('phone'), tempPassword:g('pass') || undefined, initials:g('ini').toUpperCase(), license:g('lic').toUpperCase(), acctType:g('type'), stores:{[env.sid]:true}, perms, smsConsent:true};
         busy(na, true);
-        try{ const r = await api('POST', env.base + '/users', body); env.st.temps[r.user.sub] = r.tempPassword; env.st.np = '';
+        try{ const r = await api('POST', env.base + '/users', body); env.st.temps[r.user.sub] = r.tempPassword; env.st.np = ''; env.st.addOpen = false; env.st.open = r.user.sub;
           env.pass(`<b>${esc(body.name)} can sign in now.</b> Give them:<br>Pharmacy ID: <b class="mono">${esc(env.sid)}</b><br>Login ID: <b class="mono">${esc(r.user.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b><br><span class="hint">They choose their own password the first time they sign in. The temporary password isn’t shown again.</span>`);
           await env.reload(); env.say('Added ' + body.name + '. They are Pending until they first sign in.'); }
         catch(err){ if(!err.auth) say('Not added: ' + err.message); } finally{ busy(na, false); }
@@ -2022,7 +2033,7 @@ function acPaint(){
   const row = (attr, v, title, sub, on, big) => `<button type="button" class="qrow${on ? ' on' : ''}${big ? ' big' : ''}" ${attr}="${esc(v)}"><b>${esc(title)}</b><span>${esc(sub)}</span></button>`;
   const prof = list => list.map(p => row('data-qs', p.id, p.name || p.id, [p.id, [p.city, p.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))).join('') || '<div class="hint">No pharmacies.</div>';
   if(id){ const r = reachOf(id);
-    $('acSide').innerHTML = `<div class="cqh"><h2>${esc(id)}</h2></div>` + [['acct', 'Account', 'Details'], ['users', 'Users', 'People at this pharmacy']].concat(r.billing ? [['billing', 'Billing', 'Invoices and payments']] : []).filter(x => x[0] !== 'users' || r.users).map(([v, t, sub]) => row('data-view', v, t, sub, AC.view === v, true)).join('');
+    $('acSide').innerHTML = `<div class="cqh"><h2>${esc(id)}</h2></div>` + [['acct', 'Account', 'Details'], ['users', 'Users', 'People at this pharmacy']].concat(r.billing ? [['billing', 'Billing', 'Invoices and payments']] : []).filter(x => x[0] !== 'users' || r.users).map(([v, t, sub]) => row('data-view', v, t, sub, AC.view === v, true)).join('') + calLinks(id);
   }else{
     const own = managed().filter(s => !k || !k.pharmacies.some(p => p.id === s.id));
     $('acSide').innerHTML = `<div class="cqh"><h2>Profiles</h2></div>` + (k ? prof(k.pharmacies) : '') + (own.length ? (k ? '<div class="sub">Also yours</div>' : '') + prof(own) : '') + (!k && !own.length ? '<div class="hint">No pharmacies.</div>' : '');
@@ -2053,8 +2064,11 @@ function acPaint(){
   show('acClient'); $('acClient').innerHTML = '<div class="hint">Pick a pharmacy from the list on the right.</div>';
 }
 const AC_BO = {edit:false, filter:'all'};
-const acUsersOpts = () => ({st:AC_ST, me:ME, host:false, ownerMe:ownedHere(AC.pharm), pinRequired:!!ME.pinRequired, canPin:true});
+const acUsersOpts = () => ({st:AC_ST, me:ME, host:false, ownerMe:ownedHere(AC.pharm), picMe:ME.acctType === 'pic', pinRequired:!!ME.pinRequired, canPin:true});
+// People & Assets and the calendar's Setup belong to the pharmacy account: opened from here, shown in the calendar page
+const calLinks = id => { const st = (ME.stores || []).find(x => x.id === id); if(!(st && st.calendar && st.owner)) return ''; const row = (v, t, sub) => `<button type="button" class="qrow big" data-calview="${v}"><b>${t}</b><span>${sub}</span></button>`; return row('people', 'People & Assets', 'Staff records, equipment, rooms') + row('setup', 'Calendar Setup', 'Programs, hours, tasks'); };
 $('acSide').addEventListener('click', e => {
+  const cv = e.target.closest('[data-calview]'); if(cv){ calOpenView(cv.dataset.calview); return; }
   const p = e.target.closest('[data-qs]'), v = e.target.closest('[data-view]');
   if(p) acGo(AC.client, p.dataset.qs, 'acct'); else if(v){ AC.view = v.dataset.view; AC_ST.open = null; AC_BO.filter = 'all'; acMsg(''); acLoad(); }
 });
@@ -2150,13 +2164,17 @@ const CAL_ROLE = { 'dea-reg': 'Owner', 'dea-biennial': 'PIC', 'tx-cs-annual': 'P
   'u795-training': 'DP', 'u795-sop': 'DP', 'u797-cert-pec': 'DP', 'u797-cert-sec': 'DP', 'u797-air': 'DP', 'u797-surface': 'DP', 'u797-sop': 'DP', 'u797-qaqc': 'DP', 'u797-didactic': 'DP', 'u797-garb': 'DP', 'u797-media': 'DP', 'u797-sporicidal': 'DP', 'u797-monitor-cal': 'DP', 'u797-pressure': 'DP',
   'u800-list': 'DP', 'u800-risk': 'DP', 'u800-sop': 'DP', 'u800-training': 'DP', 'u800-wipe': 'DP', 'osha-ecp': 'Owner', 'osha-training': 'Owner', 'hipaa-risk': 'Owner', 'hipaa-training': 'Owner', 'doc-review': 'PIC' };
 function calMayCompleteHere(obId){
+  if(ME && ME.acctType === 'staff' && !(STORE && STORE.owner)) return false;         // Associates see the calendar; a technician or pharmacist enters tasks
   const role = CAL_ROLE[obId]; if(!role || !ME || !STORE) return true;       // custom tasks: anyone with the calendar
   if(STORE.pharm) return true;
   if(role === 'Owner') return !!STORE.owner;
-  if(role === 'DP') return ME.docDuty === 'dp' || ME.docDuty === 'ctech';
+  if(role === 'DP') return ME.docDuty === 'dp' || ME.docDuty === 'ctech' || ME.acctType === 'tech' || !!(ME.dp && Object.values(ME.dp).some(v => v === true));
   return false;
 }
+const calCtxOf = r => ({me: r.me, team: r.team || [], delegations: r.delegations || [], timeoff: r.timeoff || [], expiring: r.expiring || {registrations: 0, expired: 0}});
 window.ILCAL_HOST = {
+  suite: true,                                                   // inside the suite: no inner navigation, the tabs above choose the view
+  ctx: null,                                                     // what the server says about this person here: roles, team, delegations, time off
   mayComplete: obId => calMayCompleteHere(obId),
   get user(){ return ME ? {name: ME.name || ME.login, login: ME.login} : null; },
   get canStart(){ return !!(STORE && STORE.owner); },
@@ -2170,7 +2188,7 @@ window.ILCAL_HOST = {
     if(!calOK()) throw new Error('The calendar is not available for this login at this pharmacy.');
     const id = STORE.id, r = await api('GET', calPath());
     if(!STORE || STORE.id !== id) throw new Error('Pharmacy changed.');
-    CAL.store = id; CAL.sig = {}; CAL.loadedAt = Date.now();
+    CAL.store = id; CAL.sig = {}; CAL.loadedAt = Date.now(); if(r.me) this.ctx = calCtxOf(r);
     if(!r.started) return null;
     const st = Object.assign({}, r.config, {mode: 'live'});
     st.records = r.records || []; st.events = r.events || []; st.log = (r.log || []).sort((a, b) => a.ts < b.ts ? 1 : -1).slice(0, 300);
@@ -2178,6 +2196,20 @@ window.ILCAL_HOST = {
     (r.obl || []).forEach(o => { if(o.isCustom) st.custom.push(o); else st.obl[o.id] = o; });
     const items = calItems(st); for(const k in items) CAL.sig[k] = items[k].json;
     return st;
+  },
+  async sync(){                                                   // re-read after a review step: the server stamps who and when and decides the next step
+    if(!calOK()) return null;
+    const id = STORE.id, r = await api('GET', calPath()); if(!STORE || STORE.id !== id) return null;
+    if(r.me) this.ctx = calCtxOf(r);
+    const recs = r.records || [], log = (r.log || []).sort((a, b) => a.ts < b.ts ? 1 : -1).slice(0, 300), keep = {};
+    recs.forEach(o => { keep['records#' + o.id] = 1; CAL.sig['records#' + o.id] = JSON.stringify(o); });
+    for(const k of Object.keys(CAL.sig)) if(k.startsWith('records#') && !keep[k]) delete CAL.sig[k];
+    log.forEach(o => { CAL.sig['log#' + o.id] = JSON.stringify(o); });
+    return {records: recs, log};
+  },
+  async call(kind, id, action, body){                            // delegations and time off: the server checks the rules, then the lists are re-read
+    const path = calPath() + '/' + kind + (id ? '/' + encodeURIComponent(id) : '') + (action ? '/' + action : '');
+    const r = await api('POST', path, body || {}); await this.sync(); return r;
   },
   async save(st){
     if(!calOK() || CAL.store !== STORE.id) throw new Error('Not saved: the pharmacy or access changed. Reload the Calendar tab.');
@@ -2198,18 +2230,34 @@ window.ILCAL_HOST = {
     }finally{ CAL.inflight--; saving--; }
   }
 };
-function calShow(){                                              // called when the Calendar tab is opened
+const CALV = {view: 'dashboard', sub: ''};
+function calPost(){ const f = $('calFrame'); try{ if(f.contentWindow && f.dataset.ready === '1') f.contentWindow.postMessage({ilcal: 'view', v: CALV.view, sub: CALV.sub}, location.origin); }catch(e){} }
+function calShow(view, sub){                                     // called when the Dashboard or Calendar tab (or a view from the Account page) is opened
   const f = $('calFrame'); if(!calOK()) return;
+  CALV.view = view || 'dashboard'; CALV.sub = sub || '';
   const stale = f.dataset.store !== STORE.id || (CAL.inflight === 0 && Date.now() - CAL.loadedAt > 180000);
-  if(stale || !f.getAttribute('src') || f.getAttribute('src') === 'about:blank'){ f.dataset.store = STORE.id; CAL.loadedAt = Date.now(); f.src = 'calendar.html?v=' + Date.now(); }
+  if(stale || !f.getAttribute('src') || f.getAttribute('src') === 'about:blank'){ f.dataset.store = STORE.id; f.dataset.ready = ''; CAL.loadedAt = Date.now(); f.onload = () => { f.dataset.ready = '1'; }; f.src = 'calendar.html?view=' + encodeURIComponent(CALV.view) + '&v=' + Date.now(); }
+  else calPost();
 }
+// People & Assets and Setup live with the pharmacy account: opened from there, shown in the same page
+function calOpenView(view){
+  document.querySelectorAll('#tabs button').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-calendar'));
+  document.body.classList.remove('wideTab'); calShow(view);
+}
+window.addEventListener('message', e => {
+  if(e.origin !== location.origin || !e.data || !e.data.ilcal) return;
+  if(e.data.ilcal === 'badge') calBadge(+e.data.n || 0);
+  if(e.data.ilcal === 'close-view'){ const t = document.querySelector('#tabs [data-tab="owner"]'); if(t) t.click(); }
+});
+function calBadge(n){ const t = document.querySelector('#tabs [data-tab="dashboard"]'); if(!t) return; let b = t.querySelector('.tabbadge'); if(!n){ if(b) b.remove(); return; } if(!b){ b = document.createElement('span'); b.className = 'tabbadge'; t.appendChild(b); } b.textContent = String(n); }
 function calPaint(){                                             // called whenever the pharmacy or the person changes
-  const tab = document.querySelector('#tabs [data-tab="calendar"]'); if(!tab) return;
-  const ok = calOK(); tab.style.display = ok ? '' : 'none';
+  const tabs = ['dashboard', 'calendar'].map(k => document.querySelector('#tabs [data-tab="' + k + '"]')); if(!tabs[0]) return;
+  const ok = calOK(); tabs.forEach(t => { t.style.display = ok ? '' : 'none'; });
   const f = $('calFrame');
   if(!ok || (f.dataset.store && STORE && f.dataset.store !== STORE.id)){
-    f.removeAttribute('data-store'); f.src = 'about:blank'; CAL.sig = {}; CAL.store = null;
-    if(tab.classList.contains('active')) homeTab();
+    f.removeAttribute('data-store'); f.src = 'about:blank'; CAL.sig = {}; CAL.store = null; calBadge(0);
+    if(tabs.some(t => t.classList.contains('active'))) homeTab();
   }
 }
 
@@ -2703,15 +2751,19 @@ function rxPaint(){                                               // called when
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#tabs button').forEach(x => { x.classList.toggle('active', x === b); x.classList.toggle('sub', b.dataset.tab === 'archive' && x.dataset.tab === 'list'); });
   $('acctBtn').classList.toggle('on', b.dataset.tab === 'owner');
-  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + b.dataset.tab));
+  const pan = b.dataset.tab === 'dashboard' ? 'calendar' : b.dataset.tab;                  // Dashboard and Calendar are two views of the same page
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + pan));
   document.body.classList.toggle('wideTab', b.dataset.tab === 'owner' || b.dataset.tab === 'documents');
   if(b.dataset.tab === 'owner') openOwnerTab();
   if(b.dataset.tab === 'archive') loadArchive(false).catch(() => {});
-  if(b.dataset.tab === 'calendar') calShow();
+  if(b.dataset.tab === 'calendar' || b.dataset.tab === 'dashboard') calShow(b.dataset.tab);
   if(b.dataset.tab === 'documents') docsShow();
   if(b.dataset.tab === 'rx') rxShow();
 });
-$('acctBtn').onclick = () => document.querySelector('#tabs [data-tab="owner"]').click();                 // Account: by the pharmacy name, not a tab
+$('whoBtn').onclick = e => { e.stopPropagation(); const l = $('umList'); l.hidden = !l.hidden; $('whoBtn').setAttribute('aria-expanded', String(!l.hidden)); };
+document.addEventListener('click', e => { const l = $('umList'); if(l && !l.hidden && !e.target.closest('.umenu')){ l.hidden = true; $('whoBtn').setAttribute('aria-expanded', 'false'); } });
+$('acctBtn').onclick = () => { $('umList').hidden = true; document.querySelector('#tabs [data-tab="owner"]').click(); };                 // Account: in the name menu, not a tab
+$('signOutBtn').addEventListener('click', () => { $('umList').hidden = true; });
 $('archOpen').onclick = () => document.querySelector('#tabs [data-tab="archive"]').click();             // Archive: from the Reorder List page
 $('archBack').onclick = () => document.querySelector('#tabs [data-tab="list"]').click();
 function renderAll(){ renderList(); renderArchive(); }

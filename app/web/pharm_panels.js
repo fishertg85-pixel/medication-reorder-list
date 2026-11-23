@@ -2,11 +2,11 @@
    Built on the layout engine (layout_engine.js). PHARM_LAYOUT is set once by Neo with the layout editor and is the same for everyone. */
 const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
 const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['own', 'Account Owner And PIC'], ['mgr', 'Who Can Manage Users'], ['act', 'Modules And Save']];
-const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,50],"contact":[5,1,4,36],"hrs":[9,1,4,50],"reg":[5,37,4,60],"own":[1,51,4,34],"mgr":[1,85,4,16],"act":[9,51,4,40],"svc":[1,102,12,19]}};
+const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,40],"own":[1,41,4,49],"contact":[5,1,4,37],"reg":[5,38,4,52],"hrs":[9,1,4,71],"mgr":[9,72,4,18],"svc":[1,90,8,26],"act":[9,90,4,26]}};
 const PHARM_PAGE = { id: 'pharm', title: 'Host Pharmacy Setup Page', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
   render: (sample, panels) => pharmCardHtml(sample, { logo: '', holder: 'Pat Owner (owner)', host: true, clients: [{ id: 'IL-000001', legalName: 'NorTex Holdings LLC', entityType: 'llc', ein: '12-3456789' }] }, { panels }) };
 // The Account Owner's version of the same page has its own layout (Neo arranges it separately in the layout editor: page key pharm_owner).
-const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,44],"contact":[5,1,4,35],"hrs":[9,1,4,55],"reg":[5,36,4,50],"own":[1,45,4,26],"act":[9,56,4,25],"svc":[1,87,12,16]}};
+const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,41],"own":[1,42,4,12],"act":[1,54,4,20],"contact":[5,1,4,42],"reg":[5,43,4,31],"hrs":[9,1,4,73],"svc":[1,74,12,9]}};
 const PHARM_OWNER_PANELS = PHARM_PANELS.filter(p => p[0] !== 'mgr');      // the switches are IronLedger's alone
 const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_OWNER_PANELS, layout: PHARM_OWNER_LAYOUT,
   render: (sample, panels) => pharmCardHtml(Object.assign({}, sample, { ein: '', einMasked: '••-•••4321' }), { logo: '', holder: 'Pat Owner (owner)' }, { panels }) };
@@ -74,7 +74,6 @@ const ownLabel = u => u ? (u.name || u.login) + ' (' + u.login + ')' : '';
 const cardField = (s, k, l, t, c) => IDENT.includes(k) ? (c.host ? field(s, k, l, t, !c.isNew && !!s[k] && !c.rep && !c.repView) : roField(s, k, l, t)) : (c.host || AM_EDIT.includes(k) ? field(s, k, l, t) : roField(s, k, l, t));
 const LOCKED = 'Set by IronLedger. Contact your IronLedger representative to change this.';
 const LOCKED_ID = 'Name, address, license and identifiers must match your license and billing, so IronLedger sets them. Phone, fax, email, time zone, hours and expiration dates are yours to keep current.';
-const deaStat = s => s.deaVerified ? 'Checked on the DEA site ' + esc((s.deaVerified.at || '').slice(0, 10)) + (s.deaVerified.by ? ' by ' + esc(s.deaVerified.by) : '') : 'Not checked yet.';
 // Licensed entity (the entity named on the license, DEA and NPI; the EIN is required) and the client (the bill-to account, IL- number).
 const ENT_TYPES = [['corporation', 'Corporation'], ['llc', 'LLC'], ['sole_prop', 'Sole proprietor'], ['partnership', 'Partnership'], ['other', 'Other']];
 const entTypeLabel = v => (ENT_TYPES.find(x => x[0] === v) || [0, ''])[1];
@@ -111,12 +110,12 @@ const PHARM_BODY = {
         <div class="fbtn"><label><span>NPI (10 digits)</span><input type="text" inputmode="numeric" autocomplete="off" data-sf="npi" data-dig="10" maxlength="10" value="${esc(s.npi || '')}"${lock('npi') ? ' readonly data-ident="1"' : ''}></label>${c.rep ? '' : '<button class="btn2 small" type="button" data-npilook="1" title="Checks the NPI against the public registry. Nothing changes until you save.">Look up</button>'}</div><div class="fe" data-err="npi" hidden></div>
         <div class="npirow" data-npires></div>
         ${digitField(s, 'ncpdp', 'NCPDP ID (7 digits)', 7, lock('ncpdp'))}
-        <div class="fbtn"><label><span>DEA number</span><input type="text" data-sf="dea" maxlength="9" autocomplete="off" value="${esc(s.dea || '')}"${lock('dea') ? ' readonly data-ident="1"' : ''}></label>${c.rep ? '' : '<a class="btn2 small" href="https://apps.deadiversion.usdoj.gov/webforms2/spring/validationLogin" target="_blank" rel="noopener noreferrer" title="Opens the DEA registration check">DEA check</a>' + (c.isNew ? '' : '<button class="btn2 small" type="button" data-deaok="1" data-deastat title="' + deaStat(s) + '">I checked it</button>')}</div>
+        <label><span>DEA number</span><input type="text" data-sf="dea" maxlength="9" autocomplete="off" value="${esc(s.dea || '')}"${lock('dea') ? ' readonly data-ident="1"' : ''}></label>
         ${field(s, 'deaExpires', 'DEA expires', 'date')}
-        ${c.rep ? '<div class="lockhint">A rep drafts changes and a supervisor reviews them. The NPI registry lookup and the DEA check are done by a supervisor.</div>' : ''}</div>`;
+        ${c.rep ? '<div class="lockhint">A rep drafts changes and a supervisor reviews them. The NPI registry lookup is done by a supervisor.</div>' : ''}</div>`;
     }
     return `<div class="pfields">${licRo(s, c)}${roField(s, 'npi', 'NPI')}${roField(s, 'ncpdp', 'NCPDP ID')}${roField(s, 'dea', 'DEA number')}${cardField(s, 'deaExpires', 'DEA expires', 'date', c)}
-        <div class="lockhint">License numbers, NPI, DEA and NCPDP are set by IronLedger. Expiration dates are yours to keep current.</div><div class="pid npirow hint">DEA check: ${deaStat(s)}</div></div>`;
+        <div class="lockhint">License numbers, NPI, DEA and NCPDP are set by IronLedger. Expiration dates are yours to keep current.</div></div>`;
   },
   svc: (s, c) => c.host && !c.rep
     ? `<div class="pfields"><div class="svcs">${Object.entries(SVC_LABELS).map(([k, l]) => `<label class="chk">${sw(`data-svc="${k}"`, (s.services || []).includes(k))} ${l}</label>`).join('')}</div>
@@ -124,8 +123,8 @@ const PHARM_BODY = {
     : `<div class="pfields"><div class="chips">${(s.services || []).map(k => `<span class="chip">${esc(SVC_LABELS[k] || k)}</span>`).join('') || '<span class="hint">None set yet.</span>'}</div>
           ${s.servicesOther ? `<div class="pid">Other: ${esc(s.servicesOther)}</div>` : ''}<div class="lockhint">${LOCKED}</div></div>`,
   hrs: s => `<div class="pfields"><div class="hrs">${s.hours ? '' : '<div class="hint">Not set yet; these are suggestions until you save.</div>'}
-          ${hoursOf(s).map((h, i) => `<div class="hrow"><span>${DAYS[i]}</span><input type="time" data-ho="${i}" value="${h ? h.o : '09:00'}"><input type="time" data-hc="${i}" value="${h ? h.c : '18:00'}"><label class="chk">${sw(`data-hx="${i}"`, !h)} Closed</label></div>`).join('')}</div>
-          <details class="hdrop"><summary data-hsum>${holLabel(holOf(s).length)}</summary><div class="hdlist">${FED_HOL.map(([k, l]) => `<label class="chk">${sw(`data-hol="${k}"`, holOf(s).includes(k))} ${l}</label>`).join('')}</div></details>
+          ${hoursOf(s).map((h, i) => `<div class="hrow"><span title="${DAYS[i]}">${DAYS[i].slice(0, 3)}</span><input type="time" data-ho="${i}" value="${h ? h.o : '09:00'}"><input type="time" data-hc="${i}" value="${h ? h.c : '18:00'}"><label class="chk">${sw(`data-hx="${i}"`, !h)} Closed</label></div>`).join('')}</div>
+          <div class="hdrop"><b class="clh">Federal holidays closed</b><div class="hdlist">${FED_HOL.map(([k, l]) => `<label class="chk">${sw(`data-hol="${k}"`, holOf(s).includes(k))} ${l}</label>`).join('')}</div></div>
           <div class="closed" data-cl='${esc(JSON.stringify(closuresOf(s).days))}'><b class="clh">Additional closed days</b>
             <div class="cllist" data-cllist>${closeRows(closuresOf(s).days)}</div>
             <div class="cladd"><input type="date" data-cld title="Date"><input type="text" data-cln maxlength="60" placeholder="Name, e.g. Mardi Gras"><label class="chk">${sw('data-cly')} Every year</label> <button type="button" class="btn2 small" data-cladd="1">Add</button></div>
@@ -162,10 +161,10 @@ const PHARM_BODY = {
       <label class="chk">${sw('data-mgr="mgrPic"', s.mgrPic !== false)} Pharmacist-in-Charge super user</label>
       <label class="chk">${sw('data-mgr="mgrClient"', s.mgrClient === true)} Client Account Owner</label></div>`,
   act: (s, c) => `<div class="pfields"><div class="calsw">${c.host && !c.rep
-        ? `<label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar</label> <span class="hint">(people also need the Calendar privilege)</span>`
+        ? `<label class="chk">${sw(`data-sfcal="1"`, s.calendar, 'Calendar tab for this pharmacy')} Calendar</label> <span class="hint" title="People also need the Calendar privilege">(needs privilege)</span>`
         : `Calendar: <b>${s.calendar ? 'On' : 'Off'}</b>`}</div>
         <div class="calsw">${c.host && !c.rep
-        ? `<label class="chk">${sw(`data-sfdocs="1"`, s.documents, 'Documents tab for this pharmacy')} Documents</label> <span class="hint">(people also need the Documents privilege)</span>`
+        ? `<label class="chk">${sw(`data-sfdocs="1"`, s.documents, 'Documents tab for this pharmacy')} Documents</label> <span class="hint" title="People also need the Documents privilege">(needs privilege)</span>`
         : `Documents: <b>${s.documents ? 'On' : 'Off'}</b>`}</div>
         <div class="calsw">${c.host && !c.rep
         ? `<label class="chk">${sw(`data-sfreo="1"`, s.reorder !== false, 'Reorder List tab for this pharmacy')} Reorder List</label>`
@@ -176,10 +175,9 @@ const PHARM_BODY = {
         ${c.host ? '' : `<div class="lockhint">${LOCKED}</div>`}
         <div style="margin-top:10px;">${c.rep ? `<label class="reason"><span>Why (required, the supervisor reads this)</span><input type="text" data-draftnote maxlength="300"></label> <button class="btn small" data-draftstore="${esc(s.id)}">Submit for review</button>`
           : c.isNew ? '<button class="btn small" data-createstore="1">Create pharmacy</button>' : `<button class="btn small" data-savestore="${esc(s.id)}">Save details</button>`}</div>
-        ${c.host && !c.isNew && !c.rep ? `<div class="identbar"><button class="btn2 small" data-unlockident="1">Change name, address, license or identifiers…</button>
-          <div class="hint">Locked on purpose: they must match the license and billing. A reason is required and every change is kept in the history.</div>
-          <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label>
-          <div style="margin-top:8px"><button class="btn2 small" data-hist="${esc(s.id)}">Change history</button><div data-histout></div></div></div>` : ''}</div>`
+        ${c.host && !c.isNew && !c.rep ? `<div class="identbar"><button class="btn2 small" data-unlockident="1" title="Name, address, license and identifiers are locked once on file. A reason is required and every change is kept in the history.">Unlock fields</button>
+          <button class="btn2 small" data-hist="${esc(s.id)}">Change history</button>
+          <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label><div data-histout></div></div>` : ''}</div>`
 };
 // the whole card, built by the layout engine
 function pharmCardHtml(s, c, L){ return layoutGridHtml(c.host ? PHARM_PAGE : PHARM_OWNER_PAGE, L, id => PHARM_BODY[id](s, c)); }
@@ -187,9 +185,6 @@ function pharmCardHtml(s, c, L){ return layoutGridHtml(c.host ? PHARM_PAGE : PHA
 // ---------------- behaviour shared by the Account Owner page and the host page ----------------
 // o = { base: '/owner' | '/host', stores: () => [store, …], say: text => …, after: async () => … }
 const normNm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-// the federal-holiday list is a floating popover: it opens over the page and never pushes anything down; a click elsewhere or Escape closes it
-document.addEventListener('click', e => document.querySelectorAll('details.hdrop[open]').forEach(d => { if(!d.contains(e.target)) d.open = false; }));
-document.addEventListener('keydown', e => { if(e.key === 'Escape') document.querySelectorAll('details.hdrop[open]').forEach(d => { d.open = false; }); });
 function showFieldErr(card, k, msg){ const el = card.querySelector(`[data-err=${k}]`); if(!el) return; el.textContent = msg || ''; el.hidden = !msg; const i = card.querySelector(`[data-sf=${k}]`); if(i) i.classList.toggle('bad', !!msg); }
 function pharmCardEvents(root, o){
   root.addEventListener('input', e => {
@@ -205,14 +200,14 @@ function pharmCardEvents(root, o){
     if(e.target.closest('[data-lic-exp]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.licTouched = '1'; }
     const pk = e.target.closest('[data-ownpick]'); if(pk) pk.closest('.pcard').querySelector('[data-ownnew]').hidden = pk.value !== '@new';
     const py = e.target.closest('[data-picyes]'); if(py) py.closest('.pcard').querySelector('[data-picwho]').hidden = py.value !== 'no'; if(e.target.closest('[data-ho],[data-hc],[data-hx]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.hrTouched = '1'; }
-    if(e.target.closest('[data-hol]')){ const c = e.target.closest('.pcard'); if(c){ c.dataset.hcTouched = '1'; c.querySelector('[data-hsum]').textContent = holLabel(holOfCard(c).length); } } });
+    if(e.target.closest('[data-hol]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.hcTouched = '1'; } });
   root.addEventListener('click', async e => {
     const la = e.target.closest('[data-licadd]'), ld = e.target.closest('[data-licdel]'), osv = e.target.closest('[data-ownsave]'), psv = e.target.closest('[data-picsave]');
     if(la || ld){
       const card = e.target.closest('.pcard'), list = card.querySelector('[data-liclist]');
       if(ld){
         const row = ld.closest('[data-licrow]');
-        if(row.querySelector('[data-ident]') && !card.dataset.unlocked){ alert('Licenses on file are locked. Press “Change name, address, license or identifiers…” first; a reason is required.'); return; }
+        if(row.querySelector('[data-ident]') && !card.dataset.unlocked){ alert('Licenses on file are locked. Press “Unlock fields” first; a reason is required.'); return; }
         row.remove(); card.dataset.licTouched = '1'; if(!list.querySelector('[data-licrow]')) list.innerHTML = '<div class="hint" data-licnone>None yet. Add the license for each state the pharmacy is licensed in.</div>'; return;
       }
       const none = list.querySelector('[data-licnone]'); if(none) none.remove();
@@ -246,7 +241,7 @@ function pharmCardEvents(root, o){
       catch(err){ if(!err.auth) alert(err.message); } finally{ busy(psv, false); }
       return;
     }
-    const lk = e.target.closest('[data-npilook]'), us = e.target.closest('[data-npiuse]'), dk = e.target.closest('[data-deaok]');
+    const lk = e.target.closest('[data-npilook]'), us = e.target.closest('[data-npiuse]');
     const dsub = e.target.closest('[data-draftstore]');
     const cla = e.target.closest('[data-cladd]'), cld = e.target.closest('[data-cldel]');
     if(cla || cld){
@@ -298,12 +293,6 @@ function pharmCardEvents(root, o){
       }catch(err){ if(!err.auth) out.innerHTML = `<div class="npibox bad">${esc(err.message)}</div>`; }
       return;
     }
-    if(dk){
-      const dea = val('dea'); if(!dea){ alert('Type the DEA number first.'); return; }
-      if(!confirm('Confirm you looked up ' + dea.toUpperCase() + ' on the DEA registration check and the name, address and expiration match this pharmacy?')) return;
-      try{ await api('POST', o.base + '/stores/' + encodeURIComponent(card.dataset.store), {dea, deaVerified:true}); o.say('DEA check recorded.'); await o.after(); }catch(err){ if(!err.auth) alert(err.message); }
-      return;
-    }
     if(lk){
       const out = card.querySelector('[data-npires]'), npi = val('npi');
       if(!/^\d{10}$/.test(npi)){ out.innerHTML = '<div class="npibox bad">Type the 10-digit NPI first.</div>'; return; }
@@ -328,7 +317,7 @@ function pharmCardEvents(root, o){
     }
     if(us){
       const r = card._npi; if(!r || !r.found) return;
-      if(card.querySelector('[data-ident]') && !card.dataset.unlocked){ alert('The name and address are locked. Press “Change name, address, license or identifiers…” first.'); return; }
+      if(card.querySelector('[data-ident]') && !card.dataset.unlocked){ alert('The name and address are locked. Press “Unlock fields” first.'); return; }
       const set = (k, v) => { const i = card.querySelector(`[data-sf=${k}]`); if(i && v) i.value = v; };
       set('name', r.name); set('address', r.address.address); set('suite', r.address.suite); set('city', r.address.city); set('state', r.address.state); set('zip', r.address.zip); set('phone', r.address.phone); set('fax', r.address.fax);
       o.say('Filled in from the registry. Press ' + (card.dataset.isNew ? 'Create pharmacy' : 'Save details') + ' to keep it.'); return;

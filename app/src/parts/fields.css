@@ -1,0 +1,12 @@
+/* Field colors, one standard for the whole suite (every page loads this last).
+   Fillable = the lighter field color. Not fillable (read-only, locked, disabled) = flat, the same as the window background. */
+:root{ --fld:#fff; --fld-off:var(--bg); }
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){ --fld:color-mix(in srgb,var(--panel) 86%,#fff); } }
+:root[data-theme="dark"]{ --fld:color-mix(in srgb,var(--panel) 86%,#fff); }
+@media screen{
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=button]):not([type=submit]):not([type=color]):not([readonly]):not(:disabled),
+  select:not(:disabled):not([readonly]), textarea:not([readonly]):not(:disabled){ background-color:var(--fld) !important; }
+  input[readonly]:not([type=checkbox]):not([type=radio]),
+  input:disabled:not([type=checkbox]):not([type=radio]),
+  select:disabled, textarea[readonly], textarea:disabled, select[readonly]{ background-color:var(--fld-off) !important; border-color:transparent !important; box-shadow:none !important; }
+}

@@ -211,9 +211,10 @@ function paintStore(){
   if(ME) sel.innerHTML = ME.stores.map(s => `<option value="${esc(s.id)}"${STORE && s.id === STORE.id ? ' selected' : ''}>${esc(s.id)} · ${esc(s.name)}</option>`).join('');
   $('whoLabel').textContent = ME ? (ME.name || ME.login) + (STORE && STORE.isOwner ? ' (Account Owner)' : STORE && STORE.owner ? ' (Administrator)' : '') : '';
   // what this login may do
-  document.querySelector('#tabs [data-tab="archive"]').style.display = PERM('archive') && !(STORE && STORE.reorder === false) ? '' : 'none';
+  document.querySelector('#tabs [data-tab="archive"]').style.display = PERM('archive') && !(STORE && STORE.reorder === false) && !(ME && ME.acctType === 'staff' && (ME.subs || []).some(x => x === 'cashier' || x === 'driver') && !(STORE && STORE.owner)) ? '' : 'none';
   document.querySelector('#tabs [data-tab="owner"]').style.display = (STORE && STORE.owner) || (ME && ME.clientOwner) ? '' : 'none';
-  const lt = document.querySelector('#tabs [data-tab="list"]'); const noReo = !!(STORE && STORE.reorder === false); if(lt) lt.style.display = noReo ? 'none' : '';   // Reorder List switched off for this pharmacy
+  const lt = document.querySelector('#tabs [data-tab="list"]'); const noReo = !!(STORE && STORE.reorder === false) || !!(ME && ME.acctType === 'staff' && (ME.subs || []).some(x => x === 'cashier' || x === 'driver') && !(STORE && STORE.owner));
+  if(lt) lt.style.display = noReo ? 'none' : '';   // hidden when switched off for the pharmacy, and for Cashier and Driver
   if(noReo && document.querySelector('#tabs [data-tab="list"].active, #tabs [data-tab="archive"].active')) homeTab();
   $('submitBtn').style.display = PERM('submit') ? '' : 'none';
   $('submitOff').style.display = ME && !PERM('submit') ? '' : 'none';
@@ -223,7 +224,7 @@ function paintStore(){
   $('archOpen').style.display = PERM('archive') ? '' : 'none';
   $('acctBtn').style.display = (STORE && STORE.owner) || (ME && ME.clientOwner) ? '' : 'none';
   if(!LANDED && ME && STORE){ LANDED = true;                  // first screen after sign-in = the first tab the person has (Calendar, Documents, Reorder List)
-    const first = [...document.querySelectorAll('#tabs button')].find(b => !b.classList.contains('tabx') && b.style.display !== 'none');
+    const first = [...document.querySelectorAll('#tabs button')].find(b => !b.classList.contains('tabx') && b.style.display !== 'none');       // Dashboard, Calendar, Documents, Reorder List, Rx Intake
     if(first && first.dataset.tab !== 'list') first.click(); }
 }
 const SVC_NAMES = {retail:'Retail dispensing', controlled:'Controlled substances', nonsterile:'Nonsterile compounding', sterile:'Sterile compounding', hazardous:'Hazardous drug compounding', immunizations:'Immunizations', delivery:'Delivery', ltc:'Long-term care', specialty:'Specialty', infusion:'Home infusion'};

@@ -13,7 +13,7 @@ with sync_playwright() as pw:
     c.respond_to_auth_challenge(ClientId=ids["client"], ChallengeName="NEW_PASSWORD_REQUIRED", Session=r["Session"], ChallengeResponses={"USERNAME": "owner", "NEW_PASSWORD": "ownerpass99"})
     p.goto(BASE); p.wait_for_selector('#login', state='visible'); p.fill('#liPharm', 'NTX1'); p.wait_for_timeout(700)
     p.fill('#liUser', 'owner'); p.fill('#liPass', 'ownerpass99'); p.click('#liGo'); p.wait_for_selector('#tabs', state='visible', timeout=8000); p.wait_for_timeout(800)
-    p.click('#acctBtn'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock')
+    p.click('#whoBtn'); p.click('#acctBtn'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock')
     p.wait_for_selector('.pgrid', timeout=8000)
     for w in widths:
         p.set_viewport_size({'width': w, 'height': 1000}); p.wait_for_timeout(400)
@@ -21,4 +21,5 @@ with sync_playwright() as pw:
         docover = p.evaluate("document.documentElement.scrollWidth > window.innerWidth + 1")
         print(w, 'panels cut off horizontally:', over, '| page scrolls sideways:', docover)
         p.locator('.pcard').first.screenshot(path=f'screenshots/pharmacy_layout_{w}.png')
+    print('wide:', p.evaluate("""() => { const pn=document.querySelector('.pnl[data-pnl=hrs]'); const r=pn.getBoundingClientRect(); return [Math.round(r.width), [...pn.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().right>r.right-11).slice(0,6).map(e=>e.tagName+'.'+e.className+' '+Math.round(e.getBoundingClientRect().right-r.right))]; }""")) if len(sys.argv)>1 else 0
     print('script errors:', errs or 'none'); b.close()

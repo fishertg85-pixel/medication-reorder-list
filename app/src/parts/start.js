@@ -2,15 +2,19 @@
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#tabs button').forEach(x => { x.classList.toggle('active', x === b); x.classList.toggle('sub', b.dataset.tab === 'archive' && x.dataset.tab === 'list'); });
   $('acctBtn').classList.toggle('on', b.dataset.tab === 'owner');
-  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + b.dataset.tab));
+  const pan = b.dataset.tab === 'dashboard' ? 'calendar' : b.dataset.tab;                  // Dashboard and Calendar are two views of the same page
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + pan));
   document.body.classList.toggle('wideTab', b.dataset.tab === 'owner' || b.dataset.tab === 'documents');
   if(b.dataset.tab === 'owner') openOwnerTab();
   if(b.dataset.tab === 'archive') loadArchive(false).catch(() => {});
-  if(b.dataset.tab === 'calendar') calShow();
+  if(b.dataset.tab === 'calendar' || b.dataset.tab === 'dashboard') calShow(b.dataset.tab);
   if(b.dataset.tab === 'documents') docsShow();
   if(b.dataset.tab === 'rx') rxShow();
 });
-$('acctBtn').onclick = () => document.querySelector('#tabs [data-tab="owner"]').click();                 // Account: by the pharmacy name, not a tab
+$('whoBtn').onclick = e => { e.stopPropagation(); const l = $('umList'); l.hidden = !l.hidden; $('whoBtn').setAttribute('aria-expanded', String(!l.hidden)); };
+document.addEventListener('click', e => { const l = $('umList'); if(l && !l.hidden && !e.target.closest('.umenu')){ l.hidden = true; $('whoBtn').setAttribute('aria-expanded', 'false'); } });
+$('acctBtn').onclick = () => { $('umList').hidden = true; document.querySelector('#tabs [data-tab="owner"]').click(); };                 // Account: in the name menu, not a tab
+$('signOutBtn').addEventListener('click', () => { $('umList').hidden = true; });
 $('archOpen').onclick = () => document.querySelector('#tabs [data-tab="archive"]').click();             // Archive: from the Reorder List page
 $('archBack').onclick = () => document.querySelector('#tabs [data-tab="list"]').click();
 function renderAll(){ renderList(); renderArchive(); }

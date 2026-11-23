@@ -76,7 +76,7 @@ function acPaint(){
   const row = (attr, v, title, sub, on, big) => `<button type="button" class="qrow${on ? ' on' : ''}${big ? ' big' : ''}" ${attr}="${esc(v)}"><b>${esc(title)}</b><span>${esc(sub)}</span></button>`;
   const prof = list => list.map(p => row('data-qs', p.id, p.name || p.id, [p.id, [p.city, p.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))).join('') || '<div class="hint">No pharmacies.</div>';
   if(id){ const r = reachOf(id);
-    $('acSide').innerHTML = `<div class="cqh"><h2>${esc(id)}</h2></div>` + [['acct', 'Account', 'Details'], ['users', 'Users', 'People at this pharmacy']].concat(r.billing ? [['billing', 'Billing', 'Invoices and payments']] : []).filter(x => x[0] !== 'users' || r.users).map(([v, t, sub]) => row('data-view', v, t, sub, AC.view === v, true)).join('');
+    $('acSide').innerHTML = `<div class="cqh"><h2>${esc(id)}</h2></div>` + [['acct', 'Account', 'Details'], ['users', 'Users', 'People at this pharmacy']].concat(r.billing ? [['billing', 'Billing', 'Invoices and payments']] : []).filter(x => x[0] !== 'users' || r.users).map(([v, t, sub]) => row('data-view', v, t, sub, AC.view === v, true)).join('') + calLinks(id);
   }else{
     const own = managed().filter(s => !k || !k.pharmacies.some(p => p.id === s.id));
     $('acSide').innerHTML = `<div class="cqh"><h2>Profiles</h2></div>` + (k ? prof(k.pharmacies) : '') + (own.length ? (k ? '<div class="sub">Also yours</div>' : '') + prof(own) : '') + (!k && !own.length ? '<div class="hint">No pharmacies.</div>' : '');
@@ -107,8 +107,11 @@ function acPaint(){
   show('acClient'); $('acClient').innerHTML = '<div class="hint">Pick a pharmacy from the list on the right.</div>';
 }
 const AC_BO = {edit:false, filter:'all'};
-const acUsersOpts = () => ({st:AC_ST, me:ME, host:false, ownerMe:ownedHere(AC.pharm), pinRequired:!!ME.pinRequired, canPin:true});
+const acUsersOpts = () => ({st:AC_ST, me:ME, host:false, ownerMe:ownedHere(AC.pharm), picMe:ME.acctType === 'pic', pinRequired:!!ME.pinRequired, canPin:true});
+// People & Assets and the calendar's Setup belong to the pharmacy account: opened from here, shown in the calendar page
+const calLinks = id => { const st = (ME.stores || []).find(x => x.id === id); if(!(st && st.calendar && st.owner)) return ''; const row = (v, t, sub) => `<button type="button" class="qrow big" data-calview="${v}"><b>${t}</b><span>${sub}</span></button>`; return row('people', 'People & Assets', 'Staff records, equipment, rooms') + row('setup', 'Calendar Setup', 'Programs, hours, tasks'); };
 $('acSide').addEventListener('click', e => {
+  const cv = e.target.closest('[data-calview]'); if(cv){ calOpenView(cv.dataset.calview); return; }
   const p = e.target.closest('[data-qs]'), v = e.target.closest('[data-view]');
   if(p) acGo(AC.client, p.dataset.qs, 'acct'); else if(v){ AC.view = v.dataset.view; AC_ST.open = null; AC_BO.filter = 'all'; acMsg(''); acLoad(); }
 });

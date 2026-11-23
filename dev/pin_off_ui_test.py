@@ -60,7 +60,7 @@ with sync_playwright() as pw:
     p.click('#pGo'); p.wait_for_timeout(1500); check("approved with one click, no PIN", 'Active' in p.inner_text(f'tr[data-row="{d3}"]'), True)
     p.click(f'tr[data-row="{d1}"] .dmore'); p.click('#dctx [data-dact=review]'); p.wait_for_selector('#rGo'); check("review window: no PIN field", p.locator('#sPin').count(), 0); p.click('#rGo'); p.wait_for_timeout(1200)
     check("review recorded", [r for r in api(tok2("dpe", "dpepass12345"), "GET", D)[1]["log"] if r["action"].startswith("Review") and r.get("ini") == "DP"] != [], True)
-    p.close(); p = ctx.new_page(); p.on('pageerror', lambda e: errs.append(str(e))); signin(p, "NTX1", "owner", "ownerpass99"); p.click('#acctBtn'); p.wait_for_timeout(500)
+    p.close(); p = ctx.new_page(); p.on('pageerror', lambda e: errs.append(str(e))); signin(p, "NTX1", "owner", "ownerpass99"); p.click('#whoBtn'); p.click('#acctBtn'); p.wait_for_timeout(500)
     p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_selector('#ownBody:visible'); p.wait_for_timeout(1200); (p.click('#acSide [data-qs=NTX1]') if p.locator('#acSide [data-qs=NTX1]').count() else None); p.wait_for_selector('#acSide [data-view=users]', timeout=8000); p.click('#acSide [data-view=users]'); p.wait_for_timeout(900); p.wait_for_selector('#acUsers .urow', timeout=8000)
     p.locator('#acUsers .urowhead').nth(1).click(); p.wait_for_selector('#acUsers .udetail', timeout=8000)
     check("people list: initials and Employee ID stay; no PIN state, no Issue Temporary PIN", (p.locator('#acUsers [data-uini]').count() >= 1, 'Employee ID' in p.inner_text('#acUsers .udetail'), 'PIN' in p.inner_text('#acUsers'), p.locator('#acUsers [data-pinreset]').count()), (True, True, False, 0))

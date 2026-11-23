@@ -65,7 +65,7 @@ with sync_playwright() as pw:
     check("audit log names the signed-in login", [l["by"] for l in g["log"]][:1], ["Pat Owner"])
     p.screenshot(path='screenshots/calendar_tab.png')
     # Account Owner tab: account type for a person, identifiers on the pharmacy
-    p.click('#acctBtn'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_timeout(1200); (p.click('#acSide [data-qs=NTX1]') if p.locator('#acSide [data-qs=NTX1]').count() else None); p.wait_for_selector('#acSide [data-view=users]', timeout=8000); p.click('#acSide [data-view=users]'); p.wait_for_timeout(900); p.wait_for_selector('#acUsers .urow', timeout=8000)
+    p.click('#whoBtn'); p.click('#acctBtn'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_timeout(1200); (p.click('#acSide [data-qs=NTX1]') if p.locator('#acSide [data-qs=NTX1]').count() else None); p.wait_for_selector('#acSide [data-view=users]', timeout=8000); p.click('#acSide [data-view=users]'); p.wait_for_timeout(900); p.wait_for_selector('#acUsers .urow', timeout=8000)
     p.locator('#acUsers .urow').filter(has_text='CALA').locator('.urowhead').click(); p.wait_for_selector('#acUsers select[data-utype]', timeout=8000)
     row = p.locator('#acUsers .urow').filter(has_text='CALA'); row.locator('select[data-utype]').select_option('pharmacist'); p.wait_for_timeout(300)
     row = p.locator('#acUsers .urow').filter(has_text='CALA'); row.locator('[data-upd]').click(); p.wait_for_timeout(1500)
@@ -84,9 +84,9 @@ with sync_playwright() as pw:
     check("phone saved from the screen; services, identifiers and hours untouched", (ns["phone"], ns["npi"], ns["services"], ns["hours"][1]), ("(817) 555-0123", "1234567893", ["controlled", "sterile", "immunizations"], {"o": "08:00", "c": "20:00"}))
     # closed days on the Hours panel: the Account Owner adds them; they show on the calendar for everyone who can open it
     check("Hours panel has the closed-days editor", (card.locator('[data-clobs]').count(), card.locator('[data-cladd]').count(), "Additional closed days" in card.inner_text()), (0, 1, True))
-    check("federal holiday dropdown lists all 11, defaults checked", (card.locator('[data-hol]').count(), card.locator('[data-hol]:checked').count(), card.locator('[data-hsum]').inner_text()), (11, 6, "6 federal holidays closed"))
-    card.locator('summary[data-hsum]').click(); card.locator('[data-hol=thanks]').evaluate("e=>e.click()"); card.locator('[data-hol=mlk]').evaluate("e=>e.click()")
-    check("dropdown count updates", card.locator('[data-hsum]').inner_text(), "6 federal holidays closed")
+    check("federal holidays are listed in the open: all 11, six checked by default", (card.locator('[data-hol]').count(), card.locator('[data-hol]:checked').count(), card.locator('.hdlist').is_visible()), (11, 6, True))
+    card.locator('[data-hol=thanks]').evaluate("e=>e.click()"); card.locator('[data-hol=mlk]').evaluate("e=>e.click()")
+    check("switching holidays works: Thanksgiving off, MLK Day on", (card.locator('[data-hol=thanks]').is_checked(), card.locator('[data-hol=mlk]').is_checked()), (False, True))
     card.locator('[data-cld]').fill('2027-02-09'); card.locator('[data-cln]').fill('Mardi Gras'); card.locator('[data-cly]').evaluate("e=>e.click()"); card.locator('[data-cladd]').click()
     card.locator('[data-cld]').fill('2026-12-28'); card.locator('[data-cln]').fill('Day after Christmas'); card.locator('[data-cladd]').click()
     check("added days are listed", (card.locator('.clrow').count(), "Mardi Gras" in card.locator('[data-cllist]').inner_text(), "every year" in card.locator('[data-cllist]').inner_text()), (2, True, True))
@@ -107,7 +107,7 @@ with sync_playwright() as pw:
     p.screenshot(path='screenshots/account_manager_pharmacy.png', full_page=True); p.close()
     # privileged person now sees the started calendar
     c.admin_set_user_mfa_preference(Username="cala", UserPoolId=ids["pool"], SMSMfaSettings={"Enabled": False, "PreferredMfa": False})
-    p = newpage(); signin(p, "NTX1", "cala", "calapass12345"); p.click('#tabs [data-tab=calendar]'); fr = p.frame_locator('#calFrame'); fr.locator('nav.tabs').wait_for(timeout=8000)
+    p = newpage(); signin(p, "NTX1", "cala", "calapass12345"); p.click('#tabs [data-tab=calendar]'); fr = p.frame_locator('#calFrame'); fr.locator('header.top').wait_for(timeout=8000)
     check("privileged person opens the started calendar", fr.locator('.brand small').inner_text().upper().find('NORTEX') >= 0, True); p.close()
     b.close()
 check("no script errors", errs, []); print("\nFAILED:", fails if fails else "none"); sys.exit(1 if fails else 0)

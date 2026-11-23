@@ -30,7 +30,7 @@ with sync_playwright() as pw:
     am.on('dialog', lambda d: d.accept(PROMPT[0]) if d.type == 'prompt' else d.accept())
     am.route('**/clinicaltables.nlm.nih.gov/**', lambda r, q: r.fulfill(status=200, body='[0,[],{},[]]', headers={'Access-Control-Allow-Origin': '*'}))
     def to_users():
-        am.click('#acctBtn'); am.wait_for_timeout(300)
+        am.click('#whoBtn'); am.click('#acctBtn'); am.wait_for_timeout(300)
         if am.is_visible('#ownLock'): am.fill('#ownPw', 'ownerpass99'); am.click('#ownUnlock')
         am.wait_for_selector('#ownBody:visible')
         am.wait_for_selector('#acSide [data-view=users]'); am.click('#acSide [data-view=users]'); am.wait_for_timeout(900)
@@ -39,24 +39,24 @@ with sync_playwright() as pw:
         r = am.locator('#acUsers .urow:has-text("%s")' % name)
         if r.locator('.udetail').count() == 0: r.locator('.urowhead').click(); am.wait_for_selector('#acUsers .urow:has-text("%s") .udetail' % name)
         return am.locator('#acUsers .urow:has-text("%s")' % name)
+    def add_open():
+        if not am.is_visible('#acUsers [data-npmodal]'): am.click('#acUsers [data-npopen]'); am.wait_for_selector('#acUsers [data-npmodal] [data-np=name]')
     sign_in(am, 'NTX1', 'owner', 'temp12345a', 'ownerpass99')
     to_users()
+    check('Add user is a button at the top of the Users page and the form is not on the page', am.is_visible('#acUsers [data-npopen]') and am.locator('#acUsers [data-np=name]').count() == 0 and am.locator('#acUsers .utop').bounding_box()['y'] < am.locator('#acUsers .ulist').bounding_box()['y'])
 
     # 1. missing consent: a message that stays on screen next to the button
-    am.fill('#acUsers [data-np=name]', 'Dana Tech'); am.fill('#acUsers [data-np=login]', 'dtech'); am.fill('#acUsers [data-np=phone]', '817-555-1212')
+    add_open(); am.fill('#acUsers [data-np=name]', 'Dana Tech'); am.fill('#acUsers [data-np=login]', 'dtech'); am.fill('#acUsers [data-np=phone]', '817-555-1212')
     am.click('#acUsers [data-npadd]'); am.wait_for_timeout(300)
     check('without the consent tick: message stays next to the button', 'consent' in am.inner_text('#acUsers [data-npmsg]'))
     # 2. add
     am.check('#acUsers [data-np=consent]')
-    am.locator('label.switch:has([data-npperm=submit])').click()           # change a default before adding
     am.click('#acUsers [data-npadd]')
     am.wait_for_selector('#passBox:has-text("Temporary password")'); am.wait_for_selector('#acMsg:has-text("Pending")')
     temp = am.locator('#passBox b.mono').nth(2).inner_text()
     check('added: temp password shown', len(temp) >= 10)
     check('added: confirmation shown', 'Pending' in am.inner_text('#acMsg'))
-    check('form cleared for the next person', [am.input_value(k) for k in ('#acUsers [data-np=name]', '#acUsers [data-np=login]', '#acUsers [data-np=phone]')] == ['', '', '']
-          and not am.is_checked('#acUsers [data-np=consent]') and am.input_value('#acUsers [data-np=pass]') not in ('', temp))
-    check('pharmacy and permission switches back to defaults', am.is_checked('[data-npperm=submit]') and not am.is_checked('[data-npperm=export]'))
+    check('the window closed and the new person opened with privileges to toggle', am.locator('#acUsers [data-npmodal]').count() == 0 and am.locator('#acUsers .urow:has-text("dtech") [data-uperm=submit]').count() == 1)
     am.wait_for_selector('#acUsers .urow:has-text("dtech")')
     rows = am.locator('#acUsers .urow')
     row = am.locator('#acUsers .urow:has-text("dtech")')
@@ -70,9 +70,11 @@ with sync_playwright() as pw:
     print('    copied:', repr(clip))
     am.screenshot(path=OUT + 'am_people_pending.png', full_page=True)
     # 3. same Login ID again is refused, with the reason on screen
-    am.fill('#acUsers [data-np=name]', 'Dup'); am.fill('#acUsers [data-np=login]', 'dtech'); am.fill('#acUsers [data-np=phone]', '8175551313'); am.check('#acUsers [data-np=consent]'); am.click('#acUsers [data-npadd]')
+    add_open(); am.fill('#acUsers [data-np=name]', 'Dup'); am.fill('#acUsers [data-np=login]', 'dtech'); am.fill('#acUsers [data-np=phone]', '8175551313'); am.check('#acUsers [data-np=consent]'); am.click('#acUsers [data-npadd]')
     am.wait_for_selector('#acUsers [data-npmsg]:has-text("already taken")')
     check('duplicate Login ID refused with a message', True)
+    am.click('#acUsers [data-npclose]'); am.wait_for_selector('#acUsers [data-npmodal]', state='detached')
+    check('Cancel closes the window', am.locator('#acUsers [data-npmodal]').count() == 0)
     # 4. the person signs in for the first time and picks a password -> Active
     st = b.new_context(viewport={'width': 390, 'height': 844}).new_page()
     sign_in(st, 'NTX1', 'dtech', temp, 'danapass123')
@@ -112,7 +114,7 @@ with sync_playwright() as pw:
     check('copy after a reset gives the new temporary password', am.evaluate('navigator.clipboard.readText()') == f'Pharmacy ID: NTX1\nUser ID: dtech\nTemporary Pass: {rtemp}')
     am.screenshot(path=OUT + 'am_people_copy.png')
     # 5. add a second person and cancel the invite before they sign in
-    am.fill('#acUsers [data-np=name]', 'Sam Float'); am.fill('#acUsers [data-np=login]', 'sfloat'); am.fill('#acUsers [data-np=phone]', '8175551414'); am.check('#acUsers [data-np=consent]'); am.click('#acUsers [data-npadd]')
+    add_open(); am.fill('#acUsers [data-np=name]', 'Sam Float'); am.fill('#acUsers [data-np=login]', 'sfloat'); am.fill('#acUsers [data-np=phone]', '8175551414'); am.check('#acUsers [data-np=consent]'); am.click('#acUsers [data-npadd]')
     am.wait_for_selector('#acUsers .urow:has-text("sfloat")')
     srow = open_row('sfloat')
     PROMPT[0] = 'nope'; srow.locator('[data-del]').click(); am.wait_for_timeout(800)
@@ -121,7 +123,7 @@ with sync_playwright() as pw:
     am.wait_for_selector('#acUsers .urow:has-text("sfloat")', state='detached')
     check('pending invite cancelled', True)
     # the Login ID is free again
-    am.fill('#acUsers [data-np=name]', 'Sam Float'); am.fill('#acUsers [data-np=login]', 'sfloat'); am.fill('#acUsers [data-np=phone]', '8175551414'); am.check('#acUsers [data-np=consent]'); am.click('#acUsers [data-npadd]')
+    add_open(); am.fill('#acUsers [data-np=name]', 'Sam Float'); am.fill('#acUsers [data-np=login]', 'sfloat'); am.fill('#acUsers [data-np=phone]', '8175551414'); am.check('#acUsers [data-np=consent]'); am.click('#acUsers [data-npadd]')
     am.wait_for_selector('#acUsers .urow:has-text("sfloat")')
     check('cancelled Login ID can be used again', True)
     # 6. delete the active person; their open session is shut out
@@ -131,10 +133,10 @@ with sync_playwright() as pw:
     st.reload(); st.wait_for_timeout(2500)
     check("deleted person's open session is shut out", not st.is_visible('#listBody') or st.is_visible('#liUser'))
     # 7. one shared computer: the Account Owner signs out, the new person signs in on the same browser
-    am.fill('#acUsers [data-np=name]', 'Kim Shared'); am.fill('#acUsers [data-np=login]', 'kshared'); am.fill('#acUsers [data-np=phone]', '8175551515'); am.check('#acUsers [data-np=consent]'); am.click('#acUsers [data-npadd]')
+    add_open(); am.fill('#acUsers [data-np=name]', 'Kim Shared'); am.fill('#acUsers [data-np=login]', 'kshared'); am.fill('#acUsers [data-np=phone]', '8175551515'); am.check('#acUsers [data-np=consent]'); am.click('#acUsers [data-npadd]')
     am.wait_for_selector('#passBox:has-text("kshared")')
     ktemp = am.locator('#passBox b.mono').nth(2).inner_text()
-    am.click('#signOutBtn'); am.wait_for_selector('#liUser:visible')
+    am.click('#whoBtn'); am.click('#signOutBtn'); am.wait_for_selector('#liUser:visible')
     check('after sign-out on a shared computer, no Login ID is left filled in', am.input_value('#liUser') == '' and am.input_value('#liPass') == '')
     am.wait_for_timeout(800); am.fill('#liPharm', ''); am.type('#liPharm', 'ntx1')
     print('    pharmacy box:', repr(am.input_value('#liPharm'))); check('Pharmacy ID shows in capitals as it is typed', am.input_value('#liPharm') == 'NTX1')

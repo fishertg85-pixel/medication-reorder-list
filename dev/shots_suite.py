@@ -59,7 +59,7 @@ with sync_playwright() as pw:
     p.screenshot(path='screenshots/suite_1_landing.png')
     p.click('#tabs [data-tab=list]'); p.wait_for_timeout(300); p.screenshot(path='screenshots/suite_2_list.png')
     p.click('#archOpen'); p.wait_for_timeout(600); print("archive active tab:", p.evaluate("document.querySelector('#tabs button.active').dataset.tab"), "list tab marked:", p.evaluate("document.querySelector('#tabs [data-tab=list]').classList.contains('sub')")); p.screenshot(path='screenshots/suite_3_archive.png')
-    p.click('#archBack'); p.click('#acctBtn'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_selector('#ownBody:visible'); p.wait_for_timeout(800); p.screenshot(path='screenshots/suite_4_account.png', full_page=True)
+    p.click('#archBack'); p.click('#whoBtn'); p.click('#acctBtn'); p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_selector('#ownBody:visible'); p.wait_for_timeout(800); p.screenshot(path='screenshots/suite_4_account.png', full_page=True)
     p.click('#tabs [data-tab=documents]'); p.wait_for_timeout(1200); p.screenshot(path='screenshots/suite_5_documents.png')
     p.evaluate("document.documentElement.setAttribute('data-theme','dark')"); p.wait_for_timeout(300); p.screenshot(path='screenshots/suite_6_documents_dark.png'); p.click('#tabs [data-tab=list]'); p.wait_for_timeout(300); p.screenshot(path='screenshots/suite_7_list_dark.png')
     print(errs); b.close()

@@ -20,13 +20,17 @@ const CAL_ROLE = { 'dea-reg': 'Owner', 'dea-biennial': 'PIC', 'tx-cs-annual': 'P
   'u795-training': 'DP', 'u795-sop': 'DP', 'u797-cert-pec': 'DP', 'u797-cert-sec': 'DP', 'u797-air': 'DP', 'u797-surface': 'DP', 'u797-sop': 'DP', 'u797-qaqc': 'DP', 'u797-didactic': 'DP', 'u797-garb': 'DP', 'u797-media': 'DP', 'u797-sporicidal': 'DP', 'u797-monitor-cal': 'DP', 'u797-pressure': 'DP',
   'u800-list': 'DP', 'u800-risk': 'DP', 'u800-sop': 'DP', 'u800-training': 'DP', 'u800-wipe': 'DP', 'osha-ecp': 'Owner', 'osha-training': 'Owner', 'hipaa-risk': 'Owner', 'hipaa-training': 'Owner', 'doc-review': 'PIC' };
 function calMayCompleteHere(obId){
+  if(ME && ME.acctType === 'staff' && !(STORE && STORE.owner)) return false;         // Associates see the calendar; a technician or pharmacist enters tasks
   const role = CAL_ROLE[obId]; if(!role || !ME || !STORE) return true;       // custom tasks: anyone with the calendar
   if(STORE.pharm) return true;
   if(role === 'Owner') return !!STORE.owner;
-  if(role === 'DP') return ME.docDuty === 'dp' || ME.docDuty === 'ctech';
+  if(role === 'DP') return ME.docDuty === 'dp' || ME.docDuty === 'ctech' || ME.acctType === 'tech' || !!(ME.dp && Object.values(ME.dp).some(v => v === true));
   return false;
 }
+const calCtxOf = r => ({me: r.me, team: r.team || [], delegations: r.delegations || [], timeoff: r.timeoff || [], expiring: r.expiring || {registrations: 0, expired: 0}});
 window.ILCAL_HOST = {
+  suite: true,                                                   // inside the suite: no inner navigation, the tabs above choose the view
+  ctx: null,                                                     // what the server says about this person here: roles, team, delegations, time off
   mayComplete: obId => calMayCompleteHere(obId),
   get user(){ return ME ? {name: ME.name || ME.login, login: ME.login} : null; },
   get canStart(){ return !!(STORE && STORE.owner); },
@@ -40,7 +44,7 @@ window.ILCAL_HOST = {
     if(!calOK()) throw new Error('The calendar is not available for this login at this pharmacy.');
     const id = STORE.id, r = await api('GET', calPath());
     if(!STORE || STORE.id !== id) throw new Error('Pharmacy changed.');
-    CAL.store = id; CAL.sig = {}; CAL.loadedAt = Date.now();
+    CAL.store = id; CAL.sig = {}; CAL.loadedAt = Date.now(); if(r.me) this.ctx = calCtxOf(r);
     if(!r.started) return null;
     const st = Object.assign({}, r.config, {mode: 'live'});
     st.records = r.records || []; st.events = r.events || []; st.log = (r.log || []).sort((a, b) => a.ts < b.ts ? 1 : -1).slice(0, 300);
@@ -48,6 +52,20 @@ window.ILCAL_HOST = {
     (r.obl || []).forEach(o => { if(o.isCustom) st.custom.push(o); else st.obl[o.id] = o; });
     const items = calItems(st); for(const k in items) CAL.sig[k] = items[k].json;
     return st;
+  },
+  async sync(){                                                   // re-read after a review step: the server stamps who and when and decides the next step
+    if(!calOK()) return null;
+    const id = STORE.id, r = await api('GET', calPath()); if(!STORE || STORE.id !== id) return null;
+    if(r.me) this.ctx = calCtxOf(r);
+    const recs = r.records || [], log = (r.log || []).sort((a, b) => a.ts < b.ts ? 1 : -1).slice(0, 300), keep = {};
+    recs.forEach(o => { keep['records#' + o.id] = 1; CAL.sig['records#' + o.id] = JSON.stringify(o); });
+    for(const k of Object.keys(CAL.sig)) if(k.startsWith('records#') && !keep[k]) delete CAL.sig[k];
+    log.forEach(o => { CAL.sig['log#' + o.id] = JSON.stringify(o); });
+    return {records: recs, log};
+  },
+  async call(kind, id, action, body){                            // delegations and time off: the server checks the rules, then the lists are re-read
+    const path = calPath() + '/' + kind + (id ? '/' + encodeURIComponent(id) : '') + (action ? '/' + action : '');
+    const r = await api('POST', path, body || {}); await this.sync(); return r;
   },
   async save(st){
     if(!calOK() || CAL.store !== STORE.id) throw new Error('Not saved: the pharmacy or access changed. Reload the Calendar tab.');
@@ -68,17 +86,33 @@ window.ILCAL_HOST = {
     }finally{ CAL.inflight--; saving--; }
   }
 };
-function calShow(){                                              // called when the Calendar tab is opened
+const CALV = {view: 'dashboard', sub: ''};
+function calPost(){ const f = $('calFrame'); try{ if(f.contentWindow && f.dataset.ready === '1') f.contentWindow.postMessage({ilcal: 'view', v: CALV.view, sub: CALV.sub}, location.origin); }catch(e){} }
+function calShow(view, sub){                                     // called when the Dashboard or Calendar tab (or a view from the Account page) is opened
   const f = $('calFrame'); if(!calOK()) return;
+  CALV.view = view || 'dashboard'; CALV.sub = sub || '';
   const stale = f.dataset.store !== STORE.id || (CAL.inflight === 0 && Date.now() - CAL.loadedAt > 180000);
-  if(stale || !f.getAttribute('src') || f.getAttribute('src') === 'about:blank'){ f.dataset.store = STORE.id; CAL.loadedAt = Date.now(); f.src = 'calendar.html?v=' + Date.now(); }
+  if(stale || !f.getAttribute('src') || f.getAttribute('src') === 'about:blank'){ f.dataset.store = STORE.id; f.dataset.ready = ''; CAL.loadedAt = Date.now(); f.onload = () => { f.dataset.ready = '1'; }; f.src = 'calendar.html?view=' + encodeURIComponent(CALV.view) + '&v=' + Date.now(); }
+  else calPost();
 }
+// People & Assets and Setup live with the pharmacy account: opened from there, shown in the same page
+function calOpenView(view){
+  document.querySelectorAll('#tabs button').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-calendar'));
+  document.body.classList.remove('wideTab'); calShow(view);
+}
+window.addEventListener('message', e => {
+  if(e.origin !== location.origin || !e.data || !e.data.ilcal) return;
+  if(e.data.ilcal === 'badge') calBadge(+e.data.n || 0);
+  if(e.data.ilcal === 'close-view'){ const t = document.querySelector('#tabs [data-tab="owner"]'); if(t) t.click(); }
+});
+function calBadge(n){ const t = document.querySelector('#tabs [data-tab="dashboard"]'); if(!t) return; let b = t.querySelector('.tabbadge'); if(!n){ if(b) b.remove(); return; } if(!b){ b = document.createElement('span'); b.className = 'tabbadge'; t.appendChild(b); } b.textContent = String(n); }
 function calPaint(){                                             // called whenever the pharmacy or the person changes
-  const tab = document.querySelector('#tabs [data-tab="calendar"]'); if(!tab) return;
-  const ok = calOK(); tab.style.display = ok ? '' : 'none';
+  const tabs = ['dashboard', 'calendar'].map(k => document.querySelector('#tabs [data-tab="' + k + '"]')); if(!tabs[0]) return;
+  const ok = calOK(); tabs.forEach(t => { t.style.display = ok ? '' : 'none'; });
   const f = $('calFrame');
   if(!ok || (f.dataset.store && STORE && f.dataset.store !== STORE.id)){
-    f.removeAttribute('data-store'); f.src = 'about:blank'; CAL.sig = {}; CAL.store = null;
-    if(tab.classList.contains('active')) homeTab();
+    f.removeAttribute('data-store'); f.src = 'about:blank'; CAL.sig = {}; CAL.store = null; calBadge(0);
+    if(tabs.some(t => t.classList.contains('active'))) homeTab();
   }
 }

@@ -316,7 +316,7 @@ function openAddPharm(clientId){
 const closeAddPharm = () => { $('pmodal').hidden = true; $('newStore').innerHTML = ''; };
 $('pmClose').onclick = closeAddPharm;
 $('pmodal').addEventListener('mousedown', e => { if(e.target === $('pmodal')) closeAddPharm(); });
-document.addEventListener('keydown', e => { if(e.key === 'Escape' && !$('pmodal').hidden && !document.querySelector('details.hdrop[open]')) closeAddPharm(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && !$('pmodal').hidden) closeAddPharm(); });
 pharmCardEvents($('newStore'), {base:'/host', stores:() => DATA.stores, clients:() => DATA.clients, say:sayStore, pass:showPass, after: async isNew => {
   if(isNew){ const id = (($('newStore').querySelector('[data-newid]') || {}).value || '').trim().toUpperCase(); closeAddPharm(); NAV.pharm = id || null; NAV.view = 'acct'; await load(); }
   else await load(); }});

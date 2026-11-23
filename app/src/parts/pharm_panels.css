@@ -1,10 +1,10 @@
 .svcs{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:8px 0;} .svcs .plabel{flex-basis:100%;}
-.hrs{margin:8px 0;} .hrow{display:flex;gap:8px;align-items:center;margin:3px 0;white-space:nowrap;} .hrow>span{width:78px;} .hrow input[type=time]{width:120px;padding:6px 6px;}
+.hrs{margin:8px 0;} .hrow{display:flex;gap:8px;align-items:center;margin:3px 0;white-space:nowrap;} .hrow{gap:6px;} .hrow>span{width:30px;} .hrow input[type=time]{width:84px;padding:5px 4px;font-size:13px;} .hrow input[type=time]::-webkit-calendar-picker-indicator{display:none;} .hrow label.chk{margin:0;}
 .pcard{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px;}
 .pgrid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-template-rows:repeat(var(--rows,1),minmax(12px,auto));column-gap:12px;row-gap:0;}
 .pnl{grid-column:var(--x) / span var(--w);grid-row:var(--y) / span var(--h);border:1px solid var(--line);border-radius:8px;padding:0 0 10px;margin-bottom:12px;min-width:0;align-self:stretch;box-sizing:border-box;}
 .pnl .pt{margin:0;padding:7px 12px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);white-space:nowrap;}
-.pnl .pb{padding:10px 12px 0;}
+.pnl .pb{padding:8px 12px 0;}
 .pnl[data-pnl=id] .pb{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;} .pidbox .hint{margin:0 0 6px;}
 .pnl .oth{grid-column:1/-1;}
 @media (max-width:1279px){ .pgrid{display:block;} .pnl{margin-bottom:10px;} }
@@ -29,7 +29,7 @@
 .pnl .chips{display:flex;flex-wrap:wrap;gap:6px;} .pnl .chip{border:1px solid var(--line);border-radius:14px;padding:3px 10px;font-size:13px;}
 .pnl .newid{max-width:220px;text-transform:uppercase;}
 @media (max-width:520px){ .hrow{flex-wrap:wrap;white-space:normal;} .hrow input[type=time]{width:104px;} .hrow>span{width:70px;} .pfields{min-width:0;} .pnl .pt{white-space:normal;} }
-.pnl [hidden]{display:none!important;} .pnl .identbar{grid-column:1/-1;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);} .pnl input[readonly],.pnl select:disabled{background:transparent;border-style:dashed;opacity:.85;}
+.pnl [hidden]{display:none!important;} .pnl .identbar{grid-column:1/-1;margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;} .pnl .identbar .reason{flex:1 1 100%;} .pnl input[readonly],.pnl select:disabled{background:transparent;border-style:dashed;opacity:.85;}
 
 /* closed days (Hours panel) */
 .closed{margin-top:12px;padding-top:10px;border-top:1px solid var(--line,#d9dee6);}
@@ -51,12 +51,12 @@
 [data-ctlist] .clrow{flex-wrap:wrap;align-items:flex-start;gap:0 10px;padding:6px 0;border-bottom:1px solid var(--line-soft,var(--line));}
 [data-ctlist] .clrow .cld{flex:0 0 100%;min-width:0;font-size:11px;text-transform:uppercase;letter-spacing:.04em;}
 [data-ctlist] .clrow .cln{flex:1;min-width:0;overflow-wrap:anywhere;}
-.ctadd{display:grid;grid-template-columns:1fr;gap:8px;}
+.ctadd{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 10px;}
 .ctadd select,.ctadd input{width:100%;min-width:0;}
 .ctadd button{justify-self:start;}
 
 /* holiday list: a floating popover, never pushes the page down */
-.hdrop{position:relative;} .hdrop[open] .hdlist{position:absolute;left:0;top:100%;z-index:40;min-width:270px;max-height:62vh;overflow:auto;margin-top:4px;padding:8px 12px;background:var(--panel,#fff);border:1px solid var(--line,#ccc);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.22);}
+.hdrop .clh{display:block;margin-bottom:4px;} .hdrop,.pfields .closed{grid-column:1/-1;} .hdrop .hdlist{grid-template-columns:1fr;gap:0;padding:0;} .hdrop label.chk{white-space:nowrap;} .hdrop label.chk{margin:2px 0;}
 /* NPI / DEA buttons sit next to their boxes; inline digit errors; state licenses; owner and PIC panel */
 .fbtn{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;} .fbtn>label{flex:1 1 160px;min-width:0;} .fbtn .btn2{white-space:nowrap;margin-bottom:1px;}
 .fe{grid-column:1/-1;margin:-4px 0 4px;font-size:12.5px;color:var(--bad,#a11);font-weight:600;} input.bad{border-color:var(--bad,#a11)!important;}
@@ -74,7 +74,7 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
 .invadd{margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);} .invadd button{margin-top:6px;}
 
 /* narrow panels (4 columns wide): nothing may push past the panel's edge */
-.pnl .pfields{grid-template-columns:repeat(auto-fill,minmax(min(210px,100%),1fr));min-width:0;} .pnl .entity{min-width:0;max-width:100%;}
+.pnl .pfields{grid-template-columns:repeat(auto-fill,minmax(min(120px,100%),1fr));gap:6px 10px;min-width:0;} .pnl .entity{min-width:0;max-width:100%;}
 .licrow{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:flex-end;} .licrow label{flex:1 1 84px;min-width:0;} .licrow label:nth-child(3){flex-basis:128px;} .licrow label input,.licrow label select{width:100%;}
 .ownbox input[type=radio]{width:auto;flex:none;margin:3px 0 0;}
 
@@ -97,3 +97,9 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
 .urole{margin-left:8px;font-size:11.5px;font-weight:600;color:var(--muted);}
 .dtitle{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;} .dtitle h2{margin:0;font-size:18px;}
 .swrow{display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-top:8px;}
+
+.pnl .pfields .w2{grid-column:span 2;} .pnl .pfields>label.chk{grid-column:1/-1;white-space:nowrap;}
+
+/* Add-user window (Users view): opens over the page from the Add user button at the top */
+.utop{margin:0 0 10px;} .drmodal{position:fixed;inset:0;background:rgba(10,20,35,.55);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:6vh 3vw;overflow:auto;}
+.drbox{background:var(--bg);border-radius:10px;width:min(640px,96vw);padding:14px 16px 12px;box-shadow:0 16px 48px rgba(0,0,0,.4);} .drhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:16px;}

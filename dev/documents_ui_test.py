@@ -36,7 +36,7 @@ def mk(l, perms, ph, acct="", duty=None, ini=""):
     if duty: assert api(O, "POST", "/owner/users/" + r["user"]["sub"], {"docDuty": duty})[0] == 200
     return r["tempPassword"]
 P = {"documents": True}
-tST = mk("stf", P, "(817) 555-0201", ini="SF"); tCT = mk("ctk", P, "(817) 555-0202", "tech", "ctech"); tDP = mk("dpe", P, "(817) 555-0203", "pharmacist", "dp", ini="DP"); tNO = mk("nop", {}, "(817) 555-0204")
+tST = mk("stf", P, "(817) 555-0201", ini="SF"); tCT = mk("ctk", P, "(817) 555-0202", "tech", "ctech"); tDP = mk("dpe", P, "(817) 555-0203", "pharmacist", "dp", ini="DP"); tNO = mk("nop", {"documents": False}, "(817) 555-0204")
 D = "/stores/NTX1/documents"
 OSUB = [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "owner"][0]["sub"]
 assert api(O, "POST", "/owner/users/" + OSUB, {"initials": "PO"})[0] == 200; assert api(O, "POST", "/me/pin", {"pin": "2847"})[0] == 200
@@ -149,7 +149,7 @@ with sync_playwright() as pw:
     check("no page errors so far", errs, []); p.close()
     # ---- Account Owner: people list
     p = newpage(); signin(p, "NTX1", "owner", "ownerpass99"); opendocs(p); check("Account Owner sees the Documents tab and tiles", (tabvis(p), p.locator('.dtile').count()), (True, 5))
-    p.click('#acctBtn'); p.wait_for_timeout(500)
+    p.click('#whoBtn'); p.click('#acctBtn'); p.wait_for_timeout(500)
     p.fill('#ownPw', 'ownerpass99'); p.click('#ownUnlock'); p.wait_for_selector('#ownBody:visible'); p.wait_for_timeout(1200); (p.click('#acSide [data-qs=NTX1]') if p.locator('#acSide [data-qs=NTX1]').count() else None); p.wait_for_selector('#acSide [data-view=users]', timeout=8000); p.click('#acSide [data-view=users]'); p.wait_for_timeout(900); p.wait_for_selector('#acUsers .urow', timeout=8000)
     def open_sub(sub):
         r = p.locator('#acUsers .urow[data-sub="%s"]' % sub)

@@ -64,7 +64,7 @@ const decCursor = c => { try{ return c ? JSON.parse(Buffer.from(c, 'base64url').
 
 // ---------- who is calling, and what they may do
 const PERMS = ['submit', 'archive', 'remove', 'export', 'calendar', 'documents'];           // switched on/off per person by the owner
-const DEFAULT_PERMS = { submit: true, archive: true, remove: true, export: false, calendar: false, documents: false };
+const DEFAULT_PERMS = { submit: true, archive: true, remove: true, export: false, calendar: true, documents: true };      // Calendar and Documents are on for everyone (Neo, 2026-11-23); the named-user list below still gates a pharmacy that is on it
 async function profileOf(sub){
   const r = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: sub } }));
   return r.Item || null;
@@ -658,7 +658,7 @@ async function listPeople(){
     for(const u of r.Users || []){ const sub = (u.Attributes || []).find(a => a.Name === 'sub'); if(sub) status[sub.Value] = { status: u.UserStatus, enabled: u.Enabled, created: u.UserCreateDate }; }
     PaginationToken = r.PaginationToken; } while(PaginationToken);
   for(const p of profiles) if(!p.deleted && !p.empId) await ensureEmpId(p);
-  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: isOwnerP(p), ownerStores: p.ownerStores || {}, adminStores: p.adminStores || {}, ownerClients: p.ownerClients || {}, createdBySub: p.createdBySub || '', host: !!p.host, employeeOnly: pureHost(p), storePerms: p.storePerms || {}, hostRole: p.host ? (p.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: p.host ? (p.repStores || {}) : {}, acctType: p.acctType || '', docDuty: DOC_DUTIES.includes(p.docDuty) ? p.docDuty : '', initials: p.initials || '', license: p.license || '', empId: p.empId || '', pin: pinState(p),
+  return profiles.filter(p => !p.deleted).map(p => ({ sub: p.sk, login: p.login, name: p.name || '', phone: p.phone || '', owner: isOwnerP(p), ownerStores: p.ownerStores || {}, adminStores: p.adminStores || {}, ownerClients: p.ownerClients || {}, createdBySub: p.createdBySub || '', host: !!p.host, employeeOnly: pureHost(p), storePerms: p.storePerms || {}, hostRole: p.host ? (p.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: p.host ? (p.repStores || {}) : {}, acctType: p.acctType || '', docDuty: DOC_DUTIES.includes(p.docDuty) ? p.docDuty : '', initials: p.initials || '', license: p.license || '', licExpires: p.licExpires || '', subs: Array.isArray(p.subs) ? p.subs : [], dp: p.dp && typeof p.dp === 'object' ? p.dp : {}, approver: p.approver === true, empId: p.empId || '', pin: pinState(p),
     stores: p.stores || {}, perms: effPerms(p), disabled: status[p.sk] ? !status[p.sk].enabled : !!p.disabled,
     status: (status[p.sk] || {}).status || 'UNKNOWN', ...pendingOf(p, status[p.sk]) }))
     // Account Owner, host, then people still waiting to sign in for the first time, then everyone else
@@ -788,6 +788,54 @@ async function resetPin(me, p){                          // a temporary PIN, han
 // initials (2 to 3 letters) stamp printed copies; unique across all logins so two people never share them
 const cleanLicense = v => { v = String(v == null ? '' : v).trim().toUpperCase(); if(v && !/^[A-Z0-9-]{1,20}$/.test(v)) throw bad('A license number uses letters, digits and dashes only (up to 20).'); return v; };
 const cleanInitials = v => { const t = String(v == null ? '' : v).trim().toUpperCase(); if(t === '') return ''; if(!/^[A-Z]{2,3}$/.test(t)) throw bad('Initials are 2 or 3 letters.'); return t; };
+// ---------- sub-roles, Designated Person boxes, approver, and the super-user tier rule (Neo, 2026-11-23)
+// Account type = the tier. A sub-role is a job-function switch inside the tier (combinable). Designated Person is a set of chapter boxes (pharmacist or technician only).
+const SUBROLES = { pic: [], pharmacist: ['lead', 'supervisor', 'immunizer', 'sterile'], tech: ['lead', 'sterile', 'nonsterile'], staff: ['cashier', 'driver', 'warehouse', 'student'] };
+const CHAPTERS = ['795', '797', '800'];
+const TIER = { '': 0, staff: 0, tech: 1, pharmacist: 2, pic: 3 };
+const tierOf = p => p && (hasAny(p.ownerStores) || hasAny(p.ownerClients)) ? 4 : (TIER[(p && p.acctType) || ''] || 0);
+const isOwnerTier = me => !!me && (hasAny(me.ownerStores) || hasAny(me.ownerClients));
+function cleanSubs(list, type){
+  if(list == null || list === '') return [];
+  if(!Array.isArray(list)) throw bad('Bad sub-roles.');
+  const ok = SUBROLES[type || ''] || [], out = [];
+  for(const v of list){ const k = String(v); if(!ok.includes(k)) throw bad('That sub-role doesn’t belong to this account type.'); if(!out.includes(k)) out.push(k); }
+  return out;
+}
+function cleanDp(obj, type){
+  if(obj == null) return {};
+  if(typeof obj !== 'object' || Array.isArray(obj)) throw bad('Bad Designated Person setting.');
+  const out = {};
+  for(const [k, v] of Object.entries(obj)){
+    if(!CHAPTERS.includes(k)) throw bad('Designated Person chapters are 795, 797 and 800.');
+    if(v === true) out[k] = true; else if(v !== false) throw bad('Bad Designated Person setting.');
+  }
+  if(Object.keys(out).length && !(type === 'pic' || type === 'pharmacist' || type === 'tech')) throw bad('Only a pharmacist or a technician can be a Designated Person.');
+  return out;
+}
+function cleanApprover(me, v, type){
+  if(typeof v !== 'boolean') throw bad('Bad approver setting.');
+  if(v){
+    if(!(type === 'pic' || type === 'pharmacist')) throw bad('Final approval goes to a pharmacist.');
+    if(!(me.host || isOwnerTier(me) || me.acctType === 'pic')) throw forbidden('Only the Account Owner or the pharmacist in charge names a final approver.');
+  }
+  return v;
+}
+const cleanLicDate = v => { v = String(v == null ? '' : v).trim(); if(v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw bad('Enter the expiry date as YYYY-MM-DD.'); return v; };
+// a super user manages people at or below their own tier (Account Owner and the host manage everyone except Account Owners and the host)
+function tierGuard(me, p, sub, body){
+  if(me.host || isOwnerTier(me)) return;
+  if(sub === me.sk){
+    for(const k of ['acctType', 'subs', 'dp', 'approver', 'adminStores']) if(body[k] !== undefined) throw forbidden('You can’t change your own role or super user setting.');
+    return;
+  }
+  const mine = tierOf(me), theirs = tierOf(p);
+  if(theirs > mine || (p.acctType === 'pic' && me.acctType !== 'pic') || (p.acctType === 'pic' && theirs >= mine && me.sk !== p.sk && me.acctType === 'pic')) throw forbidden('You can change people at or below your own level, not above it.');
+}
+function tierGuardType(me, p, sub, type){
+  if(me.host || isOwnerTier(me)) return;
+  if(TIER[type || ''] > tierOf(me) || (type === 'pic')) throw forbidden('You can’t give someone an account type above your own.');
+}
 async function initialsTaken(ini, exceptSub){
   const all = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'USERS' } });
   return all.some(p => !p.deleted && p.sk !== exceptSub && (p.initials || '') === ini);
@@ -813,7 +861,7 @@ async function updatePerson(me, sub, seg3, body){
   // the Account Owner decides which pharmacies the host may open and what it may do there; nothing else about the host login
   if(p.host && !me.host && (seg3 || Object.keys(body).some(k => k !== 'stores' && k !== 'perms' && k !== 'permStore'))) throw forbidden('This login is managed by IronLedger. You can change its access and privileges at your pharmacy only.');
   if(sub === me.sk && body.disabled === true) throw bad('You can’t switch off your own login.');
-  if(!me.host && sub !== me.sk && (isOwnerP(p) || isClientOwnerP(p))) throw forbidden('An Account Owner’s login is managed by IronLedger.');
+  if(!me.host && sub !== me.sk && (hasAny(p.ownerStores) || isClientOwnerP(p))) throw forbidden('An Account Owner’s login is managed by IronLedger.');
   if(me.host && me.hostRole === 'rep') await repGuard(p, seg3, body);
   if(seg3 === 'delete'){
     // the login is removed for good (the Login ID can be used again); what they did stays on the orders and archive by name.
@@ -845,7 +893,13 @@ async function updatePerson(me, sub, seg3, body){
   if(body.email !== undefined) throw bad('People don’t have an email address in this app.');
   if(pureHost(p) && me.host && (body.stores !== undefined || body.perms !== undefined)) throw bad('This is an IronLedger employee login with no pharmacy of its own.');
   const upd = {};
-  if(body.acctType !== undefined){ if(p.host) throw bad('The host login has its own account type.'); upd.acctType = cleanType(body.acctType); }
+  tierGuard(me, p, sub, body);
+  if(body.acctType !== undefined){ if(p.host) throw bad('The host login has its own account type.'); upd.acctType = cleanType(body.acctType); tierGuardType(me, p, sub, upd.acctType);
+    if(upd.acctType !== p.acctType){ upd.subs = []; if(upd.acctType !== 'pic' && upd.acctType !== 'pharmacist' && upd.acctType !== 'tech') upd.dp = {}; if(upd.acctType !== 'pic' && upd.acctType !== 'pharmacist') upd.approver = false; } }
+  if(body.subs !== undefined){ if(p.host) throw bad('The host login has no sub-roles.'); upd.subs = cleanSubs(body.subs, upd.acctType !== undefined ? upd.acctType : p.acctType); }
+  if(body.dp !== undefined){ if(p.host) throw bad('The host login can’t be a Designated Person.'); upd.dp = cleanDp(body.dp, upd.acctType !== undefined ? upd.acctType : p.acctType); }
+  if(body.approver !== undefined){ if(p.host) throw bad('The host login can’t approve.'); upd.approver = cleanApprover(me, body.approver, upd.acctType !== undefined ? upd.acctType : p.acctType); }
+  if(body.licExpires !== undefined) upd.licExpires = cleanLicDate(body.licExpires);
   if(body.docDuty !== undefined){ if(p.host) throw bad('The host login has its own document duty.'); const dd = String(body.docDuty || ''); if(dd !== '' && !DOC_DUTIES.includes(dd)) throw bad('Pick the document duty from the list.'); upd.docDuty = dd; }
   if(body.initials !== undefined){ const ini = cleanInitials(body.initials); if(ini && await initialsTaken(ini, sub)) throw bad('Those initials are already used by someone else.'); upd.initials = ini; }
   if(body.license !== undefined) upd.license = cleanLicense(body.license);
@@ -857,8 +911,14 @@ async function updatePerson(me, sub, seg3, body){
     const cur = Object.assign({}, p.adminStores || {});
     for(const [id, v] of Object.entries(body.adminStores)){
       if(!okId(id)) throw bad('Bad pharmacy');
-      if(me.host ? !isSupervisor(me) : !ownsStore(me, id)) throw forbidden('Only the pharmacy’s Account Owner or an IronLedger supervisor gives administrator privileges.');
-      if(v === true){ if(!(p.license || upd.license) || !((upd.acctType || p.acctType) === 'pic' || (upd.acctType || p.acctType) === 'pharmacist')) throw bad('Administrator privileges go to the licensed pharmacist in charge: set the account type and RPh license number first.'); cur[id] = true; }
+      const picGrant = !me.host && !ownsStore(me, id) && adminStore(me, id) && me.acctType === 'pic';
+      if(me.host ? !isSupervisor(me) : !(ownsStore(me, id) || picGrant)) throw forbidden('Only the pharmacy’s Account Owner, its pharmacist in charge or an IronLedger supervisor gives super user privileges.');
+      const tt = upd.acctType || p.acctType;
+      if(v === true){
+        if(picGrant && !(tt === 'pharmacist' || tt === 'tech')) throw forbidden('The pharmacist in charge gives super user privileges to a pharmacist or a technician.');
+        if(!(tt === 'pic' || tt === 'pharmacist' || tt === 'tech')) throw bad('Super user privileges go to a pharmacist or a technician: set the account type first.');
+        if((tt === 'pic' || tt === 'pharmacist') && !(p.license || upd.license)) throw bad('A pharmacist with super user privileges needs an RPh license number on their login. Enter it first.');
+        cur[id] = true; }
       else delete cur[id];
     }
     upd.adminStores = cur;
@@ -948,10 +1008,40 @@ function calMayComplete(me, obId){
   const role = CAL_ROLE[obId]; if(!role || me.host) return true;
   if(me.pharm) return true;
   if(role === 'Owner') return !!me.owner;
-  if(role === 'DP') return me.docDuty === 'dp' || me.docDuty === 'ctech';
+  if(role === 'DP') return me.docDuty === 'dp' || me.docDuty === 'ctech' || me.acctType === 'tech' || !!(me.dp && Object.values(me.dp).some(v => v === true));     // a technician submits; the Designated Person reviews
   return false;                                                  // PIC tasks: a pharmacist only
 }
-async function calLoad(store){
+// ---------- time in the pharmacy's zone, approval chain, delegation and time off (Neo, 2026-11-23)
+function tzOffsetMs(tz, ms){
+  const f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const o = {}; for(const x of f.formatToParts(new Date(ms))) o[x.type] = x.value;
+  return Date.UTC(+o.year, +o.month - 1, +o.day, +o.hour, +o.minute, +o.second) - Math.floor(ms / 1000) * 1000;
+}
+function localToUtcMs(tz, local){                      // "YYYY-MM-DDTHH:MM" typed in the pharmacy's zone -> UTC milliseconds
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(String(local || ''));
+  if(!m) throw bad('Enter the date and the time.');
+  const g = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+  let u = g - tzOffsetMs(tz || DEFAULT_TZ, g); u = g - tzOffsetMs(tz || DEFAULT_TZ, u);
+  return u;
+}
+const CAL_SIDE = { deleg: 'delegations', toff: 'timeoff' };           // kept as their own items, written only through the routes below (never through commit)
+const chapterOf = obId => { const m = /^u(795|797|800)-/.exec(String(obId || '')); return m ? m[1] : ''; };
+const dpHolds = (p, ch) => !!p && !p.deleted && !p.disabled && (p.acctType === 'pic' || p.acctType === 'pharmacist' || p.acctType === 'tech') && !!(p.dp && p.dp[ch] === true);
+const finalRole = (me, ownerIsPic) => me.acctType === 'pic' || (me.isOwner === true && ownerIsPic !== false) || (me.approver === true && (me.acctType === 'pharmacist' || me.acctType === 'pic'));
+const isPharmacist = me => me.acctType === 'pic' || me.acctType === 'pharmacist' || (me.isOwner === true && me.pharm === true);
+const delegActive = (d, atMs) => d && !d.canceled && d.startMs <= atMs && atMs < d.endMs;
+async function calSide(store, kind){
+  const items = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p AND begins_with(sk, :c)', ExpressionAttributeValues: { ':p': calPk(store), ':c': 'CAL#' + kind + '#' } });
+  const out = []; for(const it of items){ try{ out.push(JSON.parse(it.j)); }catch(e){} } return out;
+}
+async function calLog(store, me, action, detail){
+  const e = { id: 'l' + crypto.randomBytes(5).toString('hex'), ts: now(), by: who(me), action, detail: String(detail || '').slice(0, 500) };
+  await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: calPk(store), sk: 'CAL#log#' + e.id, j: JSON.stringify(e), updatedAt: e.ts, updatedBy: who(me) } }));
+}
+async function calTeam(store){
+  return (await listPeople()).filter(p => !p.employeeOnly && !p.deleted && !p.disabled && ((p.stores || {})[store] === true || (p.ownerStores || {})[store] === true || (p.adminStores || {})[store] === true));
+}
+async function calLoad(store, me, storeItem){
   const items = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p AND begins_with(sk, :c)', ExpressionAttributeValues: { ':p': calPk(store), ':c': 'CAL#' } });
   const out = { started: false, config: {}, records: [], events: [], obl: [], log: [] };
   for(const it of items){
@@ -960,9 +1050,144 @@ async function calLoad(store){
     if(kind === 'cfg'){ out.config[rest.join('#')] = v; if(rest[0] === 'profile') out.started = true; }
     else if(CAL_COLLS.includes(kind)) out[kind].push(v);
   }
+  if(me){
+    const at = Date.now(), tz = storeItem && storeItem.timezone, team = await calTeam(store);
+    const boss = me.acctType === 'pic' || me.isOwner === true || me.host === true;
+    const deleg = (await calSide(store, 'deleg')).filter(d => d.endMs > at - 7 * 86400000);
+    const toff = (await calSide(store, 'toff')).filter(d => !d.canceled && d.endMs > at - 86400000);
+    out.delegations = deleg.map(d => ({ ...d, active: delegActive(d, at) }));
+    out.timeoff = toff.map(({ reason, ...r }) => r);                              // name and span only, no reason, visible to every user
+    const soon = new Date(at + 30 * 86400000).toISOString().slice(0, 10), today = new Date(at).toISOString().slice(0, 10);
+    out.team = team.map(p => ({ sub: p.sub, name: p.name || p.login, acctType: p.acctType, subs: p.subs, dp: p.dp, approver: p.approver, docDuty: p.docDuty,
+      ...(boss || p.sub === me.sk ? { licExpires: p.licExpires || '', license: p.license || '' } : {}) }));
+    out.expiring = { registrations: team.filter(p => p.acctType === 'tech' && p.licExpires && p.licExpires <= soon).length, expired: team.filter(p => p.licExpires && p.licExpires < today).length };
+    const myDelegs = deleg.filter(d => d.toSub === me.sk && delegActive(d, at));
+    out.me = { sub: me.sk, acctType: me.acctType || '', subs: me.subs || [], dp: me.dp || {}, approver: me.approver === true, viewOnly: me.acctType === 'staff' && !me.host && !me.isOwner,
+      dpChapters: CHAPTERS.filter(c => dpHolds(me, c) || myDelegs.some(d => d.step === 'dp' && (!d.chapters || !d.chapters.length || d.chapters.includes(c)))),
+      canFinal: finalRole(me, storeItem && storeItem.ownerIsPic) || myDelegs.some(d => d.step === 'final' && isPharmacist(me)), boss, timezone: tz || DEFAULT_TZ };
+  }
   return out;
 }
-async function calCommit(store, me, b){
+// who may do the DP step or the final step on one record, now: by their own standing, or by a delegation to them that is running (then "on behalf of")
+function stepRights(me, ownerIsPic, ch, delegs, atMs){
+  const mine = delegs.filter(d => d.toSub === me.sk && delegActive(d, atMs));
+  const dpDeleg = ch ? mine.find(d => d.step === 'dp' && (!d.chapters || !d.chapters.length || d.chapters.includes(ch))) : null;
+  const fDeleg = mine.find(d => d.step === 'final' && isPharmacist(me));
+  return { dp: dpHolds(me, ch) ? { own: true } : dpDeleg ? { own: false, deleg: dpDeleg } : null,
+           final: finalRole(me, ownerIsPic) ? { own: true } : fDeleg ? { own: false, deleg: fDeleg } : null };
+}
+// Checks one record's review change against the chain: submit -> DP review (when the chapter has a DP and the submitter is not one) -> final approval; a return at either
+// step needs a reason and goes back to the technician as pending; the server stamps who and when. Returns the review to store.
+async function calChain(store, me, storeItem, o, prev, team, delegs, stamp){
+  const pr = prev && prev.review, nr = o.review, ch = chapterOf(String(o.track || '').split('|')[0]);
+  if(!pr && !nr) return null;
+  if(pr && pr.status === 'accepted') return pr;                       // accepted is final
+  if(!nr) throw forbidden('A task’s review can’t be removed.');
+  const atMs = Date.parse(stamp), ownerIsPic = storeItem.ownerIsPic;
+  const initial = () => (ch && team.some(p => dpHolds(p, ch)) && !dpHolds(me, ch)) ? 'dp' : 'pending';
+  const hist = Array.isArray(pr && pr.hist) ? pr.hist.slice(-40) : [];
+  const keep = { hist };
+  if(pr && pr.status === 'returned' && nr.status === 'returned') return pr;
+  if(!pr || pr.status === 'returned'){                                 // first submission, or a resubmission after a return
+    if(nr.status !== 'pending' && nr.status !== 'dp') throw forbidden('A task is submitted for review; it can’t be accepted when it is entered.');
+    const st = initial(); return { ...keep, status: st, since: stamp };
+  }
+  if(nr.status === pr.status) return pr;
+  const R = stepRights(me, ownerIsPic, ch, delegs, atMs), who_ = who(me), reason = String(nr.reason || nr.bypassReason || '').trim().slice(0, 500);
+  const behalf = r => r && !r.own ? { onBehalfOf: r.deleg.fromName, delegId: r.deleg.id } : {};
+  if(pr.status === 'dp'){
+    if(nr.status === 'pending'){
+      if(!R.dp) throw forbidden('Only a Designated Person for this chapter can pass this review.');
+      return { ...keep, status: 'pending', since: stamp, dp: { by: who_, byId: me.sk, at: stamp, note: String(nr.note || '').slice(0, 500), ...behalf(R.dp) } };
+    }
+    if(nr.status === 'returned'){
+      if(!R.dp) throw forbidden('Only a Designated Person for this chapter can return this record.');
+      if(!reason) throw bad('A reason is required to return a record.');
+      return { status: 'returned', since: stamp, hist: hist.concat([{ at: stamp, by: who_, step: 'dp', reason, ...behalf(R.dp) }]) };
+    }
+    if(nr.status === 'accepted'){
+      if(!R.final) throw forbidden('Only the final approver can accept this record.');
+      if(!reason) throw bad('A reason is required to review in place when the Designated Person has not.');
+      return { status: 'accepted', by: who_, byId: me.sk, at: stamp, note: String(nr.note || '').slice(0, 500), bypassed: { reason, by: who_, at: stamp }, ...behalf(R.final), hist };
+    }
+  }
+  if(pr.status === 'pending'){
+    if(nr.status === 'accepted'){
+      if(!R.final) throw forbidden('Only the final approver (the pharmacist in charge, or a pharmacist they named) can accept.');
+      return { status: 'accepted', by: who_, byId: me.sk, at: stamp, note: String(nr.note || '').slice(0, 500), sameAsCompleter: String(o.completedBy || '').toLowerCase() === String(me.name || '').toLowerCase(),
+        ...(pr.dp ? { dp: pr.dp, sameAsDp: pr.dp.byId === me.sk } : {}), ...behalf(R.final), hist };
+    }
+    if(nr.status === 'returned'){
+      if(!R.final && !R.dp) throw forbidden('Only a reviewer can return this record.');
+      if(!reason) throw bad('A reason is required to return a record.');
+      return { status: 'returned', since: stamp, hist: hist.concat([{ at: stamp, by: who_, step: 'final', reason, ...behalf(R.final) }]) };
+    }
+  }
+  throw forbidden('That change to the review isn’t allowed.');
+}
+const fmtLocal = (ms, tz) => { try{ return new Intl.DateTimeFormat('en-US', { timeZone: tz, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(ms)); }catch(e){ return new Date(ms).toISOString(); } };
+function spanOf(tz, b){
+  const startMs = localToUtcMs(tz, b.start), endMs = localToUtcMs(tz, b.end);
+  if(startMs < Date.now() - 90000) throw bad('The start can’t be earlier than now.');
+  if(endMs <= startMs) throw bad('The end must be after the start.');
+  if(endMs - startMs > 366 * 86400000) throw bad('A span is at most one year.');
+  return { startMs, endMs, start: String(b.start), end: String(b.end) };
+}
+async function calDelegate(store, me, storeItem, id, action, b){
+  const tz = storeItem.timezone || DEFAULT_TZ, boss = me.acctType === 'pic' || me.isOwner === true, team = await calTeam(store);
+  if(id && action === 'cancel'){
+    if(!okId(id)) throw bad('Bad delegation.');
+    const g = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: calPk(store), sk: 'CAL#deleg#' + id } })); if(!g.Item) throw new HttpError(404, 'No such delegation.');
+    const d = JSON.parse(g.Item.j);
+    if(!(d.fromSub === me.sk || boss)) throw forbidden('The person who gave it, the pharmacist in charge or the Account Owner can cancel a delegation.');
+    if(d.canceled) return { ok: true };
+    d.canceled = { by: who(me), at: now() };
+    await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: calPk(store), sk: 'CAL#deleg#' + id, j: JSON.stringify(d), updatedAt: now(), updatedBy: who(me) } }));
+    await calLog(store, me, 'Delegation Cancelled', `${d.fromName} to ${d.toName} (${d.step === 'dp' ? 'Designated Person review' : 'final approval'})`);
+    return { ok: true };
+  }
+  if(id) throw new HttpError(404, 'Not found');
+  const step = b.step === 'dp' || b.step === 'final' ? b.step : ''; if(!step) throw bad('Pick the step: Designated Person review or final approval.');
+  const forSub = b.for && b.for !== me.sk ? String(b.for) : me.sk;
+  if(forSub !== me.sk){ if(!boss) throw forbidden('Only the pharmacist in charge or the Account Owner sets a delegation for someone else.'); if(!String(b.reason || '').trim()) throw bad('A reason is required when you set it for someone else.'); }
+  const from = team.find(p => p.sub === forSub); if(!from) throw bad('Pick the person from this pharmacy.');
+  const fromOwnerPharm = from.ownerStores && from.ownerStores[store] === true && storeItem.ownerIsPic !== false;
+  let chapters = Array.isArray(b.chapters) ? b.chapters.map(String).filter(c => CHAPTERS.includes(c)) : [];
+  if(step === 'dp'){ if(!CHAPTERS.some(c => dpHolds(from, c))) throw bad('Only a Designated Person gives away the review step.'); if(chapters.some(c => !dpHolds(from, c))) throw bad('Pick only chapters this person holds.'); if(!chapters.length) chapters = CHAPTERS.filter(c => dpHolds(from, c)); }
+  else if(!(from.acctType === 'pic' || fromOwnerPharm || (from.approver === true && (from.acctType === 'pharmacist' || from.acctType === 'pic')))) throw bad('Only a final approver gives away final approval.');
+  const to = team.find(p => p.sub === String(b.to || '')); if(!to) throw bad('Pick who covers, from this pharmacy.');
+  if(to.sub === from.sub) throw bad('Pick someone else.');
+  const toOk = step === 'final' ? (to.acctType === 'pic' || to.acctType === 'pharmacist' || (to.ownerStores && to.ownerStores[store] === true && storeItem.ownerIsPic !== false)) : (to.acctType === 'pic' || to.acctType === 'pharmacist' || to.acctType === 'tech');
+  if(!toOk) throw bad(step === 'final' ? 'Final approval can be given only to a pharmacist.' : 'The review can be given only to a pharmacist or a technician.');
+  const sp = spanOf(tz, b);
+  const d = { id: 'd' + crypto.randomBytes(5).toString('hex'), step, chapters, fromSub: from.sub, fromName: from.name || from.login, toSub: to.sub, toName: to.name || to.login, ...sp, tz, createdBy: who(me), createdAt: now(), ...(forSub !== me.sk ? { reason: String(b.reason).trim().slice(0, 300) } : {}) };
+  await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: calPk(store), sk: 'CAL#deleg#' + d.id, j: JSON.stringify(d), updatedAt: d.createdAt, updatedBy: who(me) } }));
+  await calLog(store, me, 'Delegation Set', `${d.fromName} to ${d.toName} (${step === 'dp' ? 'Designated Person review' : 'final approval'}), ${fmtLocal(d.startMs, tz)} to ${fmtLocal(d.endMs, tz)}${d.reason ? '. Reason: ' + d.reason : ''}`);
+  return { ok: true, id: d.id };
+}
+async function calTimeOff(store, me, storeItem, id, action, b){
+  const tz = storeItem.timezone || DEFAULT_TZ, boss = me.acctType === 'pic' || me.isOwner === true, team = await calTeam(store);
+  if(id && action === 'cancel'){
+    if(!okId(id)) throw bad('Bad entry.');
+    const g = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: calPk(store), sk: 'CAL#toff#' + id } })); if(!g.Item) throw new HttpError(404, 'No such entry.');
+    const d = JSON.parse(g.Item.j);
+    if(!(d.sub === me.sk || boss)) throw forbidden('The person, the pharmacist in charge or the Account Owner can remove time off.');
+    d.canceled = { by: who(me), at: now() };
+    await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: calPk(store), sk: 'CAL#toff#' + id, j: JSON.stringify(d), updatedAt: now(), updatedBy: who(me) } }));
+    return { ok: true };
+  }
+  if(id) throw new HttpError(404, 'Not found');
+  const forSub = b.for && b.for !== me.sk ? String(b.for) : me.sk;
+  if(forSub !== me.sk && !boss) throw forbidden('Only the pharmacist in charge or the Account Owner adds time off for someone else.');
+  const p = team.find(x => x.sub === forSub); if(!p) throw bad('Pick the person from this pharmacy.');
+  const sp = spanOf(tz, b);
+  const d = { id: 't' + crypto.randomBytes(5).toString('hex'), sub: p.sub, name: p.name || p.login, ...sp, tz, createdBy: who(me), createdAt: now() };
+  await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: calPk(store), sk: 'CAL#toff#' + d.id, j: JSON.stringify(d), updatedAt: d.createdAt, updatedBy: who(me) } }));
+  const covers = CHAPTERS.some(c => dpHolds(p, c)) || p.acctType === 'pic' || p.approver === true;
+  return { ok: true, id: d.id, promptDelegation: covers };           // a Designated Person or an approver is asked to name who covers
+}
+async function calCommit(store, me, b, storeItem){
+  if(me.acctType === 'staff' && !me.host && !me.isOwner) throw forbidden('Your role can view the calendar. A technician or pharmacist enters tasks.');
   const config = b.config && typeof b.config === 'object' ? b.config : {}, put = b.put || {}, del = b.del || {};
   const writes = [], deletes = [];
   for(const k of Object.keys(config)){ if(!CAL_CFG.includes(k)) throw bad('Unknown calendar setting: ' + k); writes.push({ sk: 'CAL#cfg#' + k, v: config[k] }); }
@@ -972,7 +1197,17 @@ async function calCommit(store, me, b){
     for(const o of put[c]){
       if(!o || typeof o !== 'object' || !okId(o.id)) throw bad('Every calendar item needs an id.');
       if(c === 'records' && o.status !== 'void' && !calMayComplete(me, String(o.track || '').split('|')[0])) throw forbidden('Your role can’t complete that task. You can see it on the calendar; a pharmacist or the responsible person finishes it.');
-      writes.push({ sk: `CAL#${c}#${o.id}`, v: o });
+      writes.push({ sk: `CAL#${c}#${o.id}`, v: o, rec: c === 'records' });
+    }
+  }
+  const recW = writes.filter(w => w.rec && w.v.status !== 'void');
+  if(recW.length){                                                       // the approval chain, decided here and not on the screen
+    const stampC = now(), team = await calTeam(store), delegs = await calSide(store, 'deleg');
+    for(const w of recW){
+      let prev = null; const g = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: calPk(store), sk: w.sk } }));
+      if(g.Item){ try{ prev = JSON.parse(g.Item.j); }catch(e){} }
+      const rv = await calChain(store, me, storeItem || {}, w.v, prev, team, delegs, stampC);
+      if(rv === null) delete w.v.review; else w.v.review = JSON.parse(JSON.stringify(rv));
     }
   }
   for(const c of Object.keys(del)){
@@ -1464,7 +1699,7 @@ async function usersAt(me, st, r){
   const sid = st.id, all = await listPeople();
   const users = all.filter(p => !p.employeeOnly && (p.stores[sid] === true || p.ownerStores[sid] === true || p.adminStores[sid] === true)).map(p => {
     const ids = new Set([...trueKeys(p.stores), ...trueKeys(p.ownerStores), ...trueKeys(p.adminStores)]); ids.delete(sid);
-    return { sub: p.sub, login: p.login, name: p.name, phone: p.phone, acctType: p.acctType, docDuty: p.docDuty, initials: p.initials, license: p.license, empId: p.empId, pin: p.pin,
+    return { sub: p.sub, login: p.login, name: p.name, phone: p.phone, acctType: p.acctType, docDuty: p.docDuty, initials: p.initials, license: p.license, licExpires: p.licExpires, subs: p.subs, dp: p.dp, approver: p.approver, empId: p.empId, pin: p.pin,
       disabled: p.disabled, status: p.status, pending: !!p.pending, tempExpired: !!p.tempExpired, tempExpires: p.tempExpires, access: p.stores[sid] === true, isOwner: p.ownerStores[sid] === true, isAdmin: p.adminStores[sid] === true,
       perms: Object.assign({}, p.perms, p.storePerms[sid] || {}), others: ids.size, ...(me.host ? { otherIds: [...ids] } : {}), employee: p.host === true };
   });
@@ -1476,7 +1711,7 @@ async function route(method, path, q, body, me, claims){
   if(seg[0] === 'api') seg.shift();                    // works with or without an /api prefix
 
   if(method === 'GET' && seg[0] === 'me' && seg.length === 1)
-    return { name: me.name || '', login: me.login, owner: !!me.owner, clientOwner: !!me.clientOwner, clients: await clientsOf(me), host: !!me.host, portal: !!me.employee, mgr: [...managedIds(me)], hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty({ ...me, owner: false }), initials: me.initials || '', license: me.license || '', empId: await ensureEmpId(me), pin: pinState(me), pinRequired: PIN_REQUIRED, perms: effPerms(me), stores: await storesFor(me) };
+    return { name: me.name || '', login: me.login, owner: !!me.owner, clientOwner: !!me.clientOwner, clients: await clientsOf(me), host: !!me.host, portal: !!me.employee, mgr: [...managedIds(me)], hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty({ ...me, owner: false }), initials: me.initials || '', license: me.license || '', licExpires: me.licExpires || '', subs: Array.isArray(me.subs) ? me.subs : [], dp: me.dp && typeof me.dp === 'object' ? me.dp : {}, approver: me.approver === true, empId: await ensureEmpId(me), pin: pinState(me), pinRequired: PIN_REQUIRED, perms: effPerms(me), stores: await storesFor(me) };
 
   if(method === 'POST' && seg[0] === 'me' && seg[1] === 'pin' && seg.length === 2) return await setMyPin(me, body);
 
@@ -1492,11 +1727,14 @@ async function route(method, path, q, body, me, claims){
     if(what === 'rx') return await rxRoute(method, store, seg.slice(3), body, me, exists.Item);
     if(what === 'calendar'){
       calGate(me, exists.Item);
-      if(method === 'GET' && !seg[3]) return await calLoad(store);
-      if(method === 'POST' && seg[3] === 'commit') return await calCommit(store, me, body);
+      if(method === 'GET' && !seg[3]) return await calLoad(store, me, exists.Item);
+      if(method === 'POST' && seg[3] === 'commit') return await calCommit(store, me, body, exists.Item);
+      if(method === 'POST' && seg[3] === 'delegations') return await calDelegate(store, me, exists.Item, seg[4], seg[5], body);
+      if(method === 'POST' && seg[3] === 'timeoff') return await calTimeOff(store, me, exists.Item, seg[4], seg[5], body);
       throw new HttpError(404, 'Not found');
     }
     if(exists.Item.reorder === false && ['lines', 'memory', 'archive', 'commit', 'export', 'import'].includes(what)) throw forbidden('The Reorder List is switched off for this pharmacy.');
+    if(['lines', 'memory', 'archive', 'commit', 'export', 'import'].includes(what) && me.acctType === 'staff' && !me.owner && (me.subs || []).some(x => x === 'cashier' || x === 'driver')) throw forbidden('The Reorder List isn’t part of your role.');
     if(method === 'GET' && what === 'lines') return { lines: await lines(store) };
     if(method === 'GET' && what === 'memory') return { memory: await memory(store) };
     if(method === 'GET' && what === 'archive'){ need(me, 'archive', 'view the archive'); return await archivePage(store, q); }
@@ -1593,10 +1831,12 @@ async function route(method, path, q, body, me, claims){
       if(body.smsConsent !== true) throw bad('Have the person sign the SMS consent form first, then tick the box.');
       const ini = cleanInitials(body.initials); if(ini && await initialsTaken(ini, '')) throw bad('Those initials are already used by someone else.');
       const lic = cleanLicense(body.license);
+      const newType = cleanType(body.acctType); tierGuardType(me, null, '', newType);
+      const subs = cleanSubs(body.subs, newType), dp = cleanDp(body.dp, newType), approver = body.approver === undefined ? false : cleanApprover(me, body.approver, newType), licExpires = cleanLicDate(body.licExpires);
       const u = await createLogin(body);
       try{
         await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: 'USERS', sk: u.sub, login: u.login, name: u.name, phone: u.phone,
-          stores, perms, acctType: cleanType(body.acctType), initials: ini, license: lic, empId: await nextEmpNo(), owner: false, ownerMig: true, createdBySub: me.sk, createdAt: now(), createdBy: who(me), tempIssuedAt: now(), smsConsentAt: now(), smsConsentRecordedBy: who(me) } }));
+          stores, perms, acctType: newType, subs, dp, approver, licExpires, initials: ini, license: lic, empId: await nextEmpNo(), owner: false, ownerMig: true, createdBySub: me.sk, createdAt: now(), createdBy: who(me), tempIssuedAt: now(), smsConsentAt: now(), smsConsentRecordedBy: who(me) } }));
       }catch(e){ await idp.send(new AdminDeleteUserCommand({ UserPoolId: POOL, Username: u.login })).catch(() => {}); throw e; }
       return { ok: true, user: { sub: u.sub, login: u.login, name: u.name, phone: u.phone, stores, perms }, tempPassword: u.tempPassword };
     }

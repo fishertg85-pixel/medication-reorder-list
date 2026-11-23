@@ -3,6 +3,20 @@ NorTex Reorder List — Cloud Version (AWS)
 Hosted on your AWS account. Works in any browser on computers, phones and tablets, and installs to a
 phone's home screen. Each pharmacy has its own list, archive and distributor memory.
 
+ZIP 39.1 (2026-11-23): WHAT CHANGED
+  Tabs         Dashboard, Calendar, Documents, Reorder List, Rx Intake. Review Queue is on the Dashboard;
+               Obligations is Calendar > List; People & Assets and Calendar Setup are on the pharmacy account
+               (Account is in the user-name menu).
+  Dashboard    Due For Me, Compliance Health (counts, everyone), Review Queue, Time Off And Coverage, Audit Report.
+               Count badge on the tab; waits turn amber at 24 h and red at 48 h.
+  People       Sub-roles inside each account type; Designated Person boxes (USP 795 / 797 / 800); technician
+               registration number and expiry. A super user manages people at or below their own type only.
+  Approvals    Technician submits > Designated Person reviews > final approval; a return at either step needs a
+               reason. Delegation (date and time) and Time Off. The server stamps who and when.
+  Access       Calendar is view-only for Associates; Cashier and Driver have no Reorder List.
+  Still limited to the named logins in template.yaml (SUITE_USERS) for Calendar, Documents and Rx until you lift it.
+  Not in this zip (39.2): Documents tasks folder and review, reopen and void, inspector link, email/text reminders.
+
 WHO DOES WHAT
   Host (you)         Runs the AWS account: deploys, updates, AWS settings, backups. Doesn't need a login
                      in the app, but the Account Owner can add you like anyone else.

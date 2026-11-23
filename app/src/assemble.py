@@ -188,17 +188,23 @@ cut('<header>', '<nav id="tabs">', '''<div id="login">
   </div>
   <div class="spacer"></div>
   <select class="hsel" id="storeSel" title="Switch pharmacy" style="display:none;"></select>
-  <span class="who hide-sm" id="whoLabel"></span>
-  <button class="hbtn" id="signOutBtn">Sign out</button>
+  <div class="umenu">
+    <button class="hbtn" id="whoBtn" aria-haspopup="true" aria-expanded="false" title="Account and sign out"><span id="whoLabel"></span> <span aria-hidden="true">▾</span></button>
+    <div class="umlist" id="umList" hidden>
+      <button id="acctBtn" style="display:none;" title="Pharmacy account details, people and backup">Account</button>
+      <button id="signOutBtn">Sign out</button>
+    </div>
+  </div>
   <button class="hbtn theme-btn" id="themeBtn" title="Switch to dark mode" aria-label="Switch to dark mode"></button>
 </header>
 
 ''')
 cut('<nav id="tabs">', '</nav>', '''<nav id="tabs">
+  <button data-tab="dashboard" style="display:none;">Dashboard</button>
   <button data-tab="calendar" style="display:none;">Calendar</button>
   <button data-tab="documents" style="display:none;">Documents</button>
-  <button data-tab="rx" style="display:none;">Rx Intake</button>
   <button data-tab="list" class="active">Reorder List</button>
+  <button data-tab="rx" style="display:none;">Rx Intake</button>
   <button data-tab="archive" class="tabx">Archive</button>
   <button data-tab="owner" class="tabx">Account</button>
 ''')
@@ -407,9 +413,9 @@ rep('</style>\n</head>', """</style>
 </style>
 <link rel="stylesheet" href="lockup.css">
 <link rel="stylesheet" href="suite.css">
+<link rel="stylesheet" href="fields.css">
 </head>""")
 rep('  <img id="storeLogo" alt="" style="display:none;">\n', '  <span class="il-lock il-lock-sep"><img src="mark.svg" alt=""><span class="wm">Iron<b>Ledger</b></span></span>\n  <img id="storeLogo" alt="" style="display:none;">\n')
-rep('  <div class="spacer"></div>\n  <select class="hsel" id="storeSel"', '  <button class="hbtn" id="acctBtn" style="display:none;" title="Pharmacy account details, people and backup">Account</button>\n  <div class="spacer"></div>\n  <select class="hsel" id="storeSel"')
 rep('''  $('dmHeader').textContent = netState === 'offline' ? 'Drug search: no internet'
     : netState === 'down' ? 'Drug search: NLM not answering' : 'Drug search: NLM RxTerms / RxNav';''', "  /* the header carries no drug-search status line */")
 rep('<meta name="theme-color" content="#1f3864">', '<meta name="theme-color" content="#ffffff">')
@@ -425,6 +431,7 @@ PCSS = open(os.path.join(HERE, 'parts', 'pharm_panels.css')).read()
 s = s.replace('/*PHARM_CSS*/', PCSS + open(os.path.join(HERE, 'parts', 'documents.css')).read(), 1)
 open(OUT.replace('index.html', 'pharm_panels.css'), 'w').write(PCSS)
 open(OUT.replace('index.html', 'suite.css'), 'w').write(open(P + 'suite.css').read())
+FLD = open(P + 'fields.css').read(); open(OUT.replace('index.html', 'fields.css'), 'w').write(FLD)
 open(OUT.replace('index.html', 'layout_engine.js'), 'w').write(open(P + 'layout_engine.js').read())
 open(OUT.replace('index.html', 'pharm_panels.js'), 'w').write(open(P + 'pharm_panels.js').read())
 open(OUT.replace('index.html', 'documents_panels.js'), 'w').write(open(P + 'documents_panels.js').read())
@@ -444,7 +451,7 @@ HOOK = ("window.IL_BLANK=true;\n"
 assert cal.count('window.IL_BLANK=true;\n') == 1
 CAL_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'"
 cal = cal.replace('window.IL_BLANK=true;\n', HOOK, 1)
-cal = cal.replace('</head>', '<style>header.top .brand .mark{display:none}</style></head>', 1)   # the suite header above already shows the IronLedger name
+cal = cal.replace('</head>', '<style>header.top .brand .mark{display:none}</style><link rel="stylesheet" href="fields.css"></head>', 1)   # the suite header above already shows the IronLedger name
 assert cal.startswith('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">')
 cal = cal.replace('<meta charset="utf-8">', '<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="%s"><link rel="stylesheet" href="fonts.css">' % CAL_CSP, 1)
 open(OUT.replace('index.html', 'calendar.html'), 'w', encoding='utf-8').write(cal)
@@ -453,7 +460,7 @@ RXD = os.path.join(HERE, 'rx'); rd = lambda n: open(os.path.join(RXD, n), encodi
 RX_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src data: blob:; font-src 'self'; connect-src https://clinicaltables.nlm.nih.gov https://rxnav.nlm.nih.gov; base-uri 'none'; form-action 'none'"   # drug-name lookups (NLM) go straight from the browser, as before; everything else is relayed by the suite
 rxhtml = ('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="%s">'
           '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Rx Intake</title><link rel="stylesheet" href="fonts.css"><style>\n' % RX_CSP
-          + rd('rx_intake.css') + '</style></head>\n<body>\n' + rd('rx_intake_body.html') + '<script>\n' + rd('vendor_jspdf.js') + '</script>\n<script>\n'
+          + rd('rx_intake.css') + '</style><link rel="stylesheet" href="fields.css"></head>\n<body>\n' + rd('rx_intake_body.html') + '<script>\n' + rd('vendor_jspdf.js') + '</script>\n<script>\n'
           + rd('rx_zip_data.js') + '</script>\n<script>\n' + rd('rx_intake_app.js') + '</script>\n</body>\n</html>\n')
 open(OUT.replace('index.html', 'rx.html'), 'w', encoding='utf-8').write(rxhtml)
 s = s[:m.start()] + '<script src="app.js"></script>' + s[m.end():]

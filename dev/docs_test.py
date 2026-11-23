@@ -29,7 +29,7 @@ def mk(login_, perms, acct="", duty=None, stores=True):
     if duty: assert api(O, "POST", "/owner/users/" + r["user"]["sub"], {"docDuty": duty})[0] == 200
     return login(login_, r["tempPassword"], login_ + "pass12345")["IdToken"]
 P = {"documents": True}
-PIC = mk("pic1", P, "pic"); DP = mk("dp1", P, "pharmacist", "dp"); CT = mk("ctech1", P, "tech", "ctech"); ST = mk("staff1", P, "staff"); NOP = mk("noperm1", {})
+PIC = mk("pic1", P, "pic"); DP = mk("dp1", P, "pharmacist", "dp"); CT = mk("ctech1", P, "tech", "ctech"); ST = mk("staff1", P, "staff"); NOP = mk("noperm1", {"documents": False})
 # initials and PINs: approvers sign with a personal PIN (the tests below send it automatically on signing calls)
 USERS = lambda: api(O, "GET", "/owner/users")[1]["users"]
 subof = lambda l: [u for u in USERS() if u["login"] == l][0]["sub"]

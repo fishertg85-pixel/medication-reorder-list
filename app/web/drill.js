@@ -9,6 +9,10 @@ const DR_ACCT = {pic:'Pharmacist-in-Charge', pharmacist:'Staff Pharmacist', tech
 const DR_PRESETS = {pic:{submit:true, archive:true, remove:true, export:true}, pharmacist:{submit:true, archive:true, remove:true, export:false},
   tech:{submit:true, archive:true, remove:true, export:false}, staff:{submit:true, archive:false, remove:false, export:false}};
 const DR_DUTY = {'':'Staff (view and print only)', dp:'Designated Person', ctech:'Compliance Technician'};
+// sub-roles: job-function switches inside the account type (combinable); Designated Person has a box per USP chapter
+const DR_SUBS = {pic:{}, pharmacist:{lead:'Lead', supervisor:'Supervisor', immunizer:'Immunizer', sterile:'Sterile Compounding'}, tech:{lead:'Lead', sterile:'Sterile Compounding', nonsterile:'Nonsterile Compounding'},
+  staff:{cashier:'Cashier', driver:'Driver', warehouse:'Warehouse', student:'Student Technician'}};
+const DR_CHAPTERS = ['795', '797', '800'];
 const DR_PIN = {none:'Not set', set:'Set', temp:'Temporary (they must choose their own)', locked:'Locked'};
 const DR_COPY = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
 const drDay = iso => { try{ return new Date(iso).toLocaleDateString('en-US', {month:'short', day:'numeric'}); }catch(e){ return ''; } };
@@ -31,14 +35,17 @@ function drEff(u, S, sid){
   const s = S[u.sub]; if(!s) return u;
   return Object.assign({}, u, {access:s.stores && s.stores[sid] !== undefined ? s.stores[sid] : u.access, perms:Object.assign({}, u.perms, s.perms || {}), isAdmin:s.adminStores && s.adminStores[sid] !== undefined ? s.adminStores[sid] : u.isAdmin,
     disabled:s.disabled !== undefined ? s.disabled : u.disabled, initials:s.initials !== undefined ? s.initials : u.initials, license:s.license !== undefined ? s.license : u.license,
-    acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty});
+    acctType:s.acctType !== undefined ? s.acctType : u.acctType, docDuty:s.docDuty !== undefined ? s.docDuty : u.docDuty,
+    subs:s.subs !== undefined ? s.subs : (s.acctType !== undefined && s.acctType !== u.acctType ? [] : (u.subs || [])), dp:s.dp !== undefined ? s.dp : (s.acctType !== undefined && s.acctType !== u.acctType ? {} : (u.dp || {})),
+    approver:s.approver !== undefined ? s.approver : (u.approver === true), licExpires:s.licExpires !== undefined ? s.licExpires : (u.licExpires || '')});
 }
 // the whole Users view of one pharmacy: the list (a line per person; open one for its details) and the add-a-person form
 // U = answer of GET /pharmacy/:id/users; o = {st: drState(), me, host, ownerMe, pinRequired, canPin}
 function drUsersHtml(U, o){
   const sid = U.store.id, can = U.canManage, S = o.st.staged, list = U.users.map(u => drEff(u, S, sid));
   const priv = (sw_, label, title) => `<span class="priv" title="${esc(title || label)}">${sw_}<span>${esc(label)}</span></span>`;
-  const role = u => u.isOwner ? '<span class="urole">Account Owner</span>' : u.isAdmin ? '<span class="urole">Super user</span>' : u.employee ? '<span class="urole">Also IronLedger</span>' : '';
+  const dpOf = u => DR_CHAPTERS.filter(c => u.dp && u.dp[c] === true), subName = u => (u.subs || []).map(k => (DR_SUBS[u.acctType] || {})[k]).filter(Boolean);
+  const role = u => u.isOwner ? '<span class="urole">Account Owner</span>' : (u.isAdmin ? '<span class="urole">Super user</span>' : u.employee ? '<span class="urole">Also IronLedger</span>' : '') + (dpOf(u).length ? ` <span class="urole">Designated Person ${dpOf(u).join(', ')}</span>` : '') + (subName(u).length ? ` <span class="urole">${esc(subName(u).join(', '))}</span>` : '');
   const self = u => o.me && u.login === o.me.login;
   const canPin = u => o.pinRequired && o.canPin && can && !self(u) && !u.isOwner && !u.employee;
   const detail = u => {
@@ -49,7 +56,11 @@ function drUsersHtml(U, o){
     const signing = `<div class="upriv"><span class="plabel">Signing</span><input type="text" data-uini maxlength="3" value="${esc(u.initials || '')}" style="width:70px;text-transform:uppercase;" aria-label="Initials" placeholder="Initials">
         <span class="hint">Employee ID <b>${esc(u.empId || '-')}</b>${o.pinRequired ? ` · PIN: ${DR_PIN[u.pin || 'none']}` : ''}</span>
         ${canPin(u) ? `<button class="btn2 small" data-pinreset="${esc(u.sub)}" title="One-time temporary PIN to hand to them. Their old PIN stops working.">Issue Temporary PIN</button>` : ''}</div>`;
-    const lic = `<div class="upriv"><span class="plabel">RPh license #</span><input type="text" data-ulic maxlength="20" value="${esc(u.license || '')}" style="width:130px;text-transform:uppercase;" aria-label="RPh license number"> <span class="hint">Pharmacists only. Prints on Rx Intake forms; the Pharmacist-In-Charge’s number prints as PIC.</span></div>`;
+    const isTech = u.acctType === 'tech', lic = `<div class="upriv"><span class="plabel">${isTech ? 'Registration #' : 'RPh license #'}</span><input type="text" data-ulic maxlength="20" value="${esc(u.license || '')}" style="width:130px;text-transform:uppercase;" aria-label="${isTech ? 'Technician registration number' : 'RPh license number'}"> ${isTech ? `<span class="plabel" style="margin-left:10px">Expires</span><input type="date" data-uexp value="${esc(u.licExpires || '')}" aria-label="Registration expiry date"> <span class="hint">The expiry date goes on the calendar.</span>` : '<span class="hint">Pharmacists only. Prints on Rx Intake forms; the Pharmacist-In-Charge’s number prints as PIC.</span>'}</div>`;
+    const subKeys = Object.entries(DR_SUBS[u.acctType] || {}), dpOk = u.acctType === 'pic' || u.acctType === 'pharmacist' || u.acctType === 'tech', mayGrant = o.host || o.ownerMe || o.picMe;
+    const subsRow = subKeys.length ? `<div class="upriv"><span class="plabel">Sub-roles</span><span class="pgroup">${subKeys.map(([k, l]) => priv(sw(`data-usub="${k}"`, (u.subs || []).includes(k), l), l, l)).join('')}</span></div>` : '';
+    const dpRow = dpOk ? `<div class="upriv"><span class="plabel">Designated Person</span><span class="pgroup">${DR_CHAPTERS.map(c => priv(sw(`data-udp="${c}"`, !!(u.dp && u.dp[c]), 'Designated Person for USP <' + c + '>'), '<' + c + '>', 'Designated Person for USP <' + c + '>')).join('')}</span><span class="hint">Reviews compliance records for the chapter before final approval.</span></div>` : '';
+    const appRow = (u.acctType === 'pharmacist' && (o.host || o.ownerMe || (o.me && o.me.acctType === 'pic'))) ? `<div class="upriv"><span class="plabel">Final approver</span><span class="pgroup">${priv(sw('data-uapp="1"', u.approver === true, 'May give final approval (the pharmacist in charge always can)'), 'Approves', 'May give final approval')}</span><span class="hint">The pharmacist in charge is the final approver by default.</span></div>` : '';
     const others = raw && raw.others ? `<span class="hint">${o.host && raw.otherIds ? 'Also at ' + esc(raw.otherIds.join(', ')) : 'Also has access at ' + raw.others + (raw.others === 1 ? ' other pharmacy' : ' other pharmacies')}</span>` : '';
     if(u.isOwner) return `<div class="udetail">
         <div class="upriv"><span class="plabel">Account type</span><span class="hint">Account Owner · primary account holder, full access</span></div>${lic}${signing}
@@ -57,12 +68,12 @@ function drUsersHtml(U, o){
     return `<div class="udetail">
         <div class="upriv"><span class="plabel">Account type</span><select data-utype><option value="">Not set</option>${Object.entries(DR_ACCT).map(([k, l]) => `<option value="${k}"${u.acctType === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
           <span class="hint">Choosing a type sets Submit, Archive, Remove and Backup. Calendar and Documents are set separately.</span></div>
-        ${lic}${signing}
+        ${lic}${signing}${subsRow}${dpRow}${appRow}
         ${u.perms.documents ? `<div class="upriv"><span class="plabel">Document duty</span>${u.acctType === 'pic' ? '<span class="hint">Pharmacist-In-Charge: manages and approves documents</span>' : `<select data-udoc>${Object.entries(DR_DUTY).map(([k, l]) => `<option value="${k}"${(u.docDuty || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select>`}</div>` : ''}
         <div class="upriv"><span class="plabel">This pharmacy</span><span class="pgroup">${priv(sw(`data-ust="${esc(sid)}"`, u.access === true, 'Access to ' + U.store.name), 'Access to ' + sid, 'Access to ' + U.store.name)}</span>${others}</div>
         <div class="upriv"><span class="plabel">Privileges</span><span class="pgroup">${Object.entries(DR_PERMS).map(([p, l]) => priv(sw(`data-uperm="${p}"`, !!u.perms[p], l + ' at ' + sid), l, l)).join('')}
           ${self(u) || u.employee ? '' : priv(sw('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on')}</span></div>
-        ${(o.host || o.ownerMe) && u.acctType === 'pic' && u.access ? `<div class="upriv"><span class="plabel">Super user</span><span class="pgroup">${priv(sw(`data-uadm="${esc(sid)}"`, u.isAdmin === true, 'All administrator privileges at ' + U.store.name + ' except billing, the client page and ownership'), sid, 'Super user at ' + U.store.name)}</span>
+        ${(o.host || o.ownerMe || o.picMe) && (u.acctType === 'pic' ? (o.host || o.ownerMe) : (u.acctType === 'pharmacist' || u.acctType === 'tech')) && u.access ? `<div class="upriv"><span class="plabel">Super user</span><span class="pgroup">${priv(sw(`data-uadm="${esc(sid)}"`, u.isAdmin === true, 'All administrator privileges at ' + U.store.name + ' except billing, the client page and ownership'), sid, 'Super user at ' + U.store.name)}</span>
           <span class="hint">All administrator privileges except billing, the client page and ownership.</span></div>` : ''}
         ${acts ? `<div class="upriv"><span class="plabel"></span>${acts}</div>` : ''}</div>`;
   };
@@ -77,69 +88,80 @@ function drUsersHtml(U, o){
         <div class="ucell acts"><span class="chev" aria-hidden="true">${open ? '▾' : '▸'}</span></div></div>
       ${open ? detail(u) : ''}</div>`;
   }).join('');
-  const add = !can ? '' : `<section class="card" style="margin-top:14px"><h2>Add a user</h2>
+  const top = !can ? '' : '<div class="toolbar row utop"><button class="btn" data-npopen="1">Add user</button></div>';
+  const add = !can || !o.st.addOpen ? '' : `<div class="drmodal" data-npmodal role="dialog" aria-modal="true" aria-label="Add a user"><div class="drbox">
+      <div class="drhead"><b>Add a user</b><button type="button" class="btn2 small" data-npclose="1" aria-label="Close">✕</button></div>
       <div class="formgrid grid2">
         <label class="f"><span>Full name</span><input type="text" data-np="name" maxlength="120"></label>
         <label class="f"><span>Login ID</span><input type="text" data-np="login" autocapitalize="none" spellcheck="false" maxlength="32"></label>
         <label class="f"><span>Mobile number (for sign-in codes)</span><input type="tel" data-np="phone" maxlength="20"></label>
         <label class="f"><span>Temporary password</span><input type="text" data-np="pass" class="mono" maxlength="64" value="${esc(o.st.np || drTemp())}"></label>
+        <label class="f"><span>Account type</span><select data-np="type"><option value="">Not set</option>${Object.entries(DR_ACCT).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
         <label class="f"><span>Initials</span><input type="text" data-np="ini" maxlength="3" style="max-width:90px;text-transform:uppercase;"></label>
-        <label class="f"><span>RPh license # (pharmacists)</span><input type="text" data-np="lic" maxlength="20" style="max-width:150px;text-transform:uppercase;"></label>
+        <label class="f"><span>RPh license # or technician registration #</span><input type="text" data-np="lic" maxlength="20" style="max-width:150px;text-transform:uppercase;"></label>
       </div>
-      <div style="margin-top:8px"><b class="hint">Account type:</b> <select data-np="type"><option value="">Not set</option>${Object.entries(DR_ACCT).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select> <span class="hint">sets the switches below; change any of them after</span></div>
-      <div style="margin-top:4px"><b class="hint">May:</b><div>${Object.entries(DR_PERMS).map(([p, l]) => `<label class="chk">${sw(`data-npperm="${p}"`, p !== 'export' && p !== 'calendar' && p !== 'documents')} ${l}</label>`).join('')}</div></div>
       <label class="chk" style="margin-top:10px"><input type="checkbox" data-np="consent" style="width:18px;height:18px;"> They signed the SMS consent form for this mobile number.</label>
-      <div class="toolbar row" style="margin-top:10px"><button class="btn" data-npadd="1">Add user</button> <button class="btn2" data-npgen="1">New temporary password</button></div>
-      <div class="npmsg msg" data-npmsg role="status"></div></section>`;
-  return `<div class="ulist"><div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div></div>${rows || '<div class="hint" style="padding:10px">No one has access here yet.</div>'}</div>
+      <div class="toolbar row" style="margin-top:10px"><button class="btn" data-npadd="1">Add user</button> <button class="btn2" data-npgen="1">New temporary password</button> <button class="btn2" data-npclose="1">Cancel</button></div>
+      <div class="npmsg msg" data-npmsg role="status"></div></div></div>`;
+  return `${top}<div class="ulist"><div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div></div>${rows || '<div class="hint" style="padding:10px">No one has access here yet.</div>'}</div>
     ${can ? '' : '<div class="hint" style="margin-top:10px">View only. Changes to people at this pharmacy are made by its Account Owner or IronLedger.</div>'}${add}`;
 }
 // behaviour: env = {sid, base:'/host'|'/owner', U:()=>answer, st:drState(), me:()=>ME, reload:async()=>…, paint:()=>…, say:text=>…, pass:html=>…}
 function drUsersEvents(root, env){
   const find = sub => env.U().users.find(x => x.sub === sub);
+  const raw0 = sub => find(sub) || {};
   const stg = sub => env.st.staged[sub] || (env.st.staged[sub] = {});
   const tidy = sub => { if(env.st.staged[sub] && !Object.keys(env.st.staged[sub]).length) delete env.st.staged[sub]; };
   const put = (sub, grp, k, v, was) => { const s = stg(sub); s[grp] = s[grp] || {}; if(v === was) delete s[grp][k]; else s[grp][k] = v; if(!Object.keys(s[grp]).length) delete s[grp]; tidy(sub); };
   const sig = u => { return `Pharmacy ID: ${env.sid}\nUser ID: ${u.login}\nTemporary Pass: `; };
-  root.addEventListener('keydown', e => { const h = e.target.closest('[data-open]'); if(h && (e.key === 'Enter' || e.key === ' ') && e.target === h){ e.preventDefault(); h.click(); } });
+  root.addEventListener('keydown', e => { if(e.key === 'Escape' && env.st.addOpen){ env.st.addOpen = false; env.paint(); return; }
+     const h = e.target.closest('[data-open]'); if(h && (e.key === 'Enter' || e.key === ' ') && e.target === h){ e.preventDefault(); h.click(); } });
   root.addEventListener('change', e => {
     const row = e.target.closest('[data-sub]'); if(!row){ const t = e.target.closest('[data-np=type]'); if(t){ const pre = DR_PRESETS[t.value]; if(pre) for(const k in pre){ const c = root.querySelector(`[data-npperm="${k}"]`); if(c) c.checked = pre[k]; } } return; }
     const sub = row.dataset.sub, u = find(sub); if(!u) return;
     const ty = e.target.closest('select[data-utype]');
     if(ty){ if(ty.value === (u.acctType || '')) delete stg(sub).acctType; else stg(sub).acctType = ty.value;
       const pre = DR_PRESETS[ty.value]; if(pre){ const s = stg(sub); s.perms = s.perms || {}; for(const k in pre){ if(pre[k] === !!u.perms[k]) delete s.perms[k]; else s.perms[k] = pre[k]; } if(!Object.keys(s.perms).length) delete s.perms; }
-      tidy(sub); env.say(''); env.paint(); return; }
+      delete stg(sub).subs; delete stg(sub).dp; delete stg(sub).approver; tidy(sub); env.say(''); env.paint(); return; }
     const dd = e.target.closest('select[data-udoc]');
     if(dd){ if(dd.value === (u.docDuty || '')) delete stg(sub).docDuty; else stg(sub).docDuty = dd.value; tidy(sub); env.say(''); env.paint(); return; }
     const ini = e.target.closest('input[data-uini]');
     if(ini){ const v = ini.value.trim().toUpperCase(); if(v === (u.initials || '')) delete stg(sub).initials; else stg(sub).initials = v; tidy(sub); env.say(''); env.paint(); return; }
+    const ex = e.target.closest('input[data-uexp]');
+    if(ex){ const v = ex.value.trim(); if(v === (u.licExpires || '')) delete stg(sub).licExpires; else stg(sub).licExpires = v; tidy(sub); env.say(''); env.paint(); return; }
     const lic = e.target.closest('input[data-ulic]');
     if(lic){ const v = lic.value.trim().toUpperCase(); if(v === (u.license || '')) delete stg(sub).license; else stg(sub).license = v; tidy(sub); env.say(''); env.paint(); return; }
     const c = e.target.closest('input[type=checkbox]'); if(!c) return;
     if(c.dataset.ust) put(sub, 'stores', c.dataset.ust, c.checked, u.access === true);
     else if(c.dataset.uperm) put(sub, 'perms', c.dataset.uperm, c.checked, !!u.perms[c.dataset.uperm]);
+    else if(c.dataset.usub){ const cur = new Set(u.subs || []); c.checked ? cur.add(c.dataset.usub) : cur.delete(c.dataset.usub); const arr = [...cur].sort(), was = (raw0(sub).subs || []).slice().sort(); if(JSON.stringify(arr) === JSON.stringify(was)) delete stg(sub).subs; else stg(sub).subs = arr; tidy(sub); }
+    else if(c.dataset.udp){ const cur = Object.assign({}, u.dp || {}); if(c.checked) cur[c.dataset.udp] = true; else delete cur[c.dataset.udp]; const was = raw0(sub).dp || {}; if(JSON.stringify(Object.keys(cur).sort()) === JSON.stringify(Object.keys(was).filter(k => was[k]).sort())) delete stg(sub).dp; else stg(sub).dp = cur; tidy(sub); }
+    else if(c.dataset.uapp){ if(c.checked === (raw0(sub).approver === true)) delete stg(sub).approver; else stg(sub).approver = c.checked; tidy(sub); }
     else if(c.dataset.uadm) put(sub, 'adminStores', c.dataset.uadm, c.checked, u.isAdmin === true);
     else if(c.dataset.uon){ if(!c.checked === !!u.disabled) delete stg(sub).disabled; else stg(sub).disabled = !c.checked; tidy(sub); }
     env.say(''); env.paint();
   });
   const bodyOf = sub => { const s = env.st.staged[sub] || {}, b = {}; if(s.stores) b.stores = s.stores; if(s.perms){ b.perms = s.perms; b.permStore = env.sid; } if(s.adminStores) b.adminStores = s.adminStores;
-    ['disabled', 'initials', 'license', 'acctType', 'docDuty'].forEach(k => { if(s[k] !== undefined) b[k] = s[k]; }); return b; };
+    ['disabled', 'initials', 'license', 'acctType', 'docDuty', 'subs', 'dp', 'approver', 'licExpires'].forEach(k => { if(s[k] !== undefined) b[k] = s[k]; }); return b; };
   root.addEventListener('click', async e => {
     const hd = e.target.closest('[data-open]');
     if(hd && !e.target.closest('button,input,select,a,label')){ env.st.open = env.st.open === hd.dataset.open ? null : hd.dataset.open; env.paint(); return; }
     const t = (s) => e.target.closest(s);
+    const no = t('[data-npopen]'), nc = e.target.closest('[data-npclose]') || (e.target.matches('[data-npmodal]') ? e.target : null);
+    if(no){ env.st.addOpen = true; env.paint(); const f = root.querySelector('[data-np=name]'); if(f) f.focus(); return; }
+    if(nc){ env.st.addOpen = false; env.paint(); return; }
     const up = t('[data-upd]'), un = t('[data-undo]'), rs = t('[data-reset]'), dl = t('[data-del]'), cp = t('[data-copy]'), ph = t('[data-phone]'), pr = t('[data-pinreset]'), na = t('[data-npadd]'), ng = t('[data-npgen]');
     const nm = u => u.name || u.login, url = u => env.base + '/users/' + encodeURIComponent(u.sub);
     try{
       if(ng){ const i = root.querySelector('[data-np=pass]'); i.value = env.st.np = drTemp(); return; }
       if(na){
-        const g = k => ((root.querySelector(`[data-np=${k}]`) || {}).value || '').trim(), perms = {}; root.querySelectorAll('[data-npperm]').forEach(c => perms[c.dataset.npperm] = c.checked);
+        const g = k => ((root.querySelector(`[data-np=${k}]`) || {}).value || '').trim(), perms = Object.assign({submit:true, archive:true, remove:true, export:false, calendar:true, documents:true}, DR_PRESETS[g('type')] || {});
         const say = (m, ok) => { const el = root.querySelector('[data-npmsg]'); el.textContent = m; el.className = 'npmsg msg' + (ok ? ' ok' : ''); };
         if(!g('name') || !g('login') || !g('phone')) return say('Name, Login ID and mobile number are all needed.');
         if(!root.querySelector('[data-np=consent]').checked) return say('Tick the box to confirm they signed the SMS consent form for this number.');
         const body = {name:g('name'), login:g('login').toLowerCase(), phone:g('phone'), tempPassword:g('pass') || undefined, initials:g('ini').toUpperCase(), license:g('lic').toUpperCase(), acctType:g('type'), stores:{[env.sid]:true}, perms, smsConsent:true};
         busy(na, true);
-        try{ const r = await api('POST', env.base + '/users', body); env.st.temps[r.user.sub] = r.tempPassword; env.st.np = '';
+        try{ const r = await api('POST', env.base + '/users', body); env.st.temps[r.user.sub] = r.tempPassword; env.st.np = ''; env.st.addOpen = false; env.st.open = r.user.sub;
           env.pass(`<b>${esc(body.name)} can sign in now.</b> Give them:<br>Pharmacy ID: <b class="mono">${esc(env.sid)}</b><br>Login ID: <b class="mono">${esc(r.user.login)}</b><br>Temporary password: <b class="mono">${esc(r.tempPassword)}</b><br><span class="hint">They choose their own password the first time they sign in. The temporary password isn’t shown again.</span>`);
           await env.reload(); env.say('Added ' + body.name + '. They are Pending until they first sign in.'); }
         catch(err){ if(!err.auth) say('Not added: ' + err.message); } finally{ busy(na, false); }
