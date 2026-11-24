@@ -38,7 +38,7 @@ const DOCS_PAGE = { id: 'documents', title: 'Documents Page', panels: DOCS_PANEL
   render: (_unused, panels) => docsHtml(DOCS_SAMPLE_MODEL(), { panels }) };
 
 /* ---- the screen's state (one per sign-in); the layout editor builds its own from the sample below ---- */
-function docsNewModel(){ return { duty: 'staff', today: '', docs: [], pins: [], log: [], pharmacy: '', q: '', type: 'all', fstatus: '', fformat: '', freview: '', fpend: false, showRetired: false, sort: { k: 'id', d: 1 }, sel: '', loaded: false }; }
+function docsNewModel(){ return { view: 'docs', insp: null, inspOK: false, tasks: null, mine: null, pers: null, persSel: null, grants: null, tasksOK: false, persOK: false, persAdd: false, boss: false, dpChapters: [], final: false, duty: 'staff', today: '', docs: [], pins: [], log: [], pharmacy: '', q: '', type: 'all', fstatus: '', fformat: '', freview: '', fpend: false, showRetired: false, sort: { k: 'id', d: 1 }, sel: '', loaded: false }; }
 const docsIs = (m, ...ds) => ds.includes(m.duty);
 const docsManage = m => docsIs(m, 'owner', 'pic', 'dp', 'ctech'), docsApprove = m => docsIs(m, 'owner', 'pic', 'dp');
 const docsDate = s => { const [y, mo, d] = s.split('-').map(Number); return Date.UTC(y, mo - 1, d); };
@@ -61,7 +61,7 @@ function docDueText(i){ if(i.next == null) return ''; if(i.r === 'n/a') return i
 function docsRows(m){
   const q = m.q.trim().toLowerCase(), man = docsManage(m);
   let rows = m.docs.map(d => ({ d, i: docInfo(d, m) })).filter(({ d, i }) => {
-    if(!man && (i.status === 'Draft' || i.status === 'Retired')) return false;
+    if(!man && (i.status === 'Draft' || i.status === 'Retired') && !(i.pend && d.chapter && m.dpChapters.includes(d.chapter))) return false;
     if(m.type !== 'all' && d.type !== m.type) return false;
     if(i.status === 'Retired' && !m.showRetired && m.fstatus !== 'Retired') return false;
     if(m.fstatus && i.status !== m.fstatus) return false;
@@ -78,9 +78,13 @@ function docsRows(m){
 function docsRailHtml(m){
   const all = m.docs.map(d => ({ d, i: docInfo(d, m) })), man = docsManage(m), appr = docsApprove(m);
   const live = all.filter(x => x.i.status !== 'Retired' && (man || x.i.status !== 'Draft'));
-  return `<button class="dit" data-dact="type" data-id="all" aria-current="${m.type === 'all'}"><span class="nm">All Documents</span><span class="ct">${live.length}</span></button>` +
+  const sp = `<button class="dit" data-dact="view" data-id="mine" aria-current="${m.view === 'mine'}"><span class="nm">My Documents</span></button>` +
+    (m.tasksOK ? `<button class="dit" data-dact="view" data-id="tasks" aria-current="${m.view === 'tasks'}"><span class="nm">Tasks</span></button>` : '') +
+    (m.persOK ? `<button class="dit" data-dact="view" data-id="pers" aria-current="${m.view === 'pers'}"><span class="nm">Personnel Files</span></button>` : '') +
+    (m.inspOK ? `<button class="dit" data-dact="view" data-id="insp" aria-current="${m.view === 'insp'}"><span class="nm">Inspector Link</span></button>` : '') + '<div class="dgh">Library</div>';
+  return sp + `<button class="dit" data-dact="view" data-id="docs" aria-current="${m.view === 'docs' && m.type === 'all'}"><span class="nm">All Documents</span><span class="ct">${live.length}</span></button>` +
     DOC_TYPE_LIST.map(t => { const mm = live.filter(x => x.d.type === t.c), od = mm.filter(x => x.i.r === 'Overdue').length;
-      return `<button class="dit" data-dact="type" data-id="${t.c}" aria-current="${m.type === t.c}" title="${esc(t.tip || t.f)}"><span class="nm">${t.f.replace(/_/g, ' ')}</span>${od && appr ? `<span class="od">${od}</span>` : ''}<span class="ct">${mm.length}</span></button>`; }).join('') +
+      return `<button class="dit" data-dact="type" data-id="${t.c}" aria-current="${m.view === 'docs' && m.type === t.c}" title="${esc(t.tip || t.f)}"><span class="nm">${t.f.replace(/_/g, ' ')}</span>${od && appr ? `<span class="od">${od}</span>` : ''}<span class="ct">${mm.length}</span></button>`; }).join('') +
     (man ? `<div class="dgh">Archive</div><button class="dit" data-dact="showret"><span class="nm">99 Archive (Retired)</span><span class="ct">${all.filter(x => x.i.status === 'Retired').length}</span></button>` : '');
 }
 function docsTilesHtml(m){
@@ -111,11 +115,116 @@ function docsTableHtml(m){
     <td><button class="dmore" data-dact="menu" data-id="${d.id}" aria-label="Details and actions for ${d.id}">⋯</button></td></tr>`).join('')}</tbody></table></div>`;
 }
 const docsCount = m => `${docsRows(m).length} of ${m.docs.filter(d => docsManage(m) || (d.versions.some(v => v.state === 'current') && !d.retired)).length} documents`;
+/* ---- 39.2: audience, Tasks folder, My Documents, Personnel Files, Designated Person review ---- */
+const DOC_AUD = [['pharmacist', 'Pharmacist'], ['pharmacist:lead', 'Pharmacist: Lead'], ['pharmacist:supervisor', 'Pharmacist: Supervisor'], ['pharmacist:immunizer', 'Pharmacist: Immunizer'], ['pharmacist:sterile', 'Pharmacist: Sterile'],
+  ['tech', 'Technician'], ['tech:lead', 'Technician: Lead'], ['tech:sterile', 'Technician: Sterile'], ['tech:nonsterile', 'Technician: Nonsterile'],
+  ['staff', 'Associate'], ['staff:cashier', 'Associate: Cashier'], ['staff:driver', 'Associate: Driver'], ['staff:warehouse', 'Associate: Warehouse'], ['staff:student', 'Associate: Student']];
+const docsAudLabel = k => (DOC_AUD.find(x => x[0] === k) || [k, k])[1];
+const docsAudHtml = sel => `<div class="dchecks">${DOC_AUD.map(([k, l]) => `<label><input type="checkbox" data-aud="${k}"${sel.includes(k) ? ' checked' : ''}> ${l}</label>`).join('')}</div><div class="hint">None ticked = everyone. The Pharmacist-In-Charge, the Account Owner and document managers always see it.</div>`;
+const docsAudRead = () => [...document.querySelectorAll('[data-aud]:checked')].map(e => e.dataset.aud);
+const DOC_ROLE = { pic: 'Pharmacist-In-Charge', pharmacist: 'Pharmacist', tech: 'Technician', staff: 'Associate' }, docsRole = k => DOC_ROLE[k] || '';
+const docsFileBtns = (files, act, extra) => (files || []).map(f => `<button class="dlink" data-dact="${act}" data-id="${esc(f.id)}"${extra || ''} title="${esc(f.name)}">${esc(f.name.length > 24 ? f.name.slice(0, 23) + '…' : f.name)}</button>`).join(' ');
+const docsRecTable = recs => recs && recs.length ? `<div class="dtw"><table class="dtable"><thead><tr><th>Date</th><th>Record</th><th>Result</th><th>Approved By</th></tr></thead><tbody>${recs.map(r => `<tr><td class="num">${esc(r.date)}</td><td>${esc(r.type)}</td><td>${esc(r.result)}</td><td>${r.approvedBy ? esc(r.approvedBy) : docPill('warn', 'Awaiting')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="hint">None yet.</div>';
+function docsTasksHtml(m){
+  if(!m.tasks) return '<div class="dempty">Loading…</div>';
+  if(!m.tasks.folders.length) return '<div class="dempty">No files are attached to completed tasks yet. Files attached to a task are filed here by task type.</div>';
+  return '<div class="dtw">' + m.tasks.folders.map(f => `<div class="dgh">${esc(f.title)} <span class="hint">${f.entries.length}</span></div><table class="dtable"><thead><tr><th>Date</th><th>Performed By</th><th>Completed By</th><th>Result</th><th>Approved By</th><th>Files</th></tr></thead><tbody>${f.entries.map(e => `<tr><td class="num">${esc(e.date)}</td><td>${esc(e.performedBy)}</td><td>${esc(e.completedBy)}</td><td>${esc(e.result)}</td><td>${e.approvedBy ? esc(e.approvedBy) : docPill('warn', e.status === 'returned' ? 'Returned' : 'Awaiting')}</td><td>${docsFileBtns(e.files, 'tfile')}</td></tr>`).join('')}</tbody></table>`).join('') + '</div>';
+}
+function docsMineHtml(m){
+  const x = m.mine; if(!x) return '<div class="dempty">Loading…</div>';
+  return `<div class="dtool"><b>My Documents</b><span class="dsp"></span><button class="btn small" data-dact="madd">Add Document</button></div><div class="hint">Private to you. The Pharmacist-In-Charge and the Account Owner can see them in your personnel file.</div>
+   <div class="dgh">Uploaded</div>${x.uploads.length ? `<div class="dtw"><table class="dtable"><thead><tr><th>Title</th><th>Kind</th><th>Added</th><th>By</th><th></th></tr></thead><tbody>${x.uploads.map(u => `<tr><td>${esc(u.title)}</td><td>${esc(x.kinds[u.kind] || u.kind)}</td><td class="num">${esc(docsLocal(u.at).slice(0, 10))}</td><td>${esc(u.by)}</td><td><button class="btn2 small" data-dact="mfile" data-id="${esc(u.id)}">Open</button>${u.addedBy ? '' : ` <button class="btn2 small danger" data-dact="mremove" data-id="${esc(u.id)}">Remove</button>`}</td></tr>`).join('')}</tbody></table></div>` : '<div class="hint">Nothing uploaded.</div>'}
+   <div class="dgh">License</div><div class="hint">${x.license.number ? `${esc(x.license.number)}${x.license.expires ? ', expires ' + esc(x.license.expires) : ''}` : 'No license on file.'}</div>
+   <div class="dgh">Training And Validation Records</div>${docsRecTable(x.records)}`;
+}
+function docsPersHtml(m){
+  const p = m.pers; if(!p) return '<div class="dempty">Loading…</div>';
+  if(m.persSel){ const d = m.persSel;
+    return `<div class="dtool"><button class="btn2 small" data-dact="perback">Back</button><b>${esc(d.person.name)}</b><span class="dsp"></span>${p.canAdd ? '<button class="btn small" data-dact="padd">Add Material</button>' : ''}</div>
+     <div class="hint">${esc(docsRole(d.person.acctType))}${d.person.license ? ' · License ' + esc(d.person.license) : ''}${d.person.licExpires ? ' · Expires ' + esc(d.person.licExpires) : ''}</div>
+     <div class="dgh">Documents</div>${d.uploads.length ? `<div class="dtw"><table class="dtable"><thead><tr><th>Title</th><th>Kind</th><th>Added</th><th>By</th><th></th></tr></thead><tbody>${d.uploads.map(u => `<tr><td>${esc(u.title)}</td><td>${esc(u.kind)}</td><td class="num">${esc(docsLocal(u.at).slice(0, 10))}</td><td>${esc(u.by)}</td><td><button class="btn2 small" data-dact="pfile" data-id="${esc(u.id)}" data-p="${esc(d.person.sub)}">Open</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="hint">Nothing uploaded.</div>'}
+     <div class="dgh">Training And Validation Records</div>${docsRecTable(d.records)}`; }
+  return `<div class="dtw"><table class="dtable"><thead><tr><th>Name</th><th>Role</th><th>License</th><th>Expires</th><th>Designated Person</th>${p.canGrant ? '<th>Personnel Files</th><th>Document Review</th><th>Inspector Link</th>' : ''}</tr></thead><tbody>${p.people.map(x => { const dp = Object.keys(x.dp || {}).filter(k => x.dp[k]); const g = m.grants || { personnel: {}, dpOff: {}, inspector: {} };
+    return `<tr class="click" data-dact="persopen" data-id="${esc(x.sub)}"><td>${esc(x.name)}</td><td>${esc(docsRole(x.acctType))}</td><td>${esc(x.license)}</td><td class="num">${esc(x.licExpires)}</td><td>${dp.length ? esc(dp.join(', ')) : ''}</td>${p.canGrant ? `<td><input type="checkbox" data-grant="personnel" data-sub="${esc(x.sub)}"${g.personnel[x.sub] ? ' checked' : ''}${dp.length ? ' checked disabled title="On while a Designated Person box is ticked"' : ''}></td><td>${dp.length ? `<input type="checkbox" data-grant="dpoff" data-sub="${esc(x.sub)}"${g.dpOff[x.sub] ? '' : ' checked'} title="Reviews documents for their chapters">` : ''}</td><td><input type="checkbox" data-grant="inspector" data-sub="${esc(x.sub)}"${(g.inspector || {})[x.sub] ? ' checked' : ''}></td>` : ''}</tr>`; }).join('')}</tbody></table></div>${m.hostlog ? `<div class="dgh">IronLedger Access</div><div class="hint">IronLedger staff have read-only access to the Calendar and, with a privilege, Personnel Files. Every view is listed here.</div>${m.hostlog.length ? `<div class="dtw"><table class="dtable"><thead><tr><th>When</th><th>Who</th><th>What</th><th>Detail</th></tr></thead><tbody>${m.hostlog.slice(0, 100).map(e => `<tr><td class="num">${esc(docsLocal(e.at))}</td><td>${esc(e.by)}</td><td>${esc(e.what)}</td><td>${esc(e.detail)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="hint">No IronLedger access yet.</div>'}` : ''}`;
+}
+const docsAltHtml = m => m.view === 'tasks' ? docsTasksHtml(m) : m.view === 'mine' ? docsMineHtml(m) : m.view === 'insp' ? docsInspHtml(m) : docsPersHtml(m);
+
+const inspBase = () => '/stores/' + encodeURIComponent(STORE.id) + '/inspector';
+const inspStamp = ms => docsLocal(new Date(ms).toISOString());
+function docsInspHtml(m){
+  const x = m.insp; if(!x) return '<div class="dempty">Loading…</div>';
+  return `<div class="dtool"><b>Inspector Links</b><span class="dsp"></span><button class="btn small" data-dact="inspnew">New Link</button></div>
+   <div class="hint">Read only and time limited. Opens the Dashboard, Task Logs, approved Documents and compliance Personnel data for the period you set. Not a login.</div>
+   ${x.links.length ? `<div class="dtw"><table class="dtable"><thead><tr><th>For</th><th>Period</th><th>Sent By</th><th>Sent</th><th>Ends</th><th>Opens</th><th>Documents</th><th>Status</th><th></th></tr></thead><tbody>${x.links.map(l => `<tr><td>${esc(l.label)}</td><td class="num">${esc(l.from)} to ${esc(l.to)}</td><td>${esc(l.by)}</td><td class="num">${esc(docsLocal(l.at).slice(0, 10))}</td><td class="num">${esc(inspStamp(l.expiresAt))}</td><td class="num">${l.opens}</td><td>${l.docs ? 'Yes' : 'Register Only'}</td><td>${docPill({ Active: 'ok', Expired: 'gray', Revoked: 'bad' }[l.state], l.state)}</td><td>${l.state === 'Active' ? `<button class="btn2 small" data-dact="inspext" data-id="${esc(l.id)}">Change Expiry</button> <button class="btn2 small danger" data-dact="insprev" data-id="${esc(l.id)}">Revoke</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="hint">No links sent.</div>'}
+   ${x.log ? `<div class="dgh">Access Log</div><div class="hint">Every open, kept permanently.</div>${x.log.length ? `<div class="dtw"><table class="dtable"><thead><tr><th>When</th><th>For</th><th>What</th><th>Detail</th><th>Device</th><th>IP</th></tr></thead><tbody>${x.log.map(e => `<tr><td class="num">${esc(docsLocal(e.at))}</td><td>${esc(e.label)}</td><td>${esc(e.what)}</td><td>${esc(e.detail)}</td><td title="${esc(e.device)}">${esc((e.device || '').slice(0, 40))}</td><td class="num">${esc(e.ip)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="hint">Not opened yet.</div>'}` : ''}`;
+}
+function docsInspNewModal(){
+  docsModal(`<h3>New Inspector Link</h3><div class="dmb"><div class="dfld"><label for="iLbl">Who It Is For</label><input type="text" id="iLbl" maxlength="80" placeholder="Texas State Board of Pharmacy"></div>
+   <div class="dg2"><div class="dfld"><label for="iFrom">Report Period From</label><input type="date" id="iFrom" value="${DOCS.today ? docsAddMonths(DOCS.today, -12) : ''}"></div><div class="dfld"><label for="iTo">Report Period To</label><input type="date" id="iTo" value="${DOCS.today}"></div></div>
+   <div class="dg2"><div class="dfld"><label for="iDays">Link Ends After (Days)</label><input type="number" id="iDays" min="1" max="30" value="7"></div><div class="dfld"><label>Documents</label><label class="chk"><input type="checkbox" id="iDocs"> Allow Opening Approved Documents</label></div></div>
+   <div class="hint">Drafts, voided records, billing, accounts and contacts are never shown.</div></div>
+   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="iGo">Create Link</button></div>`);
+  $('iGo').addEventListener('click', async () => { const label = $('iLbl').value.trim(); if(!label) return docsToast('Enter who it is for.'); busy($('iGo'), true);
+    try{ const r = await api('POST', inspBase(), { label, from: $('iFrom').value, to: $('iTo').value, days: $('iDays').value, docs: $('iDocs').checked }), url = location.origin + r.path;
+      DOCS.insp = await api('GET', inspBase());
+      docsModal(`<h3>Inspector Link</h3><div class="dmb"><div class="hint">Copy it now. For safety it is not shown again.</div><div class="dfld"><input type="text" id="iUrl" readonly value="${esc(url)}" style="width:100%"></div></div>
+       <div class="dmf"><button class="btn2" data-dact="closemodal">Close</button><button class="btn" id="iCopy">Copy Link</button></div>`, true);
+      $('iCopy').addEventListener('click', async () => { try{ await navigator.clipboard.writeText(url); docsToast('Link copied.'); }catch(e){ $('iUrl').select(); docsToast('Press Ctrl+C to copy.'); } }); docsPaint(); }
+    catch(e){ docsErr(e); busy($('iGo'), false); } });
+}
+function docsInspExpiryModal(id){
+  docsModal(`<h3>Change Expiry</h3><div class="dmb"><div class="dfld"><label for="xDays">Link Ends After (Days From Now)</label><input type="number" id="xDays" min="1" max="30" value="7"></div></div><div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="xGo">Save</button></div>`);
+  $('xGo').addEventListener('click', async () => { try{ await api('POST', inspBase() + '/' + encodeURIComponent(id) + '/expiry', { days: $('xDays').value }); DOCS.insp = await api('GET', inspBase()); docsCloseModal(); docsPaint(); docsToast('Saved.'); }catch(e){ docsErr(e); } });
+}
+async function docsInspRevoke(id){ try{ await api('POST', inspBase() + '/' + encodeURIComponent(id) + '/revoke', {}); DOCS.insp = await api('GET', inspBase()); docsPaint(); docsToast('Link revoked.'); }catch(e){ docsErr(e); } }
+async function docsView(id){
+  DOCS.view = id; if(id === 'docs'){ DOCS.type = 'all'; docsPaint(); return; }
+  docsPaint();
+  try{
+    if(id === 'tasks') DOCS.tasks = await api('GET', docsPath() + '/tasks');
+    else if(id === 'mine') DOCS.mine = await api('GET', docsPath() + '/mine');
+    else if(id === 'insp') DOCS.insp = await api('GET', '/stores/' + encodeURIComponent(STORE.id) + '/inspector');
+    else if(id === 'pers'){ DOCS.pers = await api('GET', docsPath() + '/personnel'); DOCS.persSel = null; DOCS.grants = DOCS.pers.canGrant ? await api('GET', docsPath() + '/grants') : null; DOCS.hostlog = DOCS.pers.canGrant ? (await api('GET', docsPath() + '/hostlog')).log : null; }
+  }catch(e){ docsErr(e); DOCS.view = 'docs'; }
+  if(DOCS.view === id) docsPaint();
+}
+async function docsFileOpen(path){
+  const w = window.open('', '_blank');
+  try{ const r = await api('GET', docsPath() + path); if(!w){ docsToast('Allow pop-ups for this site to open documents.'); return; } w.location = r.url; }catch(e){ if(w) w.close(); docsErr(e); }
+}
+async function docsPersOpen(sub){ try{ DOCS.persSel = await api('GET', docsPath() + '/personnel/' + encodeURIComponent(sub)); docsPaint(); }catch(e){ docsErr(e); } }
+async function docsGrant(what, sub, on){
+  try{ await api('POST', docsPath() + '/grants', { what, sub, on: what === 'dpoff' ? !on : on }); DOCS.grants = await api('GET', docsPath() + '/grants'); await docsLoad(); }catch(e){ docsErr(e); docsPaint(); }
+}
+async function docsMineRemove(id){ try{ await api('POST', docsPath() + '/mine/' + encodeURIComponent(id) + '/remove', {}); DOCS.mine = await api('GET', docsPath() + '/mine'); docsPaint(); docsToast('Removed.'); }catch(e){ docsErr(e); } }
+function docsMineAddModal(forPerson){                            // forPerson: the Account Owner adds to someone's personnel file
+  const sub = forPerson && DOCS.persSel ? DOCS.persSel.person.sub : '', base = forPerson ? '/personnel/' + encodeURIComponent(sub) : '/mine';
+  docsModal(`<h3>${forPerson ? 'Add Material' : 'Add Document'}</h3><div class="dmb"><div class="dwarn">PDF only. Do not upload patient information.</div>
+   <div class="dfld"><label for="mFile">PDF File</label><input type="file" id="mFile" accept="application/pdf,.pdf"></div>
+   <div class="dg2"><div class="dfld"><label for="mTitle">Title</label><input type="text" id="mTitle" maxlength="200"></div><div class="dfld"><label for="mKind">Kind</label><select id="mKind">${Object.entries({ validation: 'Validation', license: 'License', training: 'Training', scan: 'Uploaded Scan', other: 'Other' }).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></div></div></div>
+   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="mGo">Save</button></div>`);
+  $('mFile').addEventListener('change', e => { const f = e.target.files[0]; if(f && !$('mTitle').value) $('mTitle').value = f.name.replace(/\.pdf$/i, '').replace(/_+/g, ' '); });
+  $('mGo').addEventListener('click', async () => { const f = $('mFile').files[0], t = $('mTitle').value.trim();
+    if(!f) return docsToast('Choose the PDF file.'); if(!/\.pdf$/i.test(f.name)) return docsToast('Only PDF files are accepted.'); if(!t) return docsToast('Enter a title.'); busy($('mGo'), true);
+    try{ const up = await docsUpload(f, base + '/upload-url'); await api('POST', docsPath() + base + (forPerson ? '/add' : ''), { title: t, kind: $('mKind').value, file: up }); docsCloseModal();
+      if(forPerson) await docsPersOpen(sub); else { DOCS.mine = await api('GET', docsPath() + '/mine'); docsPaint(); } docsToast('Saved.'); }
+    catch(e){ docsErr(e); busy($('mGo'), false); } });
+}
+function docsDpModal(id){
+  const d = docOf(id), p = docInfo(d, DOCS).pend;
+  docsModal(`<h3>Designated Person Review: ${d.id}</h3><div class="dmb"><div class="hint">${esc(d.title)}, v${esc(p.v)}, chapter ${esc(d.chapter)}. The final approver approves after this review.</div>
+   <div class="dfld"><label>Outcome</label><div class="dradios"><label><input type="radio" name="dpo" value="ok" checked> Reviewed, Ready For Final Approval</label><label><input type="radio" name="dpo" value="return"> Return To The Submitter<br><span class="hint">Removes this version. Say what needs to change.</span></label></div></div>
+   <div class="dfld"><label for="dpC">Comments</label><textarea id="dpC" maxlength="500"></textarea></div>${docsSignField('Reviewed')}</div>
+   <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="dpGo">Sign And Save</button></div>`);
+  $('dpGo').addEventListener('click', () => { const out = document.querySelector('[name=dpo]:checked').value, c = $('dpC').value.trim(); if(out === 'return' && !c) return docsToast('Say what needs to change.');
+    const pin = docsPinVal(); if(pin === null) return; busy($('dpGo'), true);
+    docsDo('/' + id + '/dpreview', { outcome: out, comment: c, reason: c, pin }, out === 'ok' ? 'Review recorded.' : 'Returned.', () => docsDpModal(id)).then(r => { if(!r) busy($('dpGo'), false); }); });
+}
 const DOCS_BODY = {
   rail: m => `<div class="drail" data-dz="rail">${docsRailHtml(m)}</div>`,
   tiles: m => `<div data-dz="tiles">${docsTilesHtml(m)}</div>`,
   pins: m => `<div class="dpins" data-dz="pins">${docsPinsHtml(m)}</div>`,
-  list: m => `<div class="dtool">
+  list: m => m.view !== 'docs' ? `<div data-dz="alt">${docsAltHtml(m)}</div>` : `<div class="dtool">
       <input type="search" data-dq placeholder="Search" value="${esc(m.q)}" aria-label="Search documents">
       ${docsManage(m) ? `<select data-dfs aria-label="Status"><option value="">Status: Any</option>${['Active', 'Draft', 'Under Review', 'Retired'].map(v => `<option${v === m.fstatus ? ' selected' : ''}>${v}</option>`).join('')}</select>` : ''}
       <select data-dff aria-label="Format"><option value="">Format: Any</option>${DOC_FORMATS.map(v => `<option${v === m.fformat ? ' selected' : ''}>${v}</option>`).join('')}</select>
@@ -135,7 +244,7 @@ function docsLayoutWithout(L, hide){
   return { v: 2, cols: LAYOUT_COLS, panels: P };
 }
 function docsHtml(m, c){
-  const hide = docsApprove(m) ? [] : ['tiles'], pg = Object.assign({}, DOCS_PAGE, { panels: DOCS_PANELS.filter(p => !hide.includes(p[0])) });
+  const hide = [...(docsApprove(m) && m.view === 'docs' ? [] : ['tiles']), ...(m.pins.length ? [] : ['pins'])], pg = Object.assign({}, DOCS_PAGE, { panels: DOCS_PANELS.filter(p => !hide.includes(p[0])) });
   const base = c && c.panels ? { v: 2, cols: LAYOUT_COLS, panels: c.panels } : (layoutOk(DOCS_PAGE, DOCS_LAYOUT) ? DOCS_LAYOUT : null);
   return layoutGridHtml(pg, base ? docsLayoutWithout(base, hide) : undefined, id => DOCS_BODY[id](m));
 }
@@ -177,7 +286,7 @@ async function docsLoad(){
     const r = await api('GET', docsPath());
     if(!STORE || STORE.id !== id) return;
     const keep = DOCS_STORE === id ? DOCS : docsNewModel();
-    DOCS = Object.assign(keep, { duty: r.duty, today: r.today, docs: r.docs, pins: r.pins, log: r.log || [], pharmacy: r.pharmacy, maxMb: r.maxMb, loaded: true }); DOCS_STORE = id;
+    DOCS = Object.assign(keep, { duty: r.duty, today: r.today, docs: r.docs, pins: r.pins, log: r.log || [], pharmacy: r.pharmacy, maxMb: r.maxMb, tasksOK: !!r.tasksOK, persOK: !!r.persOK, persAdd: !!r.persAdd, boss: !!r.boss, inspOK: !!r.inspOK, dpChapters: r.dpChapters || [], final: !!r.final, loaded: true }); DOCS_STORE = id;
     $('docsMsg').textContent = ''; docsPaint(); if(DOCS.open && docOf(DOCS.open)) docsDrawer(DOCS.open); else if(DOCS.open) docsCloseDrawer();
   }catch(e){ if(!e.auth) $('docsMsg').textContent = e.message; }
 }
@@ -249,6 +358,7 @@ function docsDrawer(id){
   const d = docOf(id); if(!d){ docsCloseDrawer(); return; }
   DOCS.open = id; const m = DOCS, i = docInfo(d, m), man = docsManage(m), appr = docsApprove(m), pn = m.pins.includes(id), area = DOC_AREA_LIST.find(x => x.code === d.area);
   const dis = (ok, why) => ok ? '' : ` disabled title="${esc(why)}"`;
+  const apprOk = appr && (!d.dpStep || (m.final && i.pend && (i.pend.dpReview || m.dpChapters.includes(d.chapter)))), apprWhy = !appr ? 'Owner, Pharmacist-In-Charge or Designated Person only' : (d.dpStep && !m.final ? 'Final approval is for the final approver' : 'Waiting for the Designated Person review');
   const vrows = d.versions.slice().reverse().map(v => `<tr><td class="num">v${esc(v.v)}</td><td>${v.state === 'current' ? docPill('ok', 'Current') : v.state === 'pending' ? docPill('warn', 'Pending Approval') : docPill('gray', 'Superseded')}</td><td class="num">${v.effective || '-'}</td><td>${esc(v.by || '-')}</td><td>${esc(v.approvedBy || '-')}${v.approvedIni ? ' (' + esc(v.approvedIni) + ')' : ''}${v.selfApproved ? ' ' + docPill('warn', 'Self-approved') : ''}</td><td title="${esc(v.summary)}">${esc(v.summary)}</td><td><button class="btn2 small" data-dact="openv" data-id="${id}" data-v="${esc(v.v)}"${v.hasFile ? '' : ' disabled'}>Open</button></td></tr>`).join('');
   const rrows = (d.reviews || []).slice().reverse().map(r => `<tr><td class="num">${r.at}</td><td>${esc(r.by)}${r.ini ? ' (' + esc(r.ini) + ')' : ''}</td><td>${esc(r.outcome)}</td><td title="${esc(r.comment)}">${esc(r.comment)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No review recorded yet.</td></tr>';
   const act = (m.log || []).filter(l => l.docId === id).slice(0, 8).map(l => `<tr><td class="num">${esc(docsLocal(l.at))}</td><td>${esc(l.by)}${l.ini ? ' (' + esc(l.ini) + (l.emp ? ' ' + esc(l.emp) : '') + ')' : ''}</td><td>${esc(l.action)}${l.flag ? ' ' + docPill('warn', l.flag) : ''}</td><td title="${esc(l.detail)}">${esc(l.detail)}</td></tr>`).join('') || '<tr><td colspan="4" class="hint">No activity yet.</td></tr>';
@@ -260,9 +370,10 @@ function docsDrawer(id){
      <button class="btn small" data-dact="openv" data-id="${id}"${i.cur || man ? '' : ' disabled'}>${d.format === 'Fillable PDF' ? 'Open Form' : 'Open'}</button>
      <button class="btn2 small" data-dact="printv" data-id="${id}"${i.cur ? '' : ' disabled'} title="The current version with the footer stamp on every page">Print Copy</button>
      <button class="btn2 small" data-dact="pin" data-id="${id}">${pn ? '★ Unpin' : '☆ Pin'}</button>
+     ${d.chapter && i.pend && !i.pend.dpReview && m.dpChapters.includes(d.chapter) ? `<button class="btn small" data-dact="dpreview" data-id="${id}">Designated Person Review</button>` : ''}
      ${man ? `<button class="btn2 small" data-dact="review" data-id="${id}"${dis(appr && (i.status === 'Active' || i.status === 'Under Review'), appr ? 'Only Active documents can be reviewed' : 'Owner, Pharmacist-In-Charge or Designated Person only')}>Mark Reviewed</button>
      <button class="btn2 small" data-dact="newver" data-id="${id}"${dis(!i.pend && i.status !== 'Retired' && i.status !== 'Draft', i.pend ? 'A version is already waiting for approval' : 'Not available for this status')}>Upload New Version</button>
-     ${i.pend ? `<button class="btn small" data-dact="approve" data-id="${id}"${dis(appr, 'Owner, Pharmacist-In-Charge or Designated Person only')}>Approve v${esc(i.pend.v)}</button><button class="btn2 small danger" data-dact="reject" data-id="${id}"${dis(appr, 'Owner, Pharmacist-In-Charge or Designated Person only')}>Reject</button>` : ''}
+     ${i.pend ? `<button class="btn small" data-dact="approve" data-id="${id}"${dis(apprOk, apprWhy)}>Approve v${esc(i.pend.v)}</button><button class="btn2 small danger" data-dact="reject" data-id="${id}"${dis(appr, 'Owner, Pharmacist-In-Charge or Designated Person only')}>Reject</button>` : ''}
      <button class="btn2 small" data-dact="edit" data-id="${id}">Edit Details</button>
      ${i.status === 'Retired' ? `<button class="btn2 small" data-dact="restore" data-id="${id}"${dis(appr, 'Owner, Pharmacist-In-Charge or Designated Person only')}>Restore</button>` : `<button class="btn2 small danger" data-dact="retire" data-id="${id}"${dis(appr && i.status !== 'Draft', 'Owner, Pharmacist-In-Charge or Designated Person only')}>Retire</button>`}` : ''}</div></div>
    <div class="ddbody">
@@ -270,7 +381,8 @@ function docsDrawer(id){
       <dt>Type</dt><dd>${DOC_TY[d.type].n}</dd><dt>File Type</dt><dd>${d.format}</dd>
       <dt>Program Area</dt><dd>${area.n} ${esc(area.name)}</dd><dt>Version</dt><dd class="num">${i.version ? 'v' + esc(i.version) : '-'}${i.cur ? '' : ' (not approved)'}</dd><dt>Effective Date</dt><dd class="num">${i.effective || '-'}</dd>
       ${appr ? `<dt>Last Reviewed</dt><dd class="num">${d.lastReviewed || '-'}</dd><dt>Review Cycle</dt><dd>${d.cycle ? d.cycle + ' months' : 'None'}</dd><dt>Next Review Due</dt><dd><span class="num">${i.next || '-'}</span> ${i.next && i.r !== 'n/a' ? `<span class="hint">${docDueText(i)}</span>` : ''}</dd>` : ''}
-      ${man ? `<dt>Regulatory Basis</dt><dd>${esc(d.basis || '-')}</dd>` : ''}
+      ${d.chapter ? `<dt>Chapter</dt><dd>${esc(d.chapter)}${i.pend && d.dpStep ? (i.pend.dpReview ? ` (reviewed by ${esc(i.pend.dpReview.by)})` : ' (waiting for review)') : ''}</dd>` : ''}
+      ${man ? `<dt>Regulatory Basis</dt><dd>${esc(d.basis || '-')}</dd>${d.chapter ? '' : '<dt>Chapter</dt><dd>None</dd>'}<dt>Who Can See It</dt><dd>${(d.audience || []).length ? esc(d.audience.map(docsAudLabel).join(', ')) : 'Everyone'}</dd>` : ''}
       <dt>Print Footer Stamp</dt><dd>${i.cur ? `<div class="dstamp">${esc(stampTxt)}</div>` : '<span class="hint">Applied when the version is approved.</span>'}</dd>
       ${man ? `<dt>File Path</dt><dd class="num dsmall">${esc(docPathOf(d, i.version || '1.0'))}</dd>${d.notes ? `<dt>Notes</dt><dd>${esc(d.notes)}</dd>` : ''}` : ''}</dl></div></section>
     ${man ? `<section class="pnl"><h4 class="pt">Versions</h4><div class="dtw"><table class="dtable"><thead><tr><th>Version</th><th>State</th><th>Effective</th><th>Submitted By</th><th>Approved By</th><th>Change Summary</th><th></th></tr></thead><tbody>${vrows}</tbody></table></div></section>` : ''}
@@ -301,8 +413,8 @@ function docsMenu(id, x, y){
 /* ---- windows ---- */
 const dOpts = (list, sel, fn) => list.map(x => { const v = fn ? fn(x)[0] : x, l = fn ? fn(x)[1] : x; return `<option value="${esc(v)}"${v === sel ? ' selected' : ''}>${esc(l)}</option>`; }).join('');
 const dBump = (v, kind) => { const [a, b] = v.split('.').map(Number); return kind === 'major' ? (a + 1) + '.0' : a + '.' + (b + 1); };
-async function docsUpload(file){                                 // asks for a one-time upload link, then sends the file straight to private storage
-  const r = await api('POST', docsPath() + '/upload-url', { name: file.name, size: file.size });
+async function docsUpload(file, path){                           // asks for a one-time upload link, then sends the file straight to private storage
+  const r = await api('POST', docsPath() + (path || '/upload-url'), { name: file.name, size: file.size });
   let put; try{ put = await fetch(r.url, { method: 'PUT', headers: r.headers, body: file }); }catch(e){ throw new Error('The file could not be sent. Check the internet and try again.'); }
   if(!put.ok) throw new Error('The file could not be stored (' + put.status + '). Try again.');
   return { key: r.key, name: file.name };
@@ -319,6 +431,8 @@ function docsAddModal(){
    <div class="dg2"><div class="dfld"><label for="aFmt">Format</label><select id="aFmt">${dOpts(DOC_FORMATS)}</select></div><div class="dfld"><label for="aVer">Version</label><input type="text" id="aVer" value="1.0"></div></div>
    <div class="dg2"><div class="dfld"><label for="aCyc">Review Cycle (Months)</label><input type="number" id="aCyc" min="0" max="120" value="12"><div class="hint">0 = no review cycle.</div></div>
    <div class="dfld"><label for="aBas">Regulatory Basis</label><input type="text" id="aBas" maxlength="200" placeholder="Internal Policy"></div></div>
+   <div class="dg2"><div class="dfld"><label for="aChap">Chapter</label><select id="aChap">${dOpts(['', '795', '797', '800'], '', x => [x, x || 'None'])}</select><div class="hint">A Designated Person for the chapter reviews first.</div></div></div>
+   <div class="dfld"><label>Who Can See It</label>${docsAudHtml([])}</div>
    <div class="dfld"><label>Will Be Saved As</label><div class="dpath" id="aPath"></div></div>
   </div><div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="aGo">Add As Draft</button></div>`, true);
   const g = id => $(id), nextN = (t, a) => { const p = t + '-' + a + '-', ns = DOCS.docs.filter(d => d.id.startsWith(p)).map(d => +d.id.slice(-3)); return p + String((ns.length ? Math.max(...ns) : 0) + 1).padStart(3, '0'); };
@@ -338,7 +452,7 @@ function docsAddModal(){
     const title = g('aTitle').value.trim(); if(!file) return docsToast('Choose the PDF file.'); if(!title) return docsToast('Enter a title.'); if(!/^\d+\.\d+$/.test(g('aVer').value.trim())) return docsToast('Version must look like 1.0.');
     const t = g('aType').value, tt = DOC_TY[t], btn = g('aGo'); busy(btn, true);
     try{ const f = await docsUpload(file);
-      const r = await api('POST', docsPath(), { title, type: t, area: g('aArea').value, sub: tt.sub && !DOC_CMPA.includes(tt.sub[0]) ? g('aSub').value : '', format: g('aFmt').value, version: g('aVer').value.trim(), cycle: g('aCyc').value, basis: g('aBas').value.trim(), file: f });
+      const r = await api('POST', docsPath(), { title, type: t, area: g('aArea').value, sub: tt.sub && !DOC_CMPA.includes(tt.sub[0]) ? g('aSub').value : '', format: g('aFmt').value, version: g('aVer').value.trim(), cycle: g('aCyc').value, basis: g('aBas').value.trim(), chapter: g('aChap').value, audience: docsAudRead(), file: f });
       docsCloseModal(); DOCS.open = r.id; await docsLoad(); docsToast(r.id + ' added as a draft. Approve it to make it Active.');
     }catch(e){ docsErr(e); busy(btn, false); }
   });
@@ -402,10 +516,12 @@ function docsEditModal(id){
   docsModal(`<h3>Edit Details: ${d.id}</h3><div class="dmb"><div class="hint">Doc ID, type and program area cannot change, because the ID, folder and calendar link depend on them.</div>
    <div class="dfld"><label for="eTitle">Title</label><input type="text" id="eTitle" maxlength="200" value="${esc(d.title)}"></div>
    <div class="dg2"><div class="dfld"><label for="eCyc">Review Cycle (Months)</label><input type="number" id="eCyc" min="0" max="120" value="${d.cycle}"></div><div class="dfld"><label for="eBas">Regulatory Basis</label><input type="text" id="eBas" maxlength="200" value="${esc(d.basis)}"></div></div>
-   <div class="dfld"><label for="eNot">Notes</label><textarea id="eNot" maxlength="1000">${esc(d.notes)}</textarea></div></div>
+   <div class="dfld"><label for="eNot">Notes</label><textarea id="eNot" maxlength="1000">${esc(d.notes)}</textarea></div>
+   <div class="dg2"><div class="dfld"><label for="eChap">Chapter</label><select id="eChap">${dOpts(['', '795', '797', '800'], d.chapter || '', x => [x, x || 'None'])}</select></div></div>
+   <div class="dfld"><label>Who Can See It</label>${docsAudHtml(d.audience || [])}</div></div>
    <div class="dmf"><button class="btn2" data-dact="closemodal">Cancel</button><button class="btn" id="eGo">Save</button></div>`);
   $('eGo').addEventListener('click', () => { const t = $('eTitle').value.trim(); if(!t) return docsToast('Title is required.'); busy($('eGo'), true);
-    docsDo('/' + id + '/edit', { title: t, cycle: $('eCyc').value, basis: $('eBas').value.trim(), notes: $('eNot').value.trim() }, 'Saved.').then(r => { if(!r) busy($('eGo'), false); }); });
+    docsDo('/' + id + '/edit', { title: t, cycle: $('eCyc').value, basis: $('eBas').value.trim(), notes: $('eNot').value.trim(), chapter: $('eChap').value, audience: docsAudRead() }, 'Saved.').then(r => { if(!r) busy($('eGo'), false); }); });
 }
 const docsCsv = () => {
   const m = DOCS, out = [['Doc ID', 'Title', 'Doc Type', 'Program Area', 'Format', 'Status', 'Version', 'Effective Date', 'Last Reviewed', 'Review Cycle (Months)', 'Next Review Due', 'Days Until Due', 'Review Status', 'Approver', 'Regulatory Basis', 'Applies To (Site)', 'Supersedes', 'File Path', 'Calendar Item ID', 'Notes']];
@@ -420,11 +536,14 @@ async function docsCopy(txt, label){
 }
 async function docsPin(id){
   const k = DOCS.pins.indexOf(id); if(k < 0) DOCS.pins.push(id); else DOCS.pins.splice(k, 1);
-  docsUpdate(); if(DOCS.open) docsDrawer(DOCS.open);
+  if(DOCS.pins.length <= 1) docsPaint(); else docsUpdate(); if(DOCS.open) docsDrawer(DOCS.open);
   try{ await api('POST', docsPath() + '/pins', { ids: DOCS.pins }); }catch(e){ docsErr(e); }
 }
 const DOCS_ACT = {
-  type: id => { DOCS.type = id; docsUpdate(); }, showret: () => { DOCS.fstatus = 'Retired'; docsPaint(); },
+  type: id => { DOCS.type = id; if(DOCS.view !== 'docs'){ DOCS.view = 'docs'; docsPaint(); } else docsUpdate(); }, view: id => docsView(id), dpreview: id => docsDpModal(id),
+  tfile: (id) => docsFileOpen('/tasks/file/' + encodeURIComponent(id)), mfile: id => docsFileOpen('/mine/' + encodeURIComponent(id) + '/file'), pfile: (id, t) => docsFileOpen('/personnel/' + encodeURIComponent(t.dataset.p) + '/file/' + encodeURIComponent(id)),
+  inspnew: () => docsInspNewModal(), inspext: id => docsInspExpiryModal(id), insprev: id => docsInspRevoke(id),
+  mremove: id => docsMineRemove(id), madd: () => docsMineAddModal(false), padd: () => docsMineAddModal(true), persopen: id => docsPersOpen(id), perback: () => { DOCS.persSel = null; docsPaint(); }, showret: () => { DOCS.fstatus = 'Retired'; docsPaint(); },
   tile: id => { DOCS.fstatus = ''; DOCS.freview = ''; DOCS.fpend = false; DOCS.showRetired = false; if(id === 'Overdue' || id === 'Due Soon') DOCS.freview = id; else if(id === 'pend') DOCS.fpend = true; else if(id === 'Under Review') DOCS.fstatus = 'Under Review'; else DOCS.fstatus = 'Active'; docsPaint(); },
   clr: id => { ({ type: () => DOCS.type = 'all', fstatus: () => DOCS.fstatus = '', fformat: () => DOCS.fformat = '', freview: () => DOCS.freview = '', fpend: () => DOCS.fpend = false, showRetired: () => DOCS.showRetired = false })[id](); docsPaint(); },
   clrall: () => { DOCS.type = 'all'; DOCS.fstatus = DOCS.fformat = DOCS.freview = ''; DOCS.fpend = false; DOCS.showRetired = false; DOCS.q = ''; docsPaint(); },
@@ -445,6 +564,7 @@ function docsInit(){                                             // once, when t
   });
   root.addEventListener('change', e => { const t = e.target;
     if(t.matches('[data-dfs]')){ DOCS.fstatus = t.value; docsUpdate(); } else if(t.matches('[data-dff]')){ DOCS.fformat = t.value; docsUpdate(); }
+    else if(t.matches('[data-grant]')){ docsGrant(t.dataset.grant, t.dataset.sub, t.checked); }
     else if(t.matches('[data-dfr]')){ DOCS.freview = t.value; docsUpdate(); } else if(t.matches('[data-dret]')){ DOCS.showRetired = t.checked; docsUpdate(); } });
   root.addEventListener('dblclick', e => { const tr = e.target.closest('tr[data-row]'); if(!tr || e.target.closest('button')) return; docsCloseCtx(); docsOpen(tr.dataset.row); });
   root.addEventListener('contextmenu', e => { const tr = e.target.closest('tr[data-row]'); if(!tr) return; e.preventDefault(); DOCS.sel = tr.dataset.row; docsMenu(tr.dataset.row, e.clientX, e.clientY); });

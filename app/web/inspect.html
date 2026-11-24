@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.amazonaws.com http://localhost:8790; frame-src blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+<title>IronLedger · Inspector View</title>
+<link rel="icon" href="mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="brand.css">
+<link rel="stylesheet" href="lockup.css">
+<link rel="stylesheet" href="suite.css">
+<style>
+  body { margin: 0; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 18px 20px 40px; }
+  .top { display: flex; align-items: center; gap: 14px; flex-wrap: nowrap; }
+  .top .ph { font-weight: 600; font-size: 17px; white-space: nowrap; }
+  .top .ro { margin-left: auto; color: var(--muted); font-size: 13.5px; white-space: nowrap; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 14px 0 16px; }
+  .tabs button { background: none; border: 0; border-bottom: 3px solid transparent; padding: 10px 16px; font: inherit; color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .tabs button[aria-current=true] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  h2 { font-size: 15px; margin: 18px 0 8px; } h2:first-child { margin-top: 0; }
+  .card { padding: 16px 18px; margin-bottom: 14px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .tile { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--bg); } .tile .n { font-size: 26px; font-weight: 700; } .tile .l { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; } th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; } td.n { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); white-space: nowrap; } .pill.warn { color: #9a5b00; border-color: #d9a441; } .pill.ok { color: #1c7a3d; border-color: #5fb27a; }
+  button.b { font: inherit; cursor: pointer; border-radius: 7px; min-height: 34px; padding: 4px 14px; background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent); font-weight: 600; }
+  button.b2 { font: inherit; cursor: pointer; border-radius: 7px; min-height: 30px; padding: 2px 10px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
+  select { font: inherit; padding: 6px 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .msg { padding: 40px 10px; text-align: center; color: var(--muted); } .hint { color: var(--muted); font-size: 13px; }
+  .bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  #rep { display: none; }
+  .cover h1 { font-size: 26px; margin: 0 0 6px; } .cover .kv { margin-top: 18px; font-size: 14px; line-height: 1.7; }
+  @media print {
+    body { background: #fff; color: #000; } .top, .tabs, .bar, #app { display: none !important; } #rep { display: block !important; }
+    .pg { page-break-after: always; } .pg:last-child { page-break-after: auto; } table { font-size: 11px; } .tile { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><span class="il-lock"><img src="mark.svg" alt=""><span class="wm">Iron<b>Ledger</b></span></span><span class="ph" id="ph"></span><span class="ro" id="ro"></span></div>
+  <div class="tabs" id="tabs" style="display:none">
+    <button data-t="summary">Dashboard</button><button data-t="logs">Task Logs</button><button data-t="docs">Documents</button><button data-t="personnel">Personnel</button><button data-t="report">Print Report</button>
+  </div>
+  <div id="app"><div class="msg">Loading…</div></div>
+  <div id="rep"></div>
+</div>
+<script src="config.js"></script>
+<script src="pdf-lib.min.js"></script>
+<script src="inspect.js"></script>
+</body>
+</html>

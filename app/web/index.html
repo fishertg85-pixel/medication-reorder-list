@@ -277,6 +277,14 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
 /* Add-user window (Users view): opens over the page from the Add user button at the top */
 .utop{margin:0 0 10px;} .drmodal{position:fixed;inset:0;background:rgba(10,20,35,.55);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:6vh 3vw;overflow:auto;}
 .drbox{background:var(--bg);border-radius:10px;width:min(640px,96vw);padding:14px 16px 12px;box-shadow:0 16px 48px rgba(0,0,0,.4);} .drhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:16px;}
+
+/* Street address starts under Pharmacy name */
+.pfields>.nlcol{grid-column:1 / span 2;grid-row:span 2;display:grid;grid-template-rows:subgrid;grid-template-columns:minmax(0,1fr);min-width:0;}
+/* licensed entity: three fields on one row, labels on one line, identical heights, square against the same edges */
+.entity .entrow{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1.2fr);gap:6px 10px;align-items:end;min-width:0;}
+.entity .entrow label span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.entity .entrow input,.entity .entrow select{height:36px;box-sizing:border-box;margin:0;}
+.entity>.btn2{margin-top:8px;} .entity .lockhint{margin-top:6px;}
 /* ---- Documents tab ---- */
 #panel-documents{position:relative;}
 #panel-documents .pgrid{margin-top:2px;}
@@ -327,6 +335,9 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
 #docsToast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:90;background:#222;color:#fff;border-radius:8px;padding:9px 16px;font-size:13.5px;max-width:min(560px,92vw);}
 @media (max-width:1279px){ .dtiles{grid-template-columns:repeat(3,minmax(0,1fr));} }
 @media print{ #panel-documents .dov,#docsToast,.dctx{display:none !important;} }
+.dchecks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px 14px;margin:2px 0}
+.dchecks label{display:flex;align-items:center;gap:6px;white-space:nowrap;font-weight:400}
+.dlink{background:none;border:0;padding:0 6px 0 0;color:var(--accent,#1a4d8f);cursor:pointer;text-decoration:underline;font:inherit;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   body.wideTab main{max-width:none;}
   .btn.small,.btn2.small{padding:5px 10px;font-size:12.5px;}
@@ -484,6 +495,7 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
     <button class="hbtn" id="whoBtn" aria-haspopup="true" aria-expanded="false" title="Account and sign out"><span id="whoLabel"></span> <span aria-hidden="true">▾</span></button>
     <div class="umlist" id="umList" hidden>
       <button id="acctBtn" style="display:none;" title="Pharmacy account details, people and backup">Account</button>
+      <button id="notifBtn" title="Choose how you are told when something is waiting for you">Notifications</button>
       <button id="signOutBtn">Sign out</button>
     </div>
   </div>

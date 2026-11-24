@@ -13,6 +13,8 @@ REGION="${AWS_REGION:-$(aws configure get region || true)}"
 REGION="${REGION:-us-east-1}"
 TEXT_CODES="$(echo "${TEXT_CODES:-}" | tr 'A-Z' 'a-z')"
 case "$TEXT_CODES" in ''|on|off) ;; *) echo "TEXT_CODES must be on or off."; exit 1;; esac
+NOTIFY_TEXT="$(echo "${NOTIFY_TEXT:-}" | tr 'A-Z' 'a-z')"
+case "$NOTIFY_TEXT" in ''|on|off) ;; *) echo "NOTIFY_TEXT must be on or off."; exit 1;; esac
 ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
 ART="${APP}-deploy-${ACCOUNT}-${REGION}"
 say(){ printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
@@ -31,7 +33,7 @@ fi
 say "Packaging and deploying the stack (first time: 5–10 minutes)"
 aws cloudformation package --template-file template.yaml --s3-bucket "$ART" --s3-prefix "$APP" --output-template-file .packaged.yaml >/dev/null
 aws cloudformation deploy --template-file .packaged.yaml --stack-name "$APP" --region "$REGION" \
-  --capabilities CAPABILITY_IAM --parameter-overrides AppName="$APP" ${TEXT_CODES:+TextCodes="$TEXT_CODES"} --no-fail-on-empty-changeset
+  --capabilities CAPABILITY_IAM --parameter-overrides AppName="$APP" ${TEXT_CODES:+TextCodes="$TEXT_CODES"} ${NOTIFY_FROM:+NotifyFrom="$NOTIFY_FROM"} ${NOTIFY_TEXT:+NotifyText="$NOTIFY_TEXT"} --no-fail-on-empty-changeset
 
 out(){ aws cloudformation describe-stacks --stack-name "$APP" --region "$REGION" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
 SITE="$(out SiteUrl)"; API="$(out ApiUrl)"; CLIENT="$(out ClientId)"; PORTAL="$(out PortalClientId)"; BUCKET="$(out SiteBucketName)"
@@ -43,7 +45,7 @@ BUILD="$(mktemp -d)"; cp -r web/. "$BUILD/"
 cat > "$BUILD/config.js" <<EOF
 window.NORTEX_CONFIG = {"region":"${REGION}","clientId":"${CLIENT}","portalClientId":"${PORTAL}","apiUrl":"${API}"};
 EOF
-sed -i "s# http://localhost:8790##" "$BUILD/index.html" "$BUILD/host.html"      # the local test address isn't allowed in the live app
+sed -i "s# http://localhost:8790##" "$BUILD/index.html" "$BUILD/host.html" "$BUILD/inspect.html"      # the local test address isn't allowed in the live app
 aws s3 sync "$BUILD" "s3://${BUCKET}" --delete --exclude "*.png" --cache-control "no-cache" >/dev/null
 aws s3 sync "$BUILD" "s3://${BUCKET}" --exclude "*" --include "*.png" --cache-control "max-age=86400" >/dev/null
 aws s3 cp "$BUILD/manifest.webmanifest" "s3://${BUCKET}/manifest.webmanifest" --content-type "application/manifest+json" --cache-control "no-cache" >/dev/null

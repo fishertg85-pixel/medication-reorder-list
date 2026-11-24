@@ -54,3 +54,20 @@ docsInit();
   try{ await idToken(); }catch(e){ return showLogin(e.auth ? '' : e.message); }
   await enterApp('');
 })();
+
+// Notifications: each person chooses email and/or text (none ticked means the app only). Messages never name a patient, drug or task.
+$('notifBtn').onclick = async () => {
+  $('umList').hidden = true;
+  let n; try{ n = await api('GET', '/me/notify'); }catch(e){ if(!e.auth) alert(e.message); return; }
+  const o = document.createElement('div'); o.className = 'dov'; o.id = 'notifOv';
+  o.innerHTML = `<div class="dmodal" role="dialog" aria-modal="true"><h3>Notifications</h3><div class="dmb">
+    <div class="hint">Waiting items always show in the app. Tick below to also get a short message with no patient, drug or task names.</div>
+    <div class="dfld"><label class="chk"><input type="checkbox" id="nfEm"${n.email ? ' checked' : ''}> Email</label></div>
+    <div class="dfld"><label for="nfAd">Email Address</label><input type="text" id="nfAd" maxlength="120" value="${esc(n.address)}" autocomplete="email"></div>
+    <div class="dfld"><label class="chk"><input type="checkbox" id="nfTx"${n.text ? ' checked' : ''}> Text${n.phone ? ' To ' + esc(n.phone) : ''}</label></div></div>
+    <div class="dmf"><button class="btn2" id="nfNo">Cancel</button><button class="btn" id="nfGo">Save</button></div></div>`;
+  document.body.appendChild(o);
+  const close = () => o.remove();
+  $('nfNo').onclick = close; o.addEventListener('mousedown', e => { if(e.target === o) close(); });
+  $('nfGo').onclick = async () => { try{ await api('POST', '/me/notify', { email: $('nfEm').checked, address: $('nfAd').value.trim(), text: $('nfTx').checked }); close(); }catch(e){ if(!e.auth) alert(e.message); } };
+};

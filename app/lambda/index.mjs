@@ -989,7 +989,7 @@ async function unlock(me, claims, b){
 // Each item holds the calendar's own JSON as a string in `j`. Rules, all checked here and not only in the screen:
 //   1. the person can open that pharmacy   2. the person has the Calendar privilege   3. the pharmacy has Calendar switched on
 //   4. only the Account Owner can start a pharmacy's calendar (write its profile for the first time)
-const CAL_COLLS = ['records', 'events', 'obl', 'log'];
+const CAL_COLLS = ['records', 'events', 'obl', 'log', 'exc'];
 const CAL_CFG = ['v', 'profile', 'sites', 'people', 'equipment', 'documents', 'tracks', 'plans', 'work', 'reminders', 'rooms'];
 const CAL_MAX_BYTES = 380000, CAL_MAX_OPS = 100;
 function calGate(me, storeItem){
@@ -1043,7 +1043,7 @@ async function calTeam(store){
 }
 async function calLoad(store, me, storeItem){
   const items = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p AND begins_with(sk, :c)', ExpressionAttributeValues: { ':p': calPk(store), ':c': 'CAL#' } });
-  const out = { started: false, config: {}, records: [], events: [], obl: [], log: [] };
+  const out = { started: false, config: {}, records: [], events: [], obl: [], log: [], exc: [] };
   for(const it of items){
     let v; try{ v = JSON.parse(it.j); }catch(e){ continue; }
     const [, kind, ...rest] = it.sk.split('#');
@@ -1064,7 +1064,7 @@ async function calLoad(store, me, storeItem){
     const myDelegs = deleg.filter(d => d.toSub === me.sk && delegActive(d, at));
     out.me = { sub: me.sk, acctType: me.acctType || '', subs: me.subs || [], dp: me.dp || {}, approver: me.approver === true, viewOnly: me.acctType === 'staff' && !me.host && !me.isOwner,
       dpChapters: CHAPTERS.filter(c => dpHolds(me, c) || myDelegs.some(d => d.step === 'dp' && (!d.chapters || !d.chapters.length || d.chapters.includes(c)))),
-      canFinal: finalRole(me, storeItem && storeItem.ownerIsPic) || myDelegs.some(d => d.step === 'final' && isPharmacist(me)), boss, timezone: tz || DEFAULT_TZ };
+      pinRequired: PIN_REQUIRED, canFinal: finalRole(me, storeItem && storeItem.ownerIsPic) || myDelegs.some(d => d.step === 'final' && isPharmacist(me)), boss, timezone: tz || DEFAULT_TZ };
   }
   return out;
 }
@@ -1186,6 +1186,74 @@ async function calTimeOff(store, me, storeItem, id, action, b){
   const covers = CHAPTERS.some(c => dpHolds(p, c)) || p.acctType === 'pic' || p.approver === true;
   return { ok: true, id: d.id, promptDelegation: covers };           // a Designated Person or an approver is asked to name who covers
 }
+// ---- records are never deleted (39.2): approved records are locked, the approver reopens or voids them, every version stays
+const canon = v => JSON.stringify(v, (k, x) => x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map(y => [y, x[y]])) : x);
+const recBody = v => { const c = { ...v }; for(const k of ['review', 'versions', 'void']) delete c[k]; return c; };
+const VOID_TYPES = { duplicate: 'Duplicate record', nottask: 'Entered when no task was done' };
+const EXC_TYPES = ['temperature', 'environmental', 'other'];
+const isDateStr = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v));
+function excClean(o, prev, me){
+  if(prev && prev.status === 'closed'){ if(canon(prev) === canon(o)) return prev; throw forbidden('This record is closed and kept as it is.'); }
+  const kind = String(o.kind || ''); if(kind !== 'excursion' && kind !== 'missed') throw bad('Pick the kind: excursion or missed entry.');
+  if(prev && prev.kind !== kind) throw bad('The kind can’t be changed.');
+  const t = (v, max, req, label) => { v = String(v == null ? '' : v).trim().slice(0, max); if(req && v.length < 3) throw bad(label + ' is required.'); return v; };
+  const c = { id: o.id, kind, status: 'open', date: isDateStr(o.date) ? o.date : (() => { throw bad('Pick the date.'); })(), what: t(o.what, 200, true, 'What it concerns'), detail: t(o.detail, 1000, false), handling: t(o.handling, 1000, true, 'How it was handled'), refId: o.refId && okId(o.refId) ? String(o.refId) : '', track: t(o.track, 200, false) };
+  if(kind === 'excursion'){ c.type = EXC_TYPES.includes(o.type) ? o.type : 'other'; }
+  else { if(!c.track) throw bad('Pick the task that was missed.'); if(!isDateStr(o.forDue)) throw bad('Pick the due date that was missed.'); c.forDue = o.forDue; }
+  c.createdBy = prev ? prev.createdBy : who(me); c.createdAt = prev ? prev.createdAt : now(); if(prev) c.updatedBy = who(me);
+  return c;
+}
+async function calRecordAct(store, me, storeItem, rid, action, b){
+  if(!okId(rid)) throw bad('Bad record.');
+  const sk = 'CAL#records#' + rid, g = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: calPk(store), sk } })); if(!g.Item) throw new HttpError(404, 'No such record.');
+  const prev = JSON.parse(g.Item.j), ch = chapterOf(String(prev.track || '').split('|')[0]), atMs = Date.now();
+  const delegs = await calSide(store, 'deleg'), R = stepRights(me, storeItem.ownerIsPic, ch, delegs, atMs).final;
+  if(!R) throw forbidden('Only the approver (the pharmacist in charge, or a pharmacist the PIC named) reopens or voids a record.');
+  if(prev.status === 'void') throw bad('This record is already voided.');
+  const stamp = now(), reason = String(b.reason || b.note || '').trim().slice(0, 500), who_ = who(me), behalf = R.own ? {} : { onBehalfOf: R.deleg.fromName, delegId: R.deleg.id };
+  const snap = { at: stamp, by: who_, rec: recBody(prev), review: prev.review || null };
+  const versions = (Array.isArray(prev.versions) ? prev.versions : []).slice(-19).concat([snap]);
+  if(action === 'reopen'){
+    if(!(prev.review && prev.review.status === 'accepted')) throw bad('Only an approved record is reopened. A record that is not approved can still be corrected.');
+    if(reason.length < 5) throw bad('Say why the record is reopened.');
+    const sign = await signAs(me, b, 'Reopened');
+    const reopens = (Array.isArray(prev.review.reopens) ? prev.review.reopens : []).slice(-9).concat([{ at: stamp, by: who_, byId: me.sk, reason, sign, wasApprovedBy: prev.review.by, wasApprovedAt: prev.review.at, sameAsApprover: prev.review.byId === me.sk, ...behalf }]);
+    const rv = { status: 'pending', since: stamp, hist: (Array.isArray(prev.review.hist) ? prev.review.hist : []).slice(-39), reopens };
+    const next = { ...prev, review: rv, versions }; if(Buffer.byteLength(JSON.stringify(next)) > CAL_MAX_BYTES) throw bad('This record has too many versions to reopen again. Ask IronLedger.');
+    await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: calPk(store), sk, j: JSON.stringify(next), updatedAt: stamp, updatedBy: who_ } }));
+    await calLog(store, me, 'Record Reopened', `${prev.track} (${prev.completedOn || ''}): ${reason}`);
+    return { ok: true, status: 'pending' };
+  }
+  if(action === 'void'){
+    const type = String(b.type || ''); if(!VOID_TYPES[type]) throw bad('Pick the reason for the void.');
+    if(reason.length < 5) throw bad('Write a short note with the reason.');
+    let origId = '';
+    if(type === 'duplicate'){
+      origId = String(b.origId || ''); if(!okId(origId) || origId === rid) throw bad('Pick the original record this one duplicates.');
+      const og = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: calPk(store), sk: 'CAL#records#' + origId } })); if(!og.Item) throw bad('The original record has to exist.');
+      const o = JSON.parse(og.Item.j); if(o.status === 'void') throw bad('The original record has been voided.'); if(o.track !== prev.track) throw bad('The original has to be for the same task.');
+    }
+    const excs = await calSide(store, 'exc'); if(excs.some(e => e.refId === rid)) throw forbidden('An excursion refers to this record, so it can’t be voided.');
+    const sign = await signAs(me, b, 'Voided');
+    const next = { ...prev, status: 'void', void: { type, label: VOID_TYPES[type], note: reason, origId, by: who_, byId: me.sk, at: stamp, sign, ...behalf }, versions };
+    await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: calPk(store), sk, j: JSON.stringify(next), updatedAt: stamp, updatedBy: who_ } }));
+    await calLog(store, me, 'Record Voided', `${prev.track} (${prev.completedOn || ''}): ${VOID_TYPES[type]}. ${reason}`);
+    return { ok: true, status: 'void' };
+  }
+  throw new HttpError(404, 'Not found');
+}
+async function calExcAct(store, me, storeItem, id, action, b){
+  if(!okId(id) || action !== 'close') throw new HttpError(404, 'Not found');
+  const sk = 'CAL#exc#' + id, g = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: calPk(store), sk } })); if(!g.Item) throw new HttpError(404, 'No such record.');
+  const prev = JSON.parse(g.Item.j); if(prev.status === 'closed') throw bad('Already closed.');
+  const R = stepRights(me, storeItem.ownerIsPic, '', await calSide(store, 'deleg'), Date.now()).final; if(!R) throw forbidden('Only the approver closes an excursion or a missed entry.');
+  const rec = String(b.reconciliation || '').trim().slice(0, 1000); if(rec.length < 5) throw bad('Write how it was reconciled.');
+  const sign = await signAs(me, b, 'Closed'), stamp = now();
+  const next = { ...prev, status: 'closed', closed: { by: who(me), byId: me.sk, at: stamp, reconciliation: rec, sign, ...(R.own ? {} : { onBehalfOf: R.deleg.fromName }) } };
+  await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: calPk(store), sk, j: JSON.stringify(next), updatedAt: stamp, updatedBy: who(me) } }));
+  await calLog(store, me, prev.kind === 'missed' ? 'Missed Entry Closed' : 'Excursion Closed', `${prev.what}: ${rec}`);
+  return { ok: true };
+}
 async function calCommit(store, me, b, storeItem){
   if(me.acctType === 'staff' && !me.host && !me.isOwner) throw forbidden('Your role can view the calendar. A technician or pharmacist enters tasks.');
   const config = b.config && typeof b.config === 'object' ? b.config : {}, put = b.put || {}, del = b.del || {};
@@ -1197,22 +1265,42 @@ async function calCommit(store, me, b, storeItem){
     for(const o of put[c]){
       if(!o || typeof o !== 'object' || !okId(o.id)) throw bad('Every calendar item needs an id.');
       if(c === 'records' && o.status !== 'void' && !calMayComplete(me, String(o.track || '').split('|')[0])) throw forbidden('Your role can’t complete that task. You can see it on the calendar; a pharmacist or the responsible person finishes it.');
-      writes.push({ sk: `CAL#${c}#${o.id}`, v: o, rec: c === 'records' });
+      if(c === 'records' && o.task && o.task.files !== undefined){
+        if(!Array.isArray(o.task.files) || o.task.files.length > 30) throw bad('Too many attached files.');
+        o.task.files = o.task.files.map(f => { if(!f || !TASK_FILE_RE.test(String(f.id || ''))) throw bad('An attached file was not uploaded here. Attach it again.'); return { id: f.id, name: String(f.name || 'file').slice(0, 160), size: Number(f.size) || 0, type: String(f.type || '').slice(0, 60), by: String(f.by || '').slice(0, 80), at: String(f.at || '').slice(0, 40) }; });
+      }
+      writes.push({ sk: `CAL#${c}#${o.id}`, v: o, rec: c === 'records', exc: c === 'exc' });
     }
   }
-  const recW = writes.filter(w => w.rec && w.v.status !== 'void');
-  if(recW.length){                                                       // the approval chain, decided here and not on the screen
-    const stampC = now(), team = await calTeam(store), delegs = await calSide(store, 'deleg');
+  const recW = writes.filter(w => w.rec);
+  if(recW.length){                                                       // the approval chain and the record locks, decided here and not on the screen
+    const stampC = now(), team = await calTeam(store), delegs = await calSide(store, 'deleg'), skip = new Set();
     for(const w of recW){
       let prev = null; const g = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: calPk(store), sk: w.sk } }));
       if(g.Item){ try{ prev = JSON.parse(g.Item.j); }catch(e){} }
+      if(prev && prev.status === 'void'){ if(canon(prev) === canon(w.v)){ skip.add(w); continue; } throw forbidden('This record was voided. It is kept for good and can’t be changed.'); }
+      if(w.v.status === 'void') throw forbidden('Only the approver voids a record, from the record itself.');
+      if(prev && prev.review && prev.review.status === 'accepted' && canon(recBody(prev)) !== canon(recBody(w.v))) throw forbidden('This record is approved and locked. The approver reopens it to correct it.');
+      delete w.v.void; if(prev && prev.versions) w.v.versions = prev.versions; else delete w.v.versions;
       const rv = await calChain(store, me, storeItem || {}, w.v, prev, team, delegs, stampC);
       if(rv === null) delete w.v.review; else w.v.review = JSON.parse(JSON.stringify(rv));
+      const pr = prev && prev.review;
+      if(w.v.review && pr && pr.reopens && !w.v.review.reopens) w.v.review.reopens = pr.reopens;
+      if(w.v.review && w.v.review.status === 'accepted' && pr && pr.status !== 'accepted' && Array.isArray(w.v.review.reopens) && w.v.review.reopens.length){   // reapproved after a reopen
+        const last = w.v.review.reopens[w.v.review.reopens.length - 1]; if(!last.reapproved) last.reapproved = { by: who(me), byId: me.sk, at: stampC, same: last.byId === me.sk };
+      }
     }
+    for(let i = writes.length - 1; i >= 0; i--) if(skip.has(writes[i])) writes.splice(i, 1);
+  }
+  for(const w of writes.filter(x => x.exc)){                             // excursion and missed-entry records: their own kind, never deleted, closed only by the approver
+    let prev = null; const g = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: calPk(store), sk: w.sk } }));
+    if(g.Item){ try{ prev = JSON.parse(g.Item.j); }catch(e){} }
+    w.v = excClean(w.v, prev, me);
   }
   for(const c of Object.keys(del)){
     if(!CAL_COLLS.includes(c)) throw bad('Unknown calendar list: ' + c);
     if(c === 'log') throw forbidden('The activity log is add-only.');
+    if(c === 'records' || c === 'exc') throw forbidden('Records are never deleted. A mistake is reopened or voided by the approver, and everything stays on file.');
     if(!Array.isArray(del[c])) throw bad('Bad calendar list.');
     for(const id of del[c]){ if(!okId(id)) throw bad('Bad calendar id.'); deletes.push(`CAL#${c}#${id}`); }
   }
@@ -1315,10 +1403,10 @@ function docView(d, duty){                                            // what ea
   if(!m){
     if(st === 'Draft' || st === 'Retired') return null;
     const c = docCur(d);
-    return { id: d.id, title: d.title, type: d.type, area: d.area, sub: d.sub || '', format: d.format, versions: [{ v: c.v, state: 'current', effective: c.effective, at: c.at, hasFile: !!c.file }], retired: false, underReview: false, cycle: 0, lastReviewed: '', reviews: [], basis: '', notes: '', rev: d.rev };
+    return { id: d.id, title: d.title, type: d.type, area: d.area, sub: d.sub || '', format: d.format, chapter: d.chapter || '', versions: [{ v: c.v, state: 'current', effective: c.effective, at: c.at, hasFile: !!c.file }], retired: false, underReview: false, cycle: 0, lastReviewed: '', reviews: [], basis: '', notes: '', rev: d.rev };
   }
-  const o = { id: d.id, title: d.title, type: d.type, area: d.area, sub: d.sub || '', format: d.format, cycle: d.cycle || 0, basis: d.basis || '', notes: d.notes || '', underReview: !!d.underReview, retired: !!d.retired, rev: d.rev,
-    versions: (d.versions || []).map(v => ({ v: v.v, state: v.state, effective: v.effective || '', at: v.at || '', summary: v.summary || '', by: v.by || '', approvedBy: v.approvedBy || '', approvedIni: v.approvedIni || '', selfApproved: !!v.selfApproved, fileName: v.file ? v.file.name : '', hasFile: !!v.file })) };
+  const o = { id: d.id, title: d.title, type: d.type, area: d.area, sub: d.sub || '', format: d.format, chapter: d.chapter || '', audience: d.audience || [], cycle: d.cycle || 0, basis: d.basis || '', notes: d.notes || '', underReview: !!d.underReview, retired: !!d.retired, rev: d.rev,
+    versions: (d.versions || []).map(v => ({ v: v.v, state: v.state, effective: v.effective || '', at: v.at || '', summary: v.summary || '', by: v.by || '', approvedBy: v.approvedBy || '', approvedIni: v.approvedIni || '', selfApproved: !!v.selfApproved, fileName: v.file ? v.file.name : '', hasFile: !!v.file, dpReview: v.dpReview ? { by: v.dpReview.by, at: v.dpReview.at, ini: v.dpReview.ini || '' } : null })) };
   if(a){ o.lastReviewed = d.lastReviewed || ''; o.reviews = (d.reviews || []).map(r => ({ at: r.at, by: r.by, ini: r.ini || '', outcome: r.outcome, comment: r.comment })); } else { o.lastReviewed = ''; o.reviews = []; }
   return o;
 }
@@ -1407,16 +1495,358 @@ async function rxRoute(method, store, seg, body, me, storeItem){
   }
   throw new HttpError(404, 'Not found');
 }
+// ---------- 39.2: task attachments, the Tasks folder, My Documents, Personnel Files, document audience and chapter, Designated Person review
+// Single source: the Tasks folder and the personnel pages are views of the calendar records, licenses and logins; nothing is copied. Only uploaded scans (My Documents) are new files.
+const TASK_MAX = 20 * 1024 * 1024;
+const TASK_MIME = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', txt: 'text/plain', csv: 'text/csv', md: 'text/plain', json: 'application/json' };
+const TASK_FILE_RE = /^[a-f0-9]{32}\.(pdf|png|jpg|jpeg|gif|webp|txt|csv|md|json)$/;
+const TRAIN_RE = /(training|didactic|garb|media|competency|valid)/;
+const MY_KINDS = { validation: 'Validation', license: 'License', training: 'Training', scan: 'Uploaded Scan', other: 'Other' };
+const cleanChapter = v => { v = String(v == null ? '' : v); if(v !== '' && !CHAPTERS.includes(v)) throw bad('Chapter is 795, 797 or 800.'); return v; };
+const dpStepOn = (d, team, cfg) => !!d.chapter && team.some(p => dpHolds(p, d.chapter) && !(cfg.dpOff || {})[p.sub]);       // a Designated Person reviews first when one is on and not switched off
+const taskPerson = me => !!me && (me.owner === true || me.host === true || me.acctType === 'pic' || me.acctType === 'pharmacist' || me.acctType === 'tech');   // can enter or approve tasks
+const anyDp = p => !!p && (p.acctType === 'pic' || p.acctType === 'pharmacist' || p.acctType === 'tech') && !!(p.dp && Object.values(p.dp).some(v => v === true));
+async function docCfg(store){
+  const r = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: docPk(store), sk: 'DOCCFG' } }));
+  let c = {}; try{ c = r.Item ? JSON.parse(r.Item.j) : {}; }catch(e){}
+  return { dpOff: c.dpOff || {}, persGrant: c.persGrant || {}, inspGrant: c.inspGrant || {} };
+}
+const docCfgPut = (store, c) => ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: docPk(store), sk: 'DOCCFG', j: JSON.stringify(c) } }));
+const persRight = (me, cfg) => !!(me.owner || me.acctType === 'pic' || (cfg.persGrant || {})[me.sk] === true || anyDp(me));   // a ticked Designated Person box turns Personnel Files viewing on
+function cleanAudience(v){
+  if(v == null || v === '') return [];
+  if(!Array.isArray(v)) throw bad('Bad audience.');
+  const ok = ['pharmacist', 'tech', 'staff'];
+  for(const t of Object.keys(SUBROLES)) for(const s of SUBROLES[t]) ok.push(t + ':' + s);
+  const out = []; for(const x of v){ const k = String(x); if(!ok.includes(k)) throw bad('Pick the audience from the list.'); if(!out.includes(k)) out.push(k); }
+  return out;
+}
+const audOk = (d, me, manage) => manage || me.owner || me.acctType === 'pic' || !(d.audience || []).length || d.audience.includes(me.acctType) || (me.subs || []).some(s => d.audience.includes((me.acctType || '') + ':' + s));
+async function calTaskFile(method, store, seg, body, me){
+  if(!taskPerson(me)) throw forbidden('Your role can view the calendar. A technician or pharmacist attaches files.');
+  if(!DOCS_BUCKET) throw new HttpError(503, 'File storage is not set up yet. Run deploy.sh again.');
+  if(method === 'POST' && seg[0] === 'upload-url'){
+    const name = String(body.name || ''), size = Number(body.size), ext = (/\.([A-Za-z0-9]{2,4})$/.exec(name) || [])[1];
+    if(!ext || !TASK_MIME[ext.toLowerCase()]) throw bad('PDF, images, and text or CSV files are supported.');
+    if(!(size > 0) || size > TASK_MAX) throw bad('Each file must be under 20 MB.');
+    const e = ext.toLowerCase(), id = crypto.randomBytes(16).toString('hex') + '.' + e, ct = TASK_MIME[e];
+    return { id, url: presignS3({ method: 'PUT', bucket: DOCS_BUCKET, key: `${store}/tasks/${id}`, headers: { 'content-type': ct } }), headers: { 'content-type': ct } };
+  }
+  if(method === 'GET' && seg[0] === 'file' && seg[1]){
+    const id = String(seg[1]); if(!TASK_FILE_RE.test(id)) throw bad('Bad file.');
+    return { url: presignS3({ method: 'GET', bucket: DOCS_BUCKET, key: `${store}/tasks/${id}`, query: { 'response-content-disposition': 'inline' } }), seconds: DOC_LINK_SECONDS };
+  }
+  throw new HttpError(404, 'Not found');
+}
+async function calRecordsAll(store){
+  const items = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p AND begins_with(sk, :c)', ExpressionAttributeValues: { ':p': calPk(store), ':c': 'CAL#records#' } });
+  const out = []; for(const it of items){ try{ out.push(JSON.parse(it.j)); }catch(e){} } return out;
+}
+const recView = r => { const rv = r.review || {}, [ob, subj] = String(r.track || '').split('|');
+  return { id: r.id, obId: ob, type: r.title || ob, subject: subj || '', date: r.completedOn || '', performedBy: r.completedBy || '', completedBy: r.by || '', result: r.result || '',
+    approvedBy: rv.status === 'accepted' ? (rv.by || '') : '', approvedAt: rv.status === 'accepted' ? (rv.at || '') : '', status: r.status === 'void' ? 'void' : (rv.status || ''), dpBy: (rv.dp && rv.dp.by) || '', corrected: !!(rv.reopens && rv.reopens.length) }; };
+async function docTasks(store, me){
+  if(!taskPerson(me)) throw forbidden('The Tasks folder is for people who enter or approve tasks.');
+  const recs = (await calRecordsAll(store)).filter(r => r.status !== 'void' && r.task && Array.isArray(r.task.files) && r.task.files.length);
+  const folders = {};
+  for(const r of recs){ const v = recView(r); (folders[v.obId] = folders[v.obId] || { key: v.obId, title: v.type, entries: [] }).entries.push({ ...v, files: r.task.files.map(f => ({ id: f.id, name: f.name, size: f.size, by: f.by || '', at: f.at || '' })) }); }
+  const out = Object.values(folders).sort((a, b) => a.title.localeCompare(b.title));
+  for(const f of out) f.entries.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  return { folders: out };
+}
+async function myDocsOf(store, sub){
+  const items = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p AND begins_with(sk, :s)', ExpressionAttributeValues: { ':p': docPk(store), ':s': 'MYDOC#' + sub + '#' } });
+  const out = []; for(const it of items){ try{ out.push(JSON.parse(it.j)); }catch(e){} }
+  return out.sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+}
+async function personRecords(store, p){                              // training and validation task records for one person, read from the calendar
+  const cfg = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: calPk(store), sk: 'CAL#cfg#people' } }));
+  let people = []; try{ people = cfg.Item ? JSON.parse(cfg.Item.j) : []; }catch(e){}
+  const nm = String(p.name || p.login || '').toLowerCase(), cp = (Array.isArray(people) ? people : []).find(x => x && (x.sub === p.sub || String(x.name || '').toLowerCase() === nm));
+  return (await calRecordsAll(store)).filter(r => r.status !== 'void' && TRAIN_RE.test(String(r.track || '').split('|')[0]) &&
+    ((cp && String(r.track || '').split('|')[1] === cp.id) || String(r.completedBy || '').toLowerCase() === nm)).map(recView).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+const persLine = p => ({ sub: p.sub, name: p.name || p.login, acctType: p.acctType || '', subs: p.subs || [], dp: p.dp || {}, license: p.license || '', licExpires: p.licExpires || '' });   // compliance data only: no address, phone, email, birth date or pay
+async function persDetail(store, sub){
+  const p = (await calTeam(store)).find(x => x.sub === sub); if(!p) throw new HttpError(404, 'No such person here.');
+  return { person: persLine(p), uploads: await myDocsOf(store, sub), records: await personRecords(store, p) };
+}
+async function docsExtra(method, store, id, seg, q, body, me, storeItem){      // returns undefined when the path is not one of these
+  const cfg = await docCfg(store), boss = !!(me.owner || me.acctType === 'pic');
+  if(id === 'tasks'){
+    if(method === 'GET' && !seg[1]) return await docTasks(store, me);
+    if(method === 'GET' && seg[1] === 'file' && seg[2]){ if(!taskPerson(me)) throw forbidden(); return await calTaskFile('GET', store, ['file', seg[2]], {}, me); }
+  }
+  if(id === 'mine'){
+    if(method === 'GET' && !seg[1]){
+      const rec = await personRecords(store, { sub: me.sk, name: me.name, login: me.login });
+      return { uploads: await myDocsOf(store, me.sk), records: rec, license: { number: me.license || '', expires: me.licExpires || '' }, kinds: MY_KINDS };
+    }
+    if(method === 'POST' && seg[1] === 'upload-url'){
+      const name = String(body.name || ''), size = Number(body.size);
+      if(!/\.pdf$/i.test(name)) throw bad('Only PDF files are accepted.'); if(!(size > 0) || size > DOC_MAX_BYTES) throw bad('The PDF must be under 25 MB.');
+      const key = `${store}/files/${crypto.randomBytes(16).toString('hex')}.pdf`;
+      return { key, url: presignS3({ method: 'PUT', bucket: DOCS_BUCKET, key, headers: { 'content-type': 'application/pdf' } }), headers: { 'content-type': 'application/pdf' } };
+    }
+    if(method === 'POST' && !seg[1]){
+      const title = String(body.title || '').trim().slice(0, 200); if(!title) throw bad('Enter a title.');
+      const kind = String(body.kind || ''); if(!MY_KINDS[kind]) throw bad('Pick the kind from the list.');
+      const f = body.file && typeof body.file === 'object' ? body.file : null; if(!f) throw bad('Choose the PDF file.');
+      const { size } = await docIo(store, f.key);
+      const mid = 'm' + crypto.randomBytes(6).toString('hex'), o = { id: mid, owner: me.sk, title, kind, at: now(), by: who(me), file: { key: f.key, name: String(f.name || 'document.pdf').slice(0, 160), size } };
+      await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: docPk(store), sk: `MYDOC#${me.sk}#${mid}`, j: JSON.stringify(o) } }));
+      return { ok: true, id: mid };
+    }
+    if(method === 'GET' && seg[2] === 'file'){
+      const r = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: docPk(store), sk: `MYDOC#${me.sk}#${String(seg[1])}` } })); if(!r.Item) throw new HttpError(404, 'No such document.');
+      const o = JSON.parse(r.Item.j);
+      return { url: presignS3({ method: 'GET', bucket: DOCS_BUCKET, key: o.file.key, query: { 'response-content-type': 'application/pdf', 'response-content-disposition': 'inline' } }), name: o.file.name, seconds: DOC_LINK_SECONDS };
+    }
+    if(method === 'POST' && seg[2] === 'remove'){
+      const r = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: docPk(store), sk: `MYDOC#${me.sk}#${String(seg[1])}` } })); if(!r.Item) throw new HttpError(404, 'No such document.');
+      const o = JSON.parse(r.Item.j); if(o.addedBy) throw forbidden('This was added by the Account Owner. Ask them to remove it.');
+      await ddb.send(new DeleteCommand({ TableName: MAIN, Key: { pk: docPk(store), sk: `MYDOC#${me.sk}#${String(seg[1])}` } })); await docLog(store, me, 'My Document Removed', '', o.title);
+      return { ok: true };
+    }
+  }
+  if(id === 'personnel'){
+    if(!persRight(me, cfg)) throw forbidden('Personnel Files is open to the Pharmacist-In-Charge, the Account Owner, and people they allow.');
+    if(method === 'GET' && !seg[1]){ const team = await calTeam(store); await docLog(store, me, 'Personnel Files Opened', '', ''); return { people: team.map(persLine).sort((a, b) => a.name.localeCompare(b.name)), canAdd: !!me.owner, canGrant: boss }; }
+    if(method === 'GET' && seg[1] && !seg[2]){ const d = await persDetail(store, seg[1]); await docLog(store, me, 'Personnel File Viewed', '', d.person.name); return { ...d, canAdd: !!me.owner }; }
+    if(method === 'GET' && seg[2] === 'file' && seg[3]){
+      const r = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: docPk(store), sk: `MYDOC#${seg[1]}#${String(seg[3])}` } })); if(!r.Item) throw new HttpError(404, 'No such document.');
+      const o = JSON.parse(r.Item.j); await docLog(store, me, 'Personnel Document Opened', '', o.title + ' (' + seg[1] + ')');
+      return { url: presignS3({ method: 'GET', bucket: DOCS_BUCKET, key: o.file.key, query: { 'response-content-type': 'application/pdf', 'response-content-disposition': 'inline' } }), name: o.file.name, seconds: DOC_LINK_SECONDS };
+    }
+    if(method === 'POST' && seg[2] === 'upload-url'){ if(!me.owner) throw forbidden('Only the Account Owner adds material to a personnel file.');
+      const name = String(body.name || ''), size = Number(body.size); if(!/\.pdf$/i.test(name)) throw bad('Only PDF files are accepted.'); if(!(size > 0) || size > DOC_MAX_BYTES) throw bad('The PDF must be under 25 MB.');
+      const key = `${store}/files/${crypto.randomBytes(16).toString('hex')}.pdf`;
+      return { key, url: presignS3({ method: 'PUT', bucket: DOCS_BUCKET, key, headers: { 'content-type': 'application/pdf' } }), headers: { 'content-type': 'application/pdf' } };
+    }
+    if(method === 'POST' && seg[2] === 'add'){
+      if(!me.owner) throw forbidden('Only the Account Owner adds material to a personnel file.');
+      const p = (await calTeam(store)).find(x => x.sub === seg[1]); if(!p) throw new HttpError(404, 'No such person here.');
+      const title = String(body.title || '').trim().slice(0, 200); if(!title) throw bad('Enter a title.');
+      const kind = String(body.kind || 'other'); if(!MY_KINDS[kind]) throw bad('Pick the kind from the list.');
+      const f = body.file && typeof body.file === 'object' ? body.file : null; if(!f) throw bad('Choose the PDF file.');
+      const { size } = await docIo(store, f.key);
+      const mid = 'm' + crypto.randomBytes(6).toString('hex'), o = { id: mid, owner: p.sub, title, kind, at: now(), by: who(me), addedBy: who(me), file: { key: f.key, name: String(f.name || 'document.pdf').slice(0, 160), size } };
+      await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: docPk(store), sk: `MYDOC#${p.sub}#${mid}`, j: JSON.stringify(o) } }));
+      await docLog(store, me, 'Personnel Material Added', '', title + ' for ' + (p.name || p.login)); return { ok: true, id: mid };
+    }
+  }
+  if(id === 'grants' && method === 'POST'){                           // who may open Personnel Files, and who skips the Designated Person step on documents
+    if(!boss) throw forbidden('Only the Pharmacist-In-Charge or the Account Owner can change this.');
+    const sub = String(body.sub || ''), team = await calTeam(store), p = team.find(x => x.sub === sub); if(!p) throw bad('Pick a person.');
+    if(typeof body.on !== 'boolean') throw bad('Bad setting.');
+    if(body.what === 'personnel'){ cfg.persGrant[sub] = body.on; if(!body.on) delete cfg.persGrant[sub]; await docCfgPut(store, cfg); await docLog(store, me, body.on ? 'Personnel Files Granted' : 'Personnel Files Removed', '', p.name || p.login); return { ok: true }; }
+    if(body.what === 'inspector'){ cfg.inspGrant = cfg.inspGrant || {}; if(body.on) cfg.inspGrant[sub] = true; else delete cfg.inspGrant[sub]; await docCfgPut(store, cfg); await docLog(store, me, body.on ? 'Inspector Link Granted' : 'Inspector Link Grant Removed', '', p.name || p.login); return { ok: true }; }
+    if(body.what === 'dpoff'){ if(!anyDp(p)) throw bad('That person is not a Designated Person.'); if(body.on) cfg.dpOff[sub] = true; else delete cfg.dpOff[sub]; await docCfgPut(store, cfg); await docLog(store, me, body.on ? 'Document Review Switched Off' : 'Document Review Switched On', '', p.name || p.login); return { ok: true }; }
+    throw bad('Bad setting.');
+  }
+  if(id === 'grants' && method === 'GET'){ if(!boss) throw forbidden(); return { personnel: cfg.persGrant, dpOff: cfg.dpOff, inspector: cfg.inspGrant }; }
+  if(id === 'notifycfg'){ if(!boss) throw forbidden('Only the Pharmacist-In-Charge or the Account Owner can change this.');
+    if(method === 'GET') return await notifyCfg(store);
+    const h = Number(body.firstHours); if(!Number.isInteger(h) || h < 1 || h > 720) throw bad('Enter whole hours from 1 to 720.');
+    await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: docPk(store), sk: 'NOTIFYCFG', j: JSON.stringify({ firstHours: h }) } })); await docLog(store, me, 'Notification Timing Changed', '', `first message after ${h} hours`); return { ok: true }; }
+  if(id === 'hostlog' && method === 'GET'){ if(!boss) throw forbidden('Only the Pharmacist-In-Charge or the Account Owner can see this.');
+    const ev = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p AND begins_with(sk, :s)', ExpressionAttributeValues: { ':p': docPk(store), ':s': 'HOSTLOG#' }, ScanIndexForward: false, Limit: 500 });
+    return { log: ev.map(e => { try{ return JSON.parse(e.j); }catch(x){ return null; } }).filter(Boolean) }; }
+  return undefined;
+}
+// ---------- 39.2: notifications. Everything stays visible in the app (Dashboard, Documents). On top of that, a person may opt in to email and/or text (none ticked = app only).
+// Rules: a first message once an item has waited on that person's step for 72 hours (per pharmacy adjustable), sent only while the pharmacy is open and with generic wording
+// (never a patient, drug or task name); an urgent message after 2 hours for an open temperature or environmental excursion or a missed required entry, at any hour, to the people
+// on that step who opted in; one message to the Pharmacist-In-Charge at 96 hours for a Designated Person review still waiting. A person gets at most one message per run, the urgent
+// one first, and an item is never announced twice to the same person. Sending needs IronLedger's business email and text sender (NOTIFY_FROM, NOTIFY_SMS); until then nothing is sent.
+const NOTIFY_FROM = process.env.NOTIFY_FROM || '', NOTIFY_SMS = process.env.NOTIFY_SMS === '1', NOTIFY_TEST = process.env.NOTIFY_TEST === '1';
+const NOTIFY_DEF = { firstHours: 72, urgentHours: 2, picHours: 96 };
+async function notifyCfg(store){
+  const r = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: docPk(store), sk: 'NOTIFYCFG' } })); let c = {}; try{ c = r.Item ? JSON.parse(r.Item.j) : {}; }catch(e){}
+  return { ...NOTIFY_DEF, ...(Number.isFinite(c.firstHours) ? { firstHours: c.firstHours } : {}) };
+}
+function openAt(storeItem, ms){                                           // is the pharmacy open at this moment (its own time zone, weekly hours, closed days)?
+  const tz = storeItem.timezone || DEFAULT_TZ, h = Array.isArray(storeItem.hours) && storeItem.hours.length === 7 ? storeItem.hours : null; if(!h) return true;
+  try{
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms)).map(x => [x.type, x.value]));
+    if((((storeItem.closures || {}).days) || []).includes(`${p.year}-${p.month}-${p.day}`)) return false;
+    const d = h[['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday)]; if(!d || !d.o || !d.c) return false;
+    const t = `${p.hour}:${p.minute}`; return d.o <= t && t < d.c;
+  }catch(e){ return true; }
+}
+const wantsNotice = p => !!(p && p.notify && (p.notify.email === true || p.notify.text === true));
+// pure: who gets which message now. team = people at the pharmacy (profiles); recs/exc/docs = calendar records, open exceptions and documents; sent = markers already used
+export function notifyPlan({ store, storeItem, team, recs, exc, docs, cfg, nowMs, sent, dpOff = {} }){
+  const hrs = ts => (nowMs - (typeof ts === 'number' ? ts : Date.parse(ts))) / 3600000, ownerIsPic = storeItem.ownerIsPic;
+  const mem = team.map(p => ({ ...p, isOwner: (p.ownerStores || {})[store] === true }));
+  const finals = mem.filter(p => finalRole(p, ownerIsPic)), dps = ch => mem.filter(p => dpHolds(p, ch)), pics = mem.filter(p => p.acctType === 'pic' || (p.isOwner && ownerIsPic !== false));
+  const need = new Map(), add = (people, kind, key) => { for(const p of people){ if(!wantsNotice(p) || p.disabled || p.deleted) continue; const k = key + '#' + p.sub; if(sent.has(k)) continue; const e = need.get(p.sub) || { sub: p.sub, kinds: new Set(), keys: [] }; e.kinds.add(kind); e.keys.push(k); need.set(p.sub, e); } };
+  for(const r of recs){ if(r.status === 'void' || !r.review) continue; const st = r.review.status, since = r.review.since, ch = chapterOf(String(r.track || '').split('|')[0]); if(!since) continue;
+    if(st === 'dp'){ if(hrs(since) >= cfg.firstHours) add(dps(ch), 'waiting', `rec:${r.id}:dp:first`); if(hrs(since) >= cfg.picHours) add(pics, 'pic', `rec:${r.id}:dp:pic`); }
+    if(st === 'pending' && hrs(since) >= cfg.firstHours) add(finals, 'waiting', `rec:${r.id}:final:first`); }
+  for(const e of exc){ if(e.status === 'closed' || !(e.kind === 'excursion' || e.kind === 'missed') || !e.createdAt) continue; if(hrs(e.createdAt) >= cfg.urgentHours){ add(finals, 'urgent', `exc:${e.id}:urgent`); add(dps(chapterOf(String(e.track || '').split('|')[0])), 'urgent', `exc:${e.id}:urgent`); } }
+  for(const d of docs){ const pend = docPend(d), cur = docCur(d); if(!pend || d.retired) continue; const ts = pend.ts || (pend.at ? pend.at + 'T00:00:00Z' : ''); if(!ts) continue;
+    const dpPeople = d.chapter ? dps(d.chapter).filter(p => !dpOff[p.sub]) : [], dpOn = dpPeople.length > 0 && !pend.dpReview;
+    if(dpOn){ if(hrs(ts) >= cfg.firstHours) add(dpPeople, 'waiting', `doc:${d.id}:${pend.v}:dp:first`); if(hrs(ts) >= cfg.picHours) add(pics, 'pic', `doc:${d.id}:${pend.v}:dp:pic`); }
+    else { const since = (pend.dpReview && pend.dpReview.at) || ts; if(hrs(since) >= cfg.firstHours) add(finals, 'waiting', `doc:${d.id}:${pend.v}:final:first`); } }
+  const open = openAt(storeItem, nowMs), out = [];
+  for(const e of need.values()){
+    const kind = e.kinds.has('urgent') ? 'urgent' : e.kinds.has('pic') ? 'pic' : 'waiting';
+    if(kind !== 'urgent' && !open) continue;                           // not while the pharmacy is closed; it goes at the next run when it opens
+    out.push({ sub: e.sub, kind, keys: e.keys });
+  }
+  return out;
+}
+const NOTIFY_TEXT = { urgent: n => `IronLedger: an urgent item needs attention at ${n}. Sign in now.`, pic: n => `IronLedger: a review at ${n} has been waiting 96 hours. Sign in to see it.`, waiting: n => `IronLedger: an item is waiting for you at ${n}. Sign in to review it.` };
+async function notifySend(channel, p, text){
+  if(NOTIFY_TEST) return 'test';
+  if(channel === 'email' && NOTIFY_FROM && p.notify.address){ const { SESv2Client, SendEmailCommand } = await import('@aws-sdk/client-sesv2');
+    await new SESv2Client({}).send(new SendEmailCommand({ FromEmailAddress: NOTIFY_FROM, Destination: { ToAddresses: [p.notify.address] }, Content: { Simple: { Subject: { Data: 'IronLedger' }, Body: { Text: { Data: text } } } } })); return 'sent'; }
+  if(channel === 'text' && NOTIFY_SMS && p.phone){ const { SNSClient, PublishCommand } = await import('@aws-sdk/client-sns');
+    await new SNSClient({}).send(new PublishCommand({ PhoneNumber: phoneE164(p.phone), Message: text, MessageAttributes: { 'AWS.SNS.SMS.SMSType': { DataType: 'String', StringValue: 'Transactional' } } })); return 'sent'; }
+  return '';
+}
+async function notifyRun(storeItem, nowMs){
+  const store = storeItem.sk, team = await Promise.all((await calTeam(store)).map(async p => ({ ...p, notify: ((await profileOf(p.sub)) || {}).notify || {} }))), cfg = await notifyCfg(store);
+  const marks = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p AND begins_with(sk, :s)', ExpressionAttributeValues: { ':p': docPk(store), ':s': 'NOTIF#' } });
+  const sent = new Set(marks.map(m => m.sk.slice(6)));
+  const exc = (await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p AND begins_with(sk, :c)', ExpressionAttributeValues: { ':p': calPk(store), ':c': 'CAL#exc#' } })).map(i => { try{ return JSON.parse(i.j); }catch(e){ return null; } }).filter(Boolean);
+  const plan = notifyPlan({ store, storeItem, team, recs: await calRecordsAll(store), exc, docs: await docLoadAll(store), cfg, nowMs, sent, dpOff: (await docCfg(store)).dpOff || {} }), out = [];
+  for(const n of plan){
+    const p = team.find(x => x.sub === n.sub), text = NOTIFY_TEXT[n.kind](storeItem.name || 'your pharmacy'), got = [];
+    for(const ch of [p.notify.email === true ? 'email' : '', p.notify.text === true ? 'text' : ''].filter(Boolean)){ try{ if(await notifySend(ch, p, text)) got.push(ch); }catch(e){ console.error('notify failed', ch, e.message); } }
+    if(!got.length) continue;                                           // nothing went out (no address or number, or the sender failed): try again next run
+    for(const k of n.keys) await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: docPk(store), sk: 'NOTIF#' + k, j: JSON.stringify({ at: new Date(nowMs).toISOString() }) } }));
+    await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: docPk(store), sk: `NOTIFLOG#${new Date(nowMs).toISOString()}#${crypto.randomBytes(3).toString('hex')}`, j: JSON.stringify({ at: new Date(nowMs).toISOString(), to: n.sub, kind: n.kind, channels: got, items: n.keys.length }) } }));
+    out.push({ store, sub: n.sub, kind: n.kind, channels: got, text });
+  }
+  return out;
+}
+async function notifyTick(nowMs){
+  if(!(NOTIFY_FROM || NOTIFY_SMS || NOTIFY_TEST)) return { skipped: 'No email or text sender is set up yet.' };
+  const out = []; for(const s of (await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'STORES' } })))
+    if(suiteStore(s.sk) || s.calendar === true || s.documents === true) out.push(...await notifyRun(s, nowMs || Date.now()));
+  return { sent: out };
+}
+const NOTIFY_ADDR = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+async function notifyPrefs(method, me, body){
+  if(method === 'GET') return { email: !!(me.notify && me.notify.email), text: !!(me.notify && me.notify.text), address: (me.notify && me.notify.address) || '', phone: me.phone ? '(•••) •••-' + String(me.phone).replace(/\D/g, '').slice(-4) : '' };
+  const email = body.email === true, text = body.text === true, address = String(body.address || '').trim().slice(0, 120);
+  if(email && !NOTIFY_ADDR.test(address)) throw bad('Enter the email address that should get the messages.');
+  if(text && !me.phone) throw bad('There is no mobile number on your login. Ask the Account Owner.');
+  await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: me.sk }, UpdateExpression: 'SET notify = :n', ExpressionAttributeValues: { ':n': { email, text, address: address && NOTIFY_ADDR.test(address) ? address : '' } } }));
+  return { ok: true };
+}
+
+// ---------- 39.2: inspector link (time-limited, read only, every open is logged) and IronLedger's read-only, logged view of a pharmacy's Calendar and Personnel
+// The link is store id + '.' + a long random token, kept only as a hash. It is not a login: it opens a fixed set of read-only views and nothing else. Drafts, hard voids, billing, user accounts and contacts,
+// other pharmacies and the Account area are never reachable through it.
+const inspHash = t => crypto.createHash('sha256').update(String(t)).digest('hex');
+const INSP_TYPES = ['POL', 'SOP', 'FRM', 'MFR', 'CMP', 'LOG', 'CHK', 'TRN'];
+const boss = me => !!(me && (me.owner || me.acctType === 'pic'));
+const inspRight = (me, cfg) => boss(me) || (cfg.inspGrant || {})[me.sk] === true;
+async function inspLinks(store){
+  const items = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p AND begins_with(sk, :s)', ExpressionAttributeValues: { ':p': docPk(store), ':s': 'INSP#' } });
+  const out = []; for(const it of items){ try{ out.push({ ...JSON.parse(it.j), sk: it.sk }); }catch(e){} } return out.sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+}
+async function inspLogRows(store, limit){
+  const ev = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p AND begins_with(sk, :s)', ExpressionAttributeValues: { ':p': docPk(store), ':s': 'INSPLOG#' }, ScanIndexForward: false, ...(limit ? { Limit: limit } : {}) });
+  return ev.map(e => { try{ return JSON.parse(e.j); }catch(x){ return null; } }).filter(Boolean);
+}
+const linkView = (l, opens) => ({ id: l.id, label: l.label, from: l.from, to: l.to, docs: !!l.docs, by: l.by, at: l.at, expiresAt: l.expiresAt, revoked: !!l.revoked, revokedBy: l.revokedBy || '', opens: opens[l.id] || 0, state: l.revoked ? 'Revoked' : l.expiresAt <= Date.now() ? 'Expired' : 'Active' });
+async function inspRoute(method, store, seg, body, me, storeItem){
+  docGate(me, storeItem);
+  const cfg = await docCfg(store); if(!inspRight(me, cfg)) throw forbidden('Only the Pharmacist-In-Charge, the Account Owner, or someone they allow can send the inspector link.');
+  if(method === 'GET' && !seg[0]){
+    const log = boss(me) ? await inspLogRows(store, 1000) : [], opens = {}; for(const e of log) opens[e.lid] = (opens[e.lid] || 0) + 1;
+    return { links: (await inspLinks(store)).map(l => linkView(l, opens)), log: boss(me) ? log.slice(0, 500) : null, canGrant: boss(me), granted: boss(me) ? cfg.inspGrant || {} : null };
+  }
+  if(method === 'POST' && !seg[0]){
+    const label = String(body.label || '').trim().slice(0, 80); if(!label) throw bad('Enter who this is for.');
+    const from = String(body.from || ''), to = String(body.to || ''); if(!DATE.test(from) || !DATE.test(to) || isNaN(Date.parse(from)) || isNaN(Date.parse(to))) throw bad('Pick the report period with the date picker.');
+    if(to < from) throw bad('The period ends before it starts.');
+    const days = body.days === undefined || body.days === '' ? 7 : parseInt(body.days, 10); if(!(days >= 1 && days <= 30)) throw bad('The link can last 1 to 30 days.');
+    const id = 'i' + crypto.randomBytes(5).toString('hex'), token = store + '.' + crypto.randomBytes(24).toString('base64url');
+    const l = { id, label, from, to, docs: body.docs === true, by: who(me), byId: me.sk, at: now(), expiresAt: Date.now() + days * 86400000, revoked: false };
+    await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: docPk(store), sk: 'INSP#' + inspHash(token), j: JSON.stringify(l) } }));
+    await docLog(store, me, 'Inspector Link Sent', '', label + ', ' + from + ' to ' + to + ', ' + days + ' days');
+    return { ok: true, token, path: '/inspect.html#' + token, link: linkView(l, {}) };
+  }
+  if(method === 'POST' && seg[0] && (seg[1] === 'revoke' || seg[1] === 'expiry')){
+    const l = (await inspLinks(store)).find(x => x.id === seg[0]); if(!l) throw new HttpError(404, 'No such link.');
+    const { sk, ...rest } = l;
+    if(seg[1] === 'revoke'){ rest.revoked = true; rest.revokedBy = who(me); rest.revokedAt = now(); }
+    else { const days = parseInt(body.days, 10); if(!(days >= 1 && days <= 30)) throw bad('The link can last 1 to 30 days.'); if(rest.revoked) throw bad('A revoked link cannot be extended. Send a new one.'); rest.expiresAt = Date.now() + days * 86400000; }
+    await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: docPk(store), sk, j: JSON.stringify(rest) } }));
+    await docLog(store, me, seg[1] === 'revoke' ? 'Inspector Link Revoked' : 'Inspector Link Expiry Changed', '', l.label); return { ok: true };
+  }
+  throw new HttpError(404, 'Not found');
+}
+async function inspPublic(rp, ev){                                   // GET /public/inspect/<store>.<token>/<what>[/<arg>]  (no sign-in; the token is the key)
+  const parts = rp.split('/').filter(Boolean).slice(2), [token, what, arg] = parts.map(x => { try{ return decodeURIComponent(x); }catch(e){ return ''; } });
+  const store = String(token || '').split('.')[0];
+  if(!token || !store || !okId(store) || !/^[A-Za-z0-9_.-]{20,80}$/.test(token)) throw new HttpError(404, 'This link is not valid.');
+  const g = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: docPk(store), sk: 'INSP#' + inspHash(token) } }));
+  if(!g.Item) throw new HttpError(404, 'This link is not valid.');
+  const l = JSON.parse(g.Item.j); if(l.revoked) throw new HttpError(410, 'This link was cancelled. Ask the pharmacy for a new one.'); if(l.expiresAt <= Date.now()) throw new HttpError(410, 'This link has expired. Ask the pharmacy for a new one.');
+  const st = (await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: store } }))).Item; if(!st) throw new HttpError(404, 'This link is not valid.');
+  const h = (ev.requestContext && ev.requestContext.http) || {}, hd = ev.headers || {};
+  const log = (w, d) => ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: docPk(store), sk: `INSPLOG#${now()}#${crypto.randomBytes(3).toString('hex')}`, j: JSON.stringify({ at: now(), lid: l.id, label: l.label, what: w, detail: String(d || '').slice(0, 200), ip: String(h.sourceIp || (hd['x-forwarded-for'] || '').split(',')[0] || '').slice(0, 45), device: String(hd['user-agent'] || h.userAgent || '').slice(0, 160) }) } }));
+  const inP = d => d && d >= l.from && d <= l.to;
+  const recs = (await calRecordsAll(store)).filter(r => r.status !== 'void' && r.review && r.review.status === 'accepted' && inP(r.completedOn));     // approved, not voided, in the period
+  const excAll = (await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p AND begins_with(sk, :c)', ExpressionAttributeValues: { ':p': calPk(store), ':c': 'CAL#exc#' } })).map(i => { try{ return JSON.parse(i.j); }catch(e){ return null; } }).filter(Boolean).filter(e => inP(e.date));
+  const exc = excAll.map(e => ({ date: e.date, kind: e.kind, what: e.what, handling: e.handling, status: e.status === 'closed' ? 'Closed' : 'Open', reconciliation: e.closed ? e.closed.reconciliation : '' }));
+  const pharmacy = () => ({ name: st.name || '', address: [st.address, st.suite, st.city, st.state, st.zip].filter(Boolean).join(', '), phone: st.phone || '', npi: st.npi || '', dea: st.dea || '', licenses: licensesOf(st) });
+  const logs = () => { const f = {}; for(const r of recs){ const v = recView(r); (f[v.obId] = f[v.obId] || { key: v.obId, title: v.type, rows: [] }).rows.push({ date: v.date, performedBy: v.performedBy, result: v.result, approvedBy: v.approvedBy, approvedAt: v.approvedAt, corrected: v.corrected }); }
+    return Object.values(f).sort((a, b) => a.title.localeCompare(b.title)).map(x => ({ ...x, rows: x.rows.sort((a, b) => a.date.localeCompare(b.date)) })); };
+  const summary = () => ({ pharmacy: pharmacy(), period: { from: l.from, to: l.to }, completed: recs.length, corrected: recs.filter(r => r.review.reopens && r.review.reopens.length).length,
+    byType: Object.values(logs().reduce((a, x) => { a[x.key] = { title: x.title, n: x.rows.length }; return a; }, {})), excursions: exc.filter(e => e.kind === 'excursion').length, missed: exc.filter(e => e.kind === 'missed').length, open: exc.filter(e => e.status === 'Open').length });
+  const docsList = async () => (await docLoadAll(store)).filter(d => docCur(d) && !d.retired && INSP_TYPES.includes(d.type)).map(d => { const c = docCur(d), base = d.lastReviewed || c.effective || '';
+    return { id: d.id, title: d.title, type: d.type, version: c.v, effective: c.effective || '', approvedBy: c.approvedBy || '', nextReview: base && d.cycle ? addMonthsIso(base, d.cycle) : '', hasFile: !!c.file }; }).sort((a, b) => a.id.localeCompare(b.id));
+  const people = async () => { const team = await calTeam(store), out = []; for(const p of team){ out.push({ ...persLine(p), records: (await personRecords(store, p)).filter(r => r.approvedBy).map(r => ({ date: r.date, type: r.type, result: r.result })) }); } return out.sort((a, b) => a.name.localeCompare(b.name)); };
+  const meta = { by: l.by, at: l.at, label: l.label, expiresAt: l.expiresAt, docs: !!l.docs };
+  if(!what || what === 'summary'){ await log('Opened Dashboard', ''); return { meta, ...summary() }; }
+  if(what === 'logs'){ await log('Opened Task Logs', ''); return { meta, period: { from: l.from, to: l.to }, logs: logs(), exceptions: exc }; }
+  if(what === 'docs'){ await log('Opened Documents', ''); return { meta, docs: await docsList() }; }
+  if(what === 'personnel'){ await log('Opened Personnel', ''); return { meta, people: await people() }; }
+  if(what === 'report'){ await log('Opened Print Report', ''); return { meta, generatedAt: now(), ...summary(), logs: logs(), exceptions: exc, docs: await docsList(), people: await people() }; }
+  if(what === 'file' && arg){
+    if(!l.docs) throw forbidden('This link shows the document register only.');
+    const d = await docGetOne(store, arg).catch(() => null); if(!d || !docCur(d) || d.retired || !INSP_TYPES.includes(d.type) || !docCur(d).file) throw new HttpError(404, 'No such document.');
+    await log('Downloaded Document', d.id + ' v' + docCur(d).v);
+    return { url: presignS3({ method: 'GET', bucket: DOCS_BUCKET, key: docCur(d).file.key, query: { 'response-content-type': 'application/pdf', 'response-content-disposition': 'inline' } }), name: docCur(d).file.name };
+  }
+  throw new HttpError(404, 'Not found');
+}
+// IronLedger staff: read-only, and every view is written to a log the pharmacy can see. Calendar: any host login. Personnel: only a host person who has been given the privilege.
+async function hostLog(store, me, what, detail){
+  await ddb.send(new PutCommand({ TableName: MAIN, Item: { pk: docPk(store), sk: `HOSTLOG#${now()}#${crypto.randomBytes(3).toString('hex')}`, j: JSON.stringify({ at: now(), by: who(me), login: me.login || '', what, detail: String(detail || '').slice(0, 200) }) } }));
+}
+async function hostView(method, store, seg, me, storeItem){
+  if(!me.host) throw new HttpError(404, 'Not found'); if(method !== 'GET') throw forbidden('IronLedger access is read only.');
+  if(seg[0] === 'calendar'){ await hostLog(store, me, 'Calendar Viewed', ''); const r = await calLoad(store, null, storeItem); return { ...r, readOnly: true }; }
+  if(seg[0] === 'personnel'){
+    if(me.hostPersonnel !== true) throw forbidden('You do not have the Personnel Files privilege. A supervisor can give it.');
+    if(!seg[1]){ await hostLog(store, me, 'Personnel List Viewed', ''); return { people: (await calTeam(store)).map(persLine).sort((a, b) => a.name.localeCompare(b.name)) }; }
+    const d = await persDetail(store, seg[1]); await hostLog(store, me, 'Personnel File Viewed', d.person.name);
+    if(seg[2] === 'file' && seg[3]){ const r = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: docPk(store), sk: `MYDOC#${seg[1]}#${String(seg[3])}` } })); if(!r.Item) throw new HttpError(404, 'No such document.'); const o = JSON.parse(r.Item.j); await hostLog(store, me, 'Personnel Document Opened', o.title); return { url: presignS3({ method: 'GET', bucket: DOCS_BUCKET, key: o.file.key, query: { 'response-content-type': 'application/pdf', 'response-content-disposition': 'inline' } }), name: o.file.name }; }
+    return d;
+  }
+  throw new HttpError(404, 'Not found');
+}
 async function docsRoute(method, store, seg, q, body, me, storeItem){
   docGate(me, storeItem);
   const duty = docDuty(me), m = DOC_MANAGE.includes(duty), a = DOC_APPROVE.includes(duty), today = todayIn(storeItem.timezone);
   const needM = what => { if(!m) throw forbidden(`Your role cannot ${what}.`); }, needA = what => { if(!a) throw forbidden(`Only the Owner, Pharmacist-In-Charge or Designated Person can ${what}.`); };
   const id = seg[0];
+  { const x = await docsExtra(method, store, id, seg, q, body, me, storeItem); if(x !== undefined) return x; }
   if(method === 'GET' && !id){
-    const docs = (await docLoadAll(store)).map(d => docView(d, duty)).filter(Boolean).sort((x, y) => x.id.localeCompare(y.id));
+    const cfg0 = await docCfg(store), team0 = await calTeam(store);
+    const dpSees = d => !!d.chapter && dpHolds(me, d.chapter) && !cfg0.dpOff[me.sk];       // a Designated Person sees the documents of their chapter, including a draft waiting for them
+    const docs = (await docLoadAll(store)).filter(d => audOk(d, me, m) || dpSees(d)).map(d => { const v = docView(d, dpSees(d) ? 'dp' : duty); if(v && (m || dpSees(d))) v.dpStep = dpStepOn(d, team0, cfg0); return v; }).filter(Boolean).sort((x, y) => x.id.localeCompare(y.id));
     const pin = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: docPk(store), sk: 'DOCPIN#' + me.sk } }));
     let pins = []; try{ pins = pin.Item ? JSON.parse(pin.Item.j).ids || [] : []; }catch(e){}
-    const out = { duty, today, docs, pins: pins.filter(p => docs.some(d => d.id === p)), maxMb: DOC_MAX_BYTES / 1048576, pharmacy: storeItem.name || '' };
+    const out = { duty, today, docs, pins: pins.filter(p => docs.some(d => d.id === p)), maxMb: DOC_MAX_BYTES / 1048576, pharmacy: storeItem.name || '', tasksOK: taskPerson(me), persOK: persRight(me, cfg0), persAdd: !!me.owner, boss: !!(me.owner || me.acctType === 'pic'), inspOK: inspRight(me, cfg0), dpChapters: CHAPTERS.filter(c => dpHolds(me, c) && !cfg0.dpOff[me.sk]), final: finalRole(me, storeItem.ownerIsPic) };
     if(a){ const ev = (await ddb.send(new QueryCommand({ TableName: MAIN, KeyConditionExpression: 'pk = :p AND begins_with(sk, :s)', ExpressionAttributeValues: { ':p': docPk(store), ':s': 'DOCLOG#' }, ScanIndexForward: false, Limit: 300 }))).Items || [];
       out.log = ev.map(e => { try{ return JSON.parse(e.j); }catch(x){ return null; } }).filter(Boolean); }
     return out;
@@ -1445,25 +1875,27 @@ async function docsRoute(method, store, seg, q, body, me, storeItem){
     const format = String(body.format || ''); if(!DOC_FORMATS.includes(format)) throw bad('Pick the format from the list.');
     const cycle = body.cycle === undefined || body.cycle === '' ? 12 : parseInt(body.cycle, 10); if(!(cycle >= 0 && cycle <= 120)) throw bad('Review cycle: 0 to 120 months.');
     const version = cleanVersion(body.version || '1.0');
+    const chapter = cleanChapter(body.chapter), audience = cleanAudience(body.audience);
     const f = body.file && typeof body.file === 'object' ? body.file : null; if(!f) throw bad('Choose the PDF file.');
     const { size } = await docIo(store, f.key);
     const seq = await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: docPk(store), sk: `DOCSEQ#${type}-${area}` }, UpdateExpression: 'ADD n :one', ExpressionAttributeValues: { ':one': 1 }, ReturnValues: 'UPDATED_NEW' }));
     const docId = `${type}-${area}-${String(seq.Attributes.n).padStart(3, '0')}`;
-    const d = { id: docId, title, type, area, sub, format, cycle, basis: String(body.basis || '').trim().slice(0, 200) || 'Internal Policy', notes: String(body.notes || '').trim().slice(0, 1000), underReview: false, retired: false, lastReviewed: '', reviews: [],
-      versions: [{ v: version, state: 'pending', summary: 'Initial Draft', by: who(me), byLogin: me.login || '', at: today, file: { key: f.key, name: String(f.name || 'document.pdf').slice(0, 160), size } }] };
+    const d = { id: docId, title, type, area, sub, format, chapter, audience, cycle, basis: String(body.basis || '').trim().slice(0, 200) || 'Internal Policy', notes: String(body.notes || '').trim().slice(0, 1000), underReview: false, retired: false, lastReviewed: '', reviews: [],
+      versions: [{ v: version, state: 'pending', summary: 'Initial Draft', by: who(me), byLogin: me.login || '', at: today, file: { key: f.key, name: String(f.name || 'document.pdf').slice(0, 160), size }, ts: now() }] };
     await docPut(store, d, true); await docLog(store, me, 'Document Added', docId, title + ' (Draft)');
     return { ok: true, id: docId };
   }
   if(!id) throw new HttpError(404, 'Not found');
   const act = seg[1] || '';
   if(method === 'GET' && act === 'file'){                              // a short-lived link to the PDF
-    const d = await docGetOne(store, id), st = docStatus(d);
+    const d = await docGetOne(store, id), st = docStatus(d), dpS = !!d.chapter && dpHolds(me, d.chapter) && !(await docCfg(store)).dpOff[me.sk], mm = m || dpS;
+    if(!audOk(d, me, m) && !dpS) throw new HttpError(404, 'No such document.');
     let v = docCur(d);
-    if(m && q.v) v = (d.versions || []).find(x => x.v === String(q.v));
-    else if(m && !v) v = docPend(d);
-    if(!m && (st === 'Draft' || st === 'Retired')) throw new HttpError(404, 'No such document.');
+    if(mm && q.v) v = (d.versions || []).find(x => x.v === String(q.v));
+    else if(mm && !v) v = docPend(d);
+    if(!mm && (st === 'Draft' || st === 'Retired')) throw new HttpError(404, 'No such document.');
     if(!v || !v.file) throw new HttpError(404, 'That version has no file.');
-    if(!m && v.state !== 'current') throw forbidden();
+    if(!mm && v.state !== 'current') throw forbidden();
     const fn = `${d.id}_v${v.v}_${String(d.title || 'Document').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '')}.pdf`.slice(0, 160);
     let print = null;
     if(q.print === '1'){                                                   // a stamped print copy: needs the person's initials; the time is the server's
@@ -1486,12 +1918,20 @@ async function docsRoute(method, store, seg, q, body, me, storeItem){
     if(!sum) throw bad('Enter a change summary.');
     const f = body.file && typeof body.file === 'object' ? body.file : null; if(!f) throw bad('Choose the PDF file.');
     const { size } = await docIo(store, f.key);
-    d.versions.push({ v, state: 'pending', summary: sum, by: who(me), byLogin: me.login || '', at: today, file: { key: f.key, name: String(f.name || 'document.pdf').slice(0, 160), size } });
+    d.versions.push({ v, state: 'pending', summary: sum, by: who(me), byLogin: me.login || '', at: today, file: { key: f.key, name: String(f.name || 'document.pdf').slice(0, 160), size }, ts: now() });
     await docPut(store, d); await docLog(store, me, 'Version Submitted', id, 'v' + v + ' ' + sum);
     return { ok: true };
   }
   if(act === 'approve'){
     needA('approve versions'); if(!pend) throw bad('Nothing is waiting for approval.');
+    const team = await calTeam(store), cfg = await docCfg(store), stepOn = dpStepOn(d, team, cfg), isFinal = finalRole(me, storeItem.ownerIsPic);
+    if(stepOn){
+      if(!isFinal) throw forbidden('Only the final approver (the Pharmacist-In-Charge, or a pharmacist they named) can give final approval.');
+      if(!pend.dpReview){
+        if(dpHolds(me, d.chapter) && !cfg.dpOff[me.sk]){ const s0 = await signAs(me, body, 'Reviewed'); pend.dpReview = { by: who(me), byLogin: me.login || '', byId: me.sk, at: now(), ini: s0.ini, sig: s0, same: true }; }
+        else throw bad('Waiting for the Designated Person review for chapter ' + d.chapter + '.');
+      }
+    }
     const eff = cleanDocDate(body.effective, 'Effective date', { max: addMonthsIso(today, 12) }, today), self = (pend.byLogin || '') === (me.login || '') && !!pend.byLogin;
     const sig = await signAs(me, body, 'Approved');
     if(cur) cur.state = 'superseded';
@@ -1500,6 +1940,17 @@ async function docsRoute(method, store, seg, q, body, me, storeItem){
     d.reviews = (d.reviews || []).concat([{ at: d.lastReviewed, by: who(me), ini: sig.ini, outcome: 'Revised And Approved', comment: ('v' + pend.v + ': ' + (pend.summary || '')).slice(0, 300) }]);
     await docPut(store, d); await docLog(store, me, 'Version Approved', id, 'v' + pend.v + ' effective ' + eff, self ? 'Self-Approved' : '', sig);
     return { ok: true };
+  }
+  if(act === 'dpreview'){
+    if(!d.chapter) throw bad('This document has no chapter tag.'); if(!pend) throw bad('Nothing is waiting for review.');
+    const cfg = await docCfg(store); if(!dpHolds(me, d.chapter) || cfg.dpOff[me.sk]) throw forbidden('Only a Designated Person for chapter ' + d.chapter + ' reviews this.');
+    if(pend.dpReview) throw bad('Already reviewed.');
+    const out = body.outcome === 'return' ? 'return' : 'ok';
+    if(out === 'return'){ const w = reason(); const sg = await signAs(me, body, 'Returned');
+      d.versions = d.versions.filter(x => x !== pend); if(!d.versions.length) await ddb.send(new DeleteCommand({ TableName: MAIN, Key: { pk: docPk(store), sk: 'DOC#' + id } })); else await docPut(store, d);
+      await docLog(store, me, 'Returned By Designated Person', id, 'v' + pend.v + '. ' + w, '', sg); return { ok: true, removed: !d.versions.length }; }
+    const sg = await signAs(me, body, 'Reviewed'); pend.dpReview = { by: who(me), byLogin: me.login || '', byId: me.sk, at: now(), ini: sg.ini, sig: sg, note: String(body.comment || '').trim().slice(0, 300) };
+    await docPut(store, d); await docLog(store, me, 'Designated Person Review', id, 'v' + pend.v + ' chapter ' + d.chapter, '', sg); return { ok: true };
   }
   if(act === 'reject'){
     needA('reject versions'); if(!pend) throw bad('Nothing is waiting for approval.'); const w = reason(); const sig = await signAs(me, body, 'Rejected');
@@ -1526,6 +1977,8 @@ async function docsRoute(method, store, seg, q, body, me, storeItem){
     const cy = body.cycle === undefined ? d.cycle : parseInt(body.cycle, 10); if(!(cy >= 0 && cy <= 120)) throw bad('Review cycle: 0 to 120 months.');
     const ch = []; if(t !== d.title) ch.push('title'); if(cy !== d.cycle) ch.push('review cycle ' + d.cycle + ' to ' + cy);
     d.title = t; d.cycle = cy;
+    if(body.chapter !== undefined){ const c = cleanChapter(body.chapter); if(c !== (d.chapter || '')) ch.push('chapter ' + (c || 'none')); d.chapter = c; }
+    if(body.audience !== undefined){ d.audience = cleanAudience(body.audience); ch.push('audience'); }
     if(body.basis !== undefined) d.basis = String(body.basis).trim().slice(0, 200);
     if(body.notes !== undefined) d.notes = String(body.notes).trim().slice(0, 1000);
     await docPut(store, d); await docLog(store, me, 'Details Edited', id, ch.join(', ') || 'minor fields');
@@ -1714,15 +2167,27 @@ async function route(method, path, q, body, me, claims){
     return { name: me.name || '', login: me.login, owner: !!me.owner, clientOwner: !!me.clientOwner, clients: await clientsOf(me), host: !!me.host, portal: !!me.employee, mgr: [...managedIds(me)], hostRole: me.host ? (me.hostRole === 'rep' ? 'rep' : 'supervisor') : '', repStores: me.host ? (me.repStores || {}) : {}, acctType: me.acctType || '', docDuty: docDuty({ ...me, owner: false }), initials: me.initials || '', license: me.license || '', licExpires: me.licExpires || '', subs: Array.isArray(me.subs) ? me.subs : [], dp: me.dp && typeof me.dp === 'object' ? me.dp : {}, approver: me.approver === true, empId: await ensureEmpId(me), pin: pinState(me), pinRequired: PIN_REQUIRED, perms: effPerms(me), stores: await storesFor(me) };
 
   if(method === 'POST' && seg[0] === 'me' && seg[1] === 'pin' && seg.length === 2) return await setMyPin(me, body);
+  if((method === 'GET' || method === 'POST') && seg[0] === 'me' && seg[1] === 'notify' && seg.length === 2) return await notifyPrefs(method, me, body);
+  if(method === 'POST' && seg[0] === 'host' && seg[1] === 'personnel-priv' && seg[2]){                // a supervisor gives or removes a host person's Personnel Files privilege
+    if(!isSupervisor(me)) throw forbidden('Only an IronLedger supervisor can change this.');
+    const t = await profileOf(String(seg[2])); if(!t || !t.host || t.deleted) throw new HttpError(404, 'No such IronLedger login.'); if(typeof body.on !== 'boolean') throw bad('Bad setting.');
+    await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: t.sk }, UpdateExpression: 'SET hostPersonnel = :v', ExpressionAttributeValues: { ':v': body.on } })); return { ok: true };
+  }
 
   if(seg[0] === 'stores' && seg[1]){
     const store = seg[1];
     if(!okId(store)) throw bad('Bad store');
+    if(seg[2] === 'host-view'){                          // IronLedger's read-only, logged look at one pharmacy (the only way the host reaches a pharmacy's own data)
+      if(!me.host) throw new HttpError(404, 'Not found');
+      const hs = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: store } })); if(!hs.Item) throw new HttpError(404, 'No such store.');
+      return await hostView(method, store, seg.slice(3), me, hs.Item);
+    }
     if(!canUse(me, store)) throw forbidden();
     const exists = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: store } }));
     if(!exists.Item) throw new HttpError(404, 'No such store.');
     me = asStore(me, store); me.pharm = pharmFn(me, { id: store, ownerIsPic: typeof exists.Item.ownerIsPic === 'boolean' ? exists.Item.ownerIsPic : null });
     const what = seg[2];
+    if(what === 'inspector') return await inspRoute(method, store, seg.slice(3), body, me, exists.Item);
     if(what === 'documents') return await docsRoute(method, store, seg.slice(3), q, body, me, exists.Item);
     if(what === 'rx') return await rxRoute(method, store, seg.slice(3), body, me, exists.Item);
     if(what === 'calendar'){
@@ -1731,6 +2196,9 @@ async function route(method, path, q, body, me, claims){
       if(method === 'POST' && seg[3] === 'commit') return await calCommit(store, me, body, exists.Item);
       if(method === 'POST' && seg[3] === 'delegations') return await calDelegate(store, me, exists.Item, seg[4], seg[5], body);
       if(method === 'POST' && seg[3] === 'timeoff') return await calTimeOff(store, me, exists.Item, seg[4], seg[5], body);
+      if(method === 'POST' && seg[3] === 'records') return await calRecordAct(store, me, exists.Item, seg[4], seg[5], body);
+      if(seg[3] === 'upload-url' || seg[3] === 'file') return await calTaskFile(method, store, seg.slice(3), body, me);
+      if(method === 'POST' && seg[3] === 'exc') return await calExcAct(store, me, exists.Item, seg[4], seg[5], body);
       throw new HttpError(404, 'Not found');
     }
     if(exists.Item.reorder === false && ['lines', 'memory', 'archive', 'commit', 'export', 'import'].includes(what)) throw forbidden('The Reorder List is switched off for this pharmacy.');
@@ -1922,11 +2390,14 @@ export const handler = async (event) => {
   if(event && /^PreAuthentication/.test(event.triggerSource || '')) return await preAuth(event);       // Cognito sign-in check: an Error here is what refuses the sign-in
   try{
     if(event && event.bootstrap){ try{ return await bootstrap(event.bootstrap); }catch(e){ return { ok: false, message: 'Setup stopped: ' + e.message + ' Run deploy.sh again to retry.' }; } }
+    if(event && event.notifyTick){ try{ return await notifyTick(event.notifyTick.now); }catch(e){ console.error('notifyTick', e); return { ok: false, message: e.message }; } }
+    if(event && event.source === 'aws.events'){ try{ return await notifyTick(); }catch(e){ console.error('notifyTick', e); return { ok: false }; } }
     if(event && event.makeHost){ try{ return await makeHost(event.makeHost); }catch(e){ return { ok: false, message: 'Stopped: ' + e.message }; } }
     const rp = (event.rawPath || '').replace(/^\/api/, '');
     if(event.requestContext && event.requestContext.http && event.requestContext.http.method === 'GET' && rp.startsWith('/public/pharmacy/'))
     { let id = ''; try{ id = decodeURIComponent(rp.slice('/public/pharmacy/'.length)); }catch(e){}
       return json(200, await publicPharmacy(id)); }
+    if(event.requestContext && event.requestContext.http && event.requestContext.http.method === 'GET' && rp.startsWith('/public/inspect/')) return json(200, await inspPublic(rp, event));
     const claims = (((event.requestContext || {}).authorizer || {}).jwt || {}).claims || {};
     if(!claims.sub) throw new HttpError(401, 'Please sign in again.');
     await migrateOwners();

@@ -15,9 +15,19 @@ Parameters:
     Default: 'on'
     AllowedValues: ['on', 'off']
     Description: Texted sign-in codes. 'off' signs in with password only (while SMS isn't approved yet). deploy.sh keeps the last choice.
+  NotifyFrom:
+    Type: String
+    Default: ''
+    Description: Verified sender address for notification emails (for example notices@ironledgerrx.com). Empty = no email is sent. deploy.sh keeps the last choice.
+  NotifyText:
+    Type: String
+    Default: 'off'
+    AllowedValues: ['on', 'off']
+    Description: Notification texts. 'on' only after the texting origination number is approved. deploy.sh keeps the last choice.
 
 Conditions:
   TextCodesOn: !Equals [!Ref TextCodes, 'on']
+  NotifyTextOn: !Equals [!Ref NotifyText, 'on']
 
 Resources:
   # ------------------------------------------------------------------ data
@@ -229,6 +239,13 @@ Resources:
               - Effect: Allow
                 Action: [s3:PutObject, s3:GetObject]
                 Resource: !Sub '${DocsBucket.Arn}/*'
+              # notifications: send a plain email or a text, nothing else (no templates, no lists, no reading)
+              - Effect: Allow
+                Action: [ses:SendEmail]
+                Resource: '*'
+              - Effect: Allow
+                Action: [sns:Publish]
+                Resource: '*'
               # the secret that keys the PIN hashes: read only
               - Effect: Allow
                 Action: [secretsmanager:GetSecretValue]
@@ -253,6 +270,25 @@ Resources:
           PORTAL_CLIENT_ID: !Ref PortalClient
           DOCS_BUCKET: !Ref DocsBucket
           PIN_SECRET_ARN: !Ref PinSecret
+          NOTIFY_FROM: !Ref NotifyFrom
+          NOTIFY_SMS: !If [NotifyTextOn, '1', '0']
+
+  # every 30 minutes: the notification check (it sends only to people who opted in, and only once per item)
+  NotifyRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: rate(30 minutes)
+      State: ENABLED
+      Targets:
+        - Id: notify
+          Arn: !GetAtt ApiFunction.Arn
+  NotifyInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ApiFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt NotifyRule.Arn
 
   ApiLogs:
     Type: AWS::Logs::LogGroup
@@ -314,6 +350,15 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: 'GET /public/pharmacy/{id}'
+      AuthorizationType: NONE
+      Target: !Sub 'integrations/${ApiIntegration}'
+
+  # inspector link: no sign-in; the long random token in the address is the key. Time-limited, read only, every open logged by the API.
+  ApiRouteInspect:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: 'GET /public/inspect/{proxy+}'
       AuthorizationType: NONE
       Target: !Sub 'integrations/${ApiIntegration}'
 

@@ -3,7 +3,7 @@
    person from window.ILCAL_HOST below, so it never has its own sign-in. The server checks every request: the
    person can open the pharmacy, has the Calendar privilege, and the pharmacy has Calendar switched on. */
 const CAL_CFG = ['v', 'profile', 'sites', 'people', 'equipment', 'documents', 'tracks', 'plans', 'work', 'reminders', 'rooms'];
-const CAL_COLLS = ['records', 'events', 'obl', 'log'];
+const CAL_COLLS = ['records', 'events', 'obl', 'log', 'exc'];
 const CAL = {store: null, sig: {}, loadedAt: 0, inflight: 0};     // sig: what the server has, per item, as text
 const calOK = () => !!(ME && STORE && STORE.calendar === true && PERM('calendar'));
 const calPath = () => '/stores/' + encodeURIComponent(STORE.id) + '/calendar';
@@ -11,7 +11,7 @@ function calItems(st){                                           // the calendar
   const out = {};
   for(const k of CAL_CFG) if(st[k] !== undefined) out['cfg#' + k] = {kind: 'cfg', key: k, json: JSON.stringify(st[k])};
   const add = (c, a) => (a || []).forEach(o => { if(o && o.id) out[c + '#' + o.id] = {kind: c, key: o.id, json: JSON.stringify(o), obj: o}; });
-  add('records', st.records); add('events', st.events); add('log', st.log);
+  add('records', st.records); add('events', st.events); add('log', st.log); add('exc', st.exc);
   add('obl', Object.values(st.obl || {}).concat(st.custom || []));
   return out;
 }
@@ -47,7 +47,7 @@ window.ILCAL_HOST = {
     CAL.store = id; CAL.sig = {}; CAL.loadedAt = Date.now(); if(r.me) this.ctx = calCtxOf(r);
     if(!r.started) return null;
     const st = Object.assign({}, r.config, {mode: 'live'});
-    st.records = r.records || []; st.events = r.events || []; st.log = (r.log || []).sort((a, b) => a.ts < b.ts ? 1 : -1).slice(0, 300);
+    st.records = r.records || []; st.exc = r.exc || []; st.events = r.events || []; st.log = (r.log || []).sort((a, b) => a.ts < b.ts ? 1 : -1).slice(0, 300);
     st.obl = {}; st.custom = [];
     (r.obl || []).forEach(o => { if(o.isCustom) st.custom.push(o); else st.obl[o.id] = o; });
     const items = calItems(st); for(const k in items) CAL.sig[k] = items[k].json;
@@ -61,8 +61,15 @@ window.ILCAL_HOST = {
     recs.forEach(o => { keep['records#' + o.id] = 1; CAL.sig['records#' + o.id] = JSON.stringify(o); });
     for(const k of Object.keys(CAL.sig)) if(k.startsWith('records#') && !keep[k]) delete CAL.sig[k];
     log.forEach(o => { CAL.sig['log#' + o.id] = JSON.stringify(o); });
-    return {records: recs, log};
+    const exc = r.exc || []; exc.forEach(o => { CAL.sig['exc#' + o.id] = JSON.stringify(o); });
+    return {records: recs, log, exc};
   },
+  async upload(f){                                               // task attachments go to the pharmacy's private file store
+    const r = await api('POST', calPath() + '/upload-url', {name: f.name, size: f.size});
+    const put = await fetch(r.url, {method: 'PUT', headers: r.headers, body: f}); if(!put.ok) throw new Error('The upload did not finish.');
+    return {id: r.id, sizeBytes: f.size, contentType: f.type};
+  },
+  async fileUrl(id){ const r = await api('GET', calPath() + '/file/' + encodeURIComponent(id)); return r.url; },
   async call(kind, id, action, body){                            // delegations and time off: the server checks the rules, then the lists are re-read
     const path = calPath() + '/' + kind + (id ? '/' + encodeURIComponent(id) : '') + (action ? '/' + action : '');
     const r = await api('POST', path, body || {}); await this.sync(); return r;

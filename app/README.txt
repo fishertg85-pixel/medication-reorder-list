@@ -3,6 +3,38 @@ NorTex Reorder List — Cloud Version (AWS)
 Hosted on your AWS account. Works in any browser on computers, phones and tablets, and installs to a
 phone's home screen. Each pharmacy has its own list, archive and distributor memory.
 
+ZIP 39.2 (2026-11-24): WHAT CHANGED
+  Records       The approver reopens a record (back to review, old version kept) or voids it (reason required,
+                hidden from lists and the inspector, kept on file). Nothing is deleted. Excursion and
+                missed-entry records are their own kind and are closed only by the approver.
+  Documents     Tasks folder (a subfolder per task type, filled automatically from completed-task files; for
+                people who enter or approve tasks). My Documents (private to each person). Personnel Files
+                (PIC, Account Owner, anyone the PIC allows; ticking a Designated Person box turns it on; the
+                host is read-only and logged). Per-document audience, chapter tag, Designated Person review
+                before the final approval (the PIC can switch the review off per person; the final approval
+                is always required). Pinned box stays hidden until something is pinned.
+  Task files    Files attached to Calendar tasks now work in the suite (private S3 storage).
+  Inspector     Documents > Inspector Link: a time-limited, read-only link (Dashboard, Task Logs, Documents,
+                Personnel compliance data, Print Report with Register Only or Register Plus Documents). Every
+                open is logged and kept (PIC and Account Owner see it). Voided records are hidden.
+  Host access   IronLedger can read a pharmacy's Calendar, and Personnel with a per-person privilege, read-only.
+                Every view is logged and visible to the pharmacy. (The server part is done; the host page for it is not.)
+  Reminders     Name menu > Notifications: each person picks Email and/or Text (neither = in the app only).
+                Waiting items: first message after 72 hours (adjustable by the PIC or Account Owner; the screen for it is not built yet),
+                only while the pharmacy is open. Excursion or missed required entry: after 2 hours, any hour, to the
+                approvers and Designated Persons on that step. A Designated Person review still waiting: one
+                message to the PIC at 96 hours. One message per person per check, never repeated for the same
+                item, and no patient, drug or task names in any message.
+
+TO TURN ON EMAIL AND TEXT REMINDERS (nothing is sent until you do)
+  Email  1. AWS console > Amazon SES > Verified identities > create one for your sender (ironledgerrx.com or
+            notices@ironledgerrx.com) and add the DNS records it shows.
+         2. New SES accounts are in a sandbox (only verified addresses receive mail). Request production access.
+         3. Run: NOTIFY_FROM=notices@ironledgerrx.com bash deploy.sh
+  Text   Uses the same toll-free number and registration as the sign-in codes. When approved:
+         NOTIFY_TEXT=on bash deploy.sh   (keeps the last choice on later runs)
+  A check runs every 30 minutes. Cost: pennies at this size.
+
 ZIP 39.1 (2026-11-23): WHAT CHANGED
   Tabs         Dashboard, Calendar, Documents, Reorder List, Rx Intake. Review Queue is on the Dashboard;
                Obligations is Calendar > List; People & Assets and Calendar Setup are on the pharmacy account
@@ -15,7 +47,7 @@ ZIP 39.1 (2026-11-23): WHAT CHANGED
                reason. Delegation (date and time) and Time Off. The server stamps who and when.
   Access       Calendar is view-only for Associates; Cashier and Driver have no Reorder List.
   Still limited to the named logins in template.yaml (SUITE_USERS) for Calendar, Documents and Rx until you lift it.
-  Not in this zip (39.2): Documents tasks folder and review, reopen and void, inspector link, email/text reminders.
+  (Documents tasks folder and review, reopen and void, inspector link and reminders came in 39.2, below.)
 
 WHO DOES WHAT
   Host (you)         Runs the AWS account: deploys, updates, AWS settings, backups. Doesn't need a login

@@ -192,6 +192,7 @@ cut('<header>', '<nav id="tabs">', '''<div id="login">
     <button class="hbtn" id="whoBtn" aria-haspopup="true" aria-expanded="false" title="Account and sign out"><span id="whoLabel"></span> <span aria-hidden="true">▾</span></button>
     <div class="umlist" id="umList" hidden>
       <button id="acctBtn" style="display:none;" title="Pharmacy account details, people and backup">Account</button>
+      <button id="notifBtn" title="Choose how you are told when something is waiting for you">Notifications</button>
       <button id="signOutBtn">Sign out</button>
     </div>
   </div>

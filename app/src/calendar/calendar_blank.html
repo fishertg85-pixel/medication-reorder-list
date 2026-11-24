@@ -858,8 +858,9 @@ const failedRes=(ob,res)=>!!(ob&&ob.res&&ob.res.length&&res&&res!==ob.res[0]);
 function workTag(tk,k){ const W=workOf(tk,k); if(!W)return ''; const o=findOcc(tk,k); return failedRes(o&&o.track.ob,W.result)?pill('overdue',W.result):pill('upcoming','In Progress'); }
 const workPill=o=>{ const x=workTag(o.trackKey,o.key); return x?' '+x:''; };
 const revPill=o=>{ const r=o.done&&o.rec&&o.rec.review; if(!r)return ''; return ' '+(r.status==='dp'?pill('late-done','Awaiting DP Review'):r.status==='pending'?pill('late-done',HXS()?'Awaiting Approval':'Awaiting Review'):r.status==='returned'?pill('overdue','Returned'):pill('done','Reviewed')); };
-const fileUrl=f=>'/_blob/'+f.id;
-function attHtml(files,canRemove){ return (files&&files.length)?files.map((f,i)=>'<div class="att"><a href="'+esc(fileUrl(f))+'" target="_blank" rel="noopener" title="'+esc(f.name)+'">'+esc(f.name)+'</a><span class="mut">'+sizeTxt(f.size)+' · '+esc(f.by||'')+' · '+esc(fmtTs(f.at))+'</span>'+(canRemove?'<button class="btn sm" data-act="rmatt" data-i="'+i+'">Remove</button>':'')+'</div>').join(''):'<div class="mut">No Documentation Attached.</div>'; }
+const fileUrl=f=>(window.ILHOST&&ILHOST.fileUrl)?'#':'/_blob/'+f.id;
+const fidAttr=f=>(window.ILHOST&&ILHOST.fileUrl)?' data-fid="'+esc(f.id)+'"':'';
+function attHtml(files,canRemove){ return (files&&files.length)?files.map((f,i)=>'<div class="att"><a href="'+esc(fileUrl(f))+'"'+fidAttr(f)+' target="_blank" rel="noopener" title="'+esc(f.name)+'">'+esc(f.name)+'</a><span class="mut">'+sizeTxt(f.size)+' · '+esc(f.by||'')+' · '+esc(fmtTs(f.at))+'</span>'+(canRemove?'<button class="btn sm" data-act="rmatt" data-i="'+i+'">Remove</button>':'')+'</div>').join(''):'<div class="mut">No Documentation Attached.</div>'; }
 function commentsHtml(list){ return (list&&list.length)?list.map(c=>'<div class="cmt"><div class="mut" style="font-size:12px">'+esc(c.by||'Unspecified User')+' · '+esc(fmtTs(c.at))+'</div><div style="white-space:pre-wrap">'+esc(c.text)+'</div></div>').join(''):'<div class="mut">No Comments Yet.</div>'; }
 function histHtml(h){ return (h&&h.length)?h.map(x=>'<div class="cmt"><span class="mut" style="font-size:12px">'+esc(fmtTs(x.at))+' · '+esc(x.by||'')+'</span> '+esc(x.act)+'</div>').join(''):''; }
 function taskWho(r){ const k=r.task||{}, h=k.hist||[]; const ed=[...new Set(h.filter(x=>/^Saved/.test(x.act)).map(x=>x.by))];
@@ -996,7 +997,7 @@ function vDocs(){
   const list=rows.filter(x=>!q||(x.f.name+' '+x.title+' '+x.subj).toLowerCase().includes(q)).sort((a,b)=>a.f.at<b.f.at?1:-1);
   let h='<div class="card"><div class="hd"><h2>Documentation</h2><span class="sub">'+list.length+' File'+(list.length===1?'':'s')+'</span><span class="spacer"></span><input type="text" data-inp="dq" placeholder="Search" aria-label="Search documentation" value="'+esc(UI.dq||'')+'" style="max-width:240px"></div>';
   h+='<div class="body" style="padding-bottom:0"><p class="mut" style="margin:0">Every file attached to a task, in one place. Attach files from a task screen. Do not attach patient information.</p></div>';
-  h+=list.length?'<div class="tw"><table><tr><th>File</th><th>Task</th><th>For</th><th>Attached By</th><th>Attached</th><th>Size</th><th>Task Status</th><th></th></tr>'+list.map(x=>'<tr><td><a href="'+esc(fileUrl(x.f))+'" target="_blank" rel="noopener" title="'+esc(x.f.name)+'">'+esc(x.f.name)+'</a></td><td title="'+esc(x.title)+'">'+esc(x.title)+'</td><td>'+esc(x.subj)+'</td><td>'+esc(x.f.by||'')+'</td><td class="num">'+esc(fmtTs(x.f.at))+'</td><td class="num">'+sizeTxt(x.f.size)+'</td><td>'+esc(x.state)+'</td><td><button class="btn sm" data-act="'+x.act+'" '+(x.act==='viewrec'?'data-id="'+esc(x.id)+'"':'data-t="'+esc(x.t)+'" data-k="'+esc(x.k)+'"')+'>Open Task</button></td></tr>').join('')+'</table></div>':empty('No documentation attached yet.');
+  h+=list.length?'<div class="tw"><table><tr><th>File</th><th>Task</th><th>For</th><th>Attached By</th><th>Attached</th><th>Size</th><th>Task Status</th><th></th></tr>'+list.map(x=>'<tr><td><a href="'+esc(fileUrl(x.f))+'"'+fidAttr(x.f)+' target="_blank" rel="noopener" title="'+esc(x.f.name)+'">'+esc(x.f.name)+'</a></td><td title="'+esc(x.title)+'">'+esc(x.title)+'</td><td>'+esc(x.subj)+'</td><td>'+esc(x.f.by||'')+'</td><td class="num">'+esc(fmtTs(x.f.at))+'</td><td class="num">'+sizeTxt(x.f.size)+'</td><td>'+esc(x.state)+'</td><td><button class="btn sm" data-act="'+x.act+'" '+(x.act==='viewrec'?'data-id="'+esc(x.id)+'"':'data-t="'+esc(x.t)+'" data-k="'+esc(x.k)+'"')+'>Open Task</button></td></tr>').join('')+'</table></div>':empty('No documentation attached yet.');
   return h+'</div>';
 }
 
@@ -1093,6 +1094,7 @@ function vSetup(){
    The server (the signed-in person's own account) decides who may review and approve; this page only shows the right buttons. */
 const HX=()=>(window.ILHOST&&ILHOST.ctx)||null;
 const HXS=()=>!!(window.ILHOST&&ILHOST.suite);
+document.addEventListener('click',e=>{ const a=e.target.closest&&e.target.closest('a[data-fid]'); if(!a)return; e.preventDefault(); const w=window.open('','_blank'); ILHOST.fileUrl(a.getAttribute('data-fid')).then(u=>{ if(w)w.location=u; }).catch(()=>{ if(w)w.close(); }); });
 const chapterOf=k=>{ const m=/^u(795|797|800)-/.exec(String(k||'').split('|')[0]); return m?m[1]:''; };
 const mayDP=r=>{ const h=HX(); return h?h.me.dpChapters.indexOf(chapterOf(r.track))>=0:canReview(meP()); };
 const mayFinal=()=>{ const h=HX(); return h?!!h.me.canFinal:canReview(meP()); };
@@ -1141,7 +1143,7 @@ function healthCard(q,open){
   const cats=Object.keys(byCat).sort();
   const tile=(c,n,l)=>'<div class="tile '+c+'"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>';
   return '<div class="card"><div class="hd"><h2>Compliance Health</h2><span class="sub">Counts for the whole pharmacy</span><span class="spacer"></span><button class="btn sm" data-act="auditopen">Audit Report</button></div><div class="body"><div class="tiles" style="margin-bottom:0">'+
-    tile(over?'bad':'ok',over,'Overdue')+tile(week?'warn':'ok',week,'Due This Week')+tile(exp?'warn':'ok',exp,'Expiring In 30 Days')+tile(q.dp.length?'warn':'ok',q.dp.length,'Awaiting DP Review')+tile(q.fin.length?'warn':'ok',q.fin.length,'Awaiting Final Approval')+tile(q.ret.length?'bad':'ok',q.ret.length,'Returned')+'</div>'+
+    tile(over?'bad':'ok',over,'Overdue')+tile(week?'warn':'ok',week,'Due This Week')+tile(exp?'warn':'ok',exp,'Expiring In 30 Days')+tile(q.dp.length?'warn':'ok',q.dp.length,'Awaiting DP Review')+tile(q.fin.length?'warn':'ok',q.fin.length,'Awaiting Final Approval')+tile(q.ret.length?'bad':'ok',q.ret.length,'Returned')+tile(excOpenN()?'bad':'ok',excOpenN(),'Open Excursions And Missed')+'</div>'+
     (out.length?'<p class="mut" style="margin:10px 0 0">Out Now: '+out.map(esc).join(', ')+'</p>':'')+'</div>'+
     (cats.length?'<div class="tw"><table><tr><th>Area</th><th>Due, Last 12 Months</th><th>Completed</th><th>Done Late</th><th>Not Done</th></tr>'+cats.map(c=>{ const x=byCat[c]; return '<tr><td>'+esc(c)+'</td><td class="num">'+x.n+'</td><td class="num">'+x.done+'</td><td class="num">'+x.late+'</td><td class="num">'+(x.n-x.done)+'</td></tr>'; }).join('')+'</table></div>':'')+'</div>';
 }
@@ -1158,7 +1160,7 @@ function coverCard(){
 function vDashboard(){
   if(!HXS()||!HX())return vDashboardOld();
   const q=myQueues(), open=openOccs();
-  return dueForMeCard(q)+healthCard(q,open)+reviewCard(q)+coverCard()+vDashboardOld();
+  return dueForMeCard(q)+healthCard(q,open)+reviewCard(q)+excCard()+coverCard()+vDashboardOld();
 }
 function vCalendar(){
   if(!HXS())return vCalendarMonth();
@@ -1171,7 +1173,7 @@ async function chainSave(){
   clearTimeout(Store.hostTimer); let err='';
   Store.chain=Store.chain.then(async()=>{ try{ await ILHOST.save(S); }catch(e){ err=(e&&e.message)||'Not saved.'; } });
   await Store.chain;
-  try{ const x=await ILHOST.sync(); if(x){ S.records=x.records; S.log=x.log; } }catch(e){}
+  try{ const x=await ILHOST.sync(); if(x){ S.records=x.records; S.log=x.log; if(x.exc)S.exc=x.exc; } }catch(e){}
   recompute(); return err;
 }
 async function reviewAct(kind){
@@ -1202,6 +1204,7 @@ function chainSection(r,rv){
   const st=rv.status, canAct=(st==='dp'&&(mayDP(r)||mayFinal()))||(st==='pending'&&mayFinal());
   let h=''; const hist=(rv.hist||[]); const hx=HX(), seeH=hx&&(hx.me.boss||hx.me.canFinal||hx.me.dpChapters.length);
   if(rv.dp)h+='<dt>Designated Person Review</dt><dd>'+esc(rv.dp.by)+' · '+esc(fmtTs(rv.dp.at))+(rv.dp.onBehalfOf?' · On Behalf Of '+esc(rv.dp.onBehalfOf):'')+(rv.sameAsDp?' · Same Person As Final Approver':'')+'</dd>';
+  if(rv.reopens&&rv.reopens.length){ const seeR=hx&&(hx.me.boss||hx.me.canFinal||hx.me.dpChapters.length); h+=seeR?rv.reopens.map(x=>'<dt>Reopened</dt><dd style="white-space:normal">'+esc(fmtTs(x.at))+' · '+esc(x.by)+(x.onBehalfOf?' (For '+esc(x.onBehalfOf)+')':'')+': '+esc(x.reason)+(x.reapproved?' · Reapproved By '+esc(x.reapproved.by)+' '+esc(fmtTs(x.reapproved.at))+(x.reapproved.same?' · Same Person As The Reopener':''):'')+'</dd>').join(''):'<dt>Corrected</dt><dd>Yes</dd>'; }
   if(rv.bypassed)h+='<dt>Reviewed In Place</dt><dd style="white-space:normal">Designated Person review bypassed: '+esc(rv.bypassed.reason)+'</dd>';
   let out=(h?'<dl class="kv">'+h+'</dl>':'');
   if(seeH&&hist.length)out+='<div class="sec">Review History</div><div class="cmts">'+hist.map(x=>'<div class="cmt"><span class="mut" style="font-size:12px">'+esc(fmtTs(x.at))+' · '+esc(x.by)+(x.onBehalfOf?' (For '+esc(x.onBehalfOf)+')':'')+'</span> Returned At The '+(x.step==='dp'?'Designated Person':'Final Approval')+' Step: '+esc(x.reason)+'</div>').join('')+'</div>';
@@ -1218,6 +1221,59 @@ function chainFoot(r,rv){
   if(st==='pending'){ return close+(mayFinal()?'<button class="btn" data-act="mreturn">Return</button><button class="btn pri" data-act="maccept">Accept</button>':''); }
   if(st==='returned'){ const mine=String(r.by||r.completedBy||'').toLowerCase()===String(whoAmI()).toLowerCase()||mayDo({id:String(r.track||'').split('|')[0]}); return close+(mine?'<button class="btn pri" data-act="mresub">Correct And Resubmit</button>':''); }
   return '<button class="btn pri" data-act="close">Close</button>';
+}
+
+// ---- 39.2: reopen and void (the approver, signed), excursions and missed entries (their own record kinds, never deleted)
+const pinFld=()=>{ const h=HX(); return h&&h.me.pinRequired?fld('Your PIN',inp('pin','','password')):''; };
+async function applySync(){ try{ const x=await ILHOST.sync(); if(x){ S.records=x.records; S.log=x.log; if(x.exc)S.exc=x.exc; } }catch(e){} recompute(); }
+const VOID_OPTS=[['duplicate','Duplicate Record'],['nottask','Entered When No Task Was Done']];
+function recActModal(kind){
+  const r0=MODAL&&MODAL.rec, o=MODAL&&MODAL.occ; if(!r0)return; const r=S.records.find(x=>x.id===r0.id)||r0;
+  const same=S.records.filter(x=>x.id!==r.id&&x.track===r.track&&x.status!=='void').map(x=>[x.id,fmt(x.completedOn)+' · '+(x.completedBy||'')]);
+  const head='<p class="mut" style="margin:0">'+esc(recTitle(r))+' · '+esc(recSubj(r))+' · '+esc(fmt(r.completedOn))+'</p>';
+  const body=kind==='reopen'
+    ? head+'<p class="mut">The record goes back to Pending and keeps every earlier version. The correction is approved again.</p>'+fld('Reason',area('rsn','','Required'))+pinFld()
+    : head+'<p class="mut">The record is kept for good, hidden from the lists and from the inspector. It can’t be changed afterwards.</p>'+fld('Reason',sel('vt',VOID_OPTS,'duplicate'))+'<div id="vorig">'+fld('Original Record',same.length?sel('vo',same):'<div class="mut">No other record for this task.</div>')+'</div>'+fld('Note',area('rsn','','Required'))+pinFld();
+  const o0=MODAL; openModal(kind==='reopen'?'Reopen Record':'Void Record',body,FOOT_SAVE(kind==='reopen'?'Reopen':'Void'),{save:async()=>{
+    const b={reason:V('rsn'),note:V('rsn')}; if(V('pin'))b.pin=V('pin');
+    if(kind==='void'){ b.type=V('vt'); if(b.type==='duplicate')b.origId=V('vo'); }
+    try{ await ILHOST.call('records',r.id,kind,b); await applySync(); closeModal(); toast(kind==='reopen'?'Reopened. It is Pending again.':'Voided. It stays on file.'); changed('rec'); }catch(e){ merr(e.message); } }});
+  MODAL.rec=r; MODAL.occ=o;
+  const vt=document.getElementById('f_vt'); if(vt)vt.onchange=()=>{ const d=document.getElementById('vorig'); if(d)d.style.display=vt.value==='duplicate'?'':'none'; };
+}
+const excList=()=>(S.exc||[]).slice().sort((a,b)=>(a.status===b.status?0:a.status==='open'?-1:1)||(a.date<b.date?1:-1));
+const excOpenN=()=>(S.exc||[]).filter(e=>e.status==='open').length;
+function excCard(){
+  const h=HX(); if(!h)return ''; const list=excList(), view=h.me.viewOnly;
+  return '<div class="card"><div class="hd"><h2>Excursions And Missed Entries</h2><span class="sub">Kept for good, with how each was handled</span><span class="spacer"></span>'+(view?'':'<button class="btn sm" data-act="excnew" data-k="missed">Report Missed Entry</button><button class="btn sm pri" data-act="excnew" data-k="excursion">Report Excursion</button>')+'</div>'+
+   (list.length?'<div class="tw"><table><tr><th>Kind</th><th>Date</th><th>What</th><th>Reported By</th><th>Status</th></tr>'+list.slice(0,25).map(e=>'<tr class="click" data-act="excopen" data-id="'+esc(e.id)+'"><td>'+(e.kind==='missed'?'Missed Entry':'Excursion')+'</td><td>'+esc(fmt(e.date))+'</td><td>'+esc(e.what)+'</td><td>'+esc(e.createdBy||'')+'</td><td>'+(e.status==='open'?pill('overdue','Open'):pill('done','Closed'))+'</td></tr>').join('')+'</table></div>':'<div class="body mut">None reported.</div>')+'</div>';
+}
+function excNew(kind){
+  const miss=kind==='missed', over=openOccs().filter(o=>o.status==='overdue').map(o=>[o.trackKey+'||'+o.due,o.track.ob.title+' · '+subjName(o.track)+' · '+fmt(o.due)]);
+  if(miss&&!over.length){ toast('Nothing is overdue.'); return; }
+  const recs=S.records.filter(x=>x.status!=='void').sort((a,b)=>(a.completedOn<b.completedOn?1:-1)).slice(0,25).map(x=>[x.id,fmt(x.completedOn)+' · '+recTitle(x)+' · '+recSubj(x)]);
+  const body=(miss?fld('Missed Task',sel('mt',over)):fld('Type',sel('et',[['temperature','Temperature'],['environmental','Environmental'],['other','Other']],'temperature'))+fld('What It Concerns',inp('ew','','text','For example, Refrigerator 2')))+
+    fld(miss?'Date Found':'Date',inp('ed',D.today,'date'))+fld('What Happened',area('edt',''))+fld('How It Was Handled',area('ehd','','Required'))+(miss?'':fld('Related Record',sel('er',[['','None']].concat(recs),'')));
+  openModal(miss?'Report Missed Entry':'Report Excursion',body,FOOT_SAVE('Save'),{save:async()=>{
+    const e={id:uid('x'),kind,status:'open',date:V('ed'),detail:V('edt'),handling:V('ehd')};
+    if(miss){ const [tk,due]=V('mt').split('||'), t=D.tracks.find(x=>x.key===tk); e.track=tk; e.forDue=due; e.what=(t?t.ob.title+' · '+subjName(t):tk)+' · '+fmt(due); }
+    else { e.type=V('et'); e.what=V('ew'); if(V('er'))e.refId=V('er'); }
+    if(!e.handling)return merr('Say How It Was Handled.'); if(!miss&&!e.what)return merr('Say What It Concerns.');
+    S.exc=(S.exc||[]).concat([e]); const err=await chainSave(); if(err){ S.exc=S.exc.filter(x=>x.id!==e.id); return merr(err); } closeModal(); toast('Saved.'); changed('rec'); }});
+}
+function excView(id){
+  const e=(S.exc||[]).find(x=>x.id===id); if(!e)return; const h=HX(), c=e.closed;
+  const body='<dl class="kv"><dt>Kind</dt><dd>'+(e.kind==='missed'?'Missed Entry':'Excursion'+(e.type?' · '+esc(EXC_L[e.type]||e.type):''))+'</dd><dt>Date</dt><dd>'+esc(fmt(e.date))+'</dd><dt>What</dt><dd style="white-space:normal">'+esc(e.what)+'</dd>'+
+    '<dt>Reported</dt><dd>'+esc(e.createdBy||'')+' · '+esc(fmtTs(e.createdAt))+'</dd>'+(e.detail?'<dt>What Happened</dt><dd style="white-space:normal">'+esc(e.detail)+'</dd>':'')+'<dt>How It Was Handled</dt><dd style="white-space:normal">'+esc(e.handling)+'</dd>'+
+    (c?'<dt>Reconciliation</dt><dd style="white-space:normal">'+esc(c.reconciliation)+'</dd><dt>Closed By</dt><dd>'+esc(c.by)+' · '+esc(fmtTs(c.at))+'</dd>':'')+'</dl>'+
+    (!c&&h&&h.me.canFinal?fld('Reconciliation',area('erc','','Required to close'))+pinFld():'');
+  openModal(e.kind==='missed'?'Missed Entry':'Excursion',body,'<button class="btn" data-act="close">Close</button>'+(!c&&h&&h.me.canFinal?'<button class="btn pri" data-act="excclose">Close With Reconciliation</button>':''),{nofocus:true});
+  MODAL.exc=e;
+}
+const EXC_L={temperature:'Temperature',environmental:'Environmental',other:'Other'};
+async function excCloseAct(){
+  const e=MODAL&&MODAL.exc; if(!e)return; const b={reconciliation:V('erc')}; if(V('pin'))b.pin=V('pin'); if(!b.reconciliation)return merr('Say How It Was Reconciled.');
+  try{ await ILHOST.call('exc',e.id,'close',b); await applySync(); closeModal(); toast('Closed. It stays on file.'); changed('rec'); }catch(x){ merr(x.message); }
 }
 // time off and delegation forms
 function peopleOpts(filter){ const h=HX(); return (h?h.team:[]).filter(filter||(()=>true)).map(p=>[p.sub,p.name]); }
@@ -1300,7 +1356,7 @@ const subjLine=t=>t.ob.title+' — '+t.subj.name;
 /* ===== record completion ===== */
 const needMe=()=>(S.people.some(p=>!p.archived)&&!ME&&!(window.ILHOST&&ILHOST.user&&ILHOST.user.name))?'Select Your Name In Acting As (Top Right) First, So The Record Shows Who Did This.':'';
 let ASSETS;
-async function getAssets(){ if(ASSETS!==undefined)return ASSETS; try{ ASSETS=(window.claude&&claude.use)?await Promise.race([claude.use('assets'),new Promise(r=>setTimeout(()=>r(null),6000))]):null; }catch(e){ ASSETS=null; } return ASSETS; }
+async function getAssets(){ if(window.ILHOST&&ILHOST.upload)return {upload:f=>ILHOST.upload(f)}; if(ASSETS!==undefined)return ASSETS; try{ ASSETS=(window.claude&&claude.use)?await Promise.race([claude.use('assets'),new Promise(r=>setTimeout(()=>r(null),6000))]):null; }catch(e){ ASSETS=null; } return ASSETS; }
 function refreshAtt(){ const el=$('#attList'); if(el&&MODAL&&MODAL.files)el.innerHTML=attHtml(MODAL.files,true); }
 async function attachFiles(el){
   const files=[...el.files]; el.value=''; const tok=MODAL&&MODAL.token; if(!tok||!files.length)return;
@@ -1414,7 +1470,7 @@ function saveRec(o,na,alsoIds){
   if(!na&&MODAL&&MODAL.form){ const m=MODAL.form.check(MODAL.form.read(o),o); if(m)return merr(m); }
   if(!na&&late&&!lr)return merr('A Reason For Late Completion Is Required.');
   if(!na&&k==='expiry'){ const n=V('next'); if(!n)return merr('Enter The New Expiration Date.'); if(n<=on)return merr('The New Expiration Date Must Be After The Completion Date.'); }
-  const rec={id:uid('r'),track:o.trackKey,completedOn:on,forDue:k==='fixed'?(o.origDue||o.due):null,forEvent:o.event?o.event.id:null,completedBy:V('by'),status:na?'na':'done',result:V('res'),evidence:V('evid'),lateReason:na?'':lr,nextDue:k==='expiry'?V('next'):'',note:V('note'),naReason:na?reason:'',createdAt:nowIso(),by:whoAmI()};
+  const rec={id:uid('r'),track:o.trackKey,completedOn:on,forDue:k==='fixed'?(o.origDue||o.due):null,forEvent:o.event?o.event.id:null,completedBy:V('by'),status:na?'na':'done',result:V('res'),evidence:V('evid'),lateReason:na?'':lr,nextDue:k==='expiry'?V('next'):'',note:V('note'),naReason:na?reason:'',createdAt:nowIso(),by:whoAmI(),title:ob.title};
   if(!na){ const cw=collectWork(o), W=cw.W; W.hist.push({at:nowIso(),by:whoAmI(),act:'Completed'}); rec.task={enteredBy:W.enteredBy,enteredAt:W.enteredAt,startedBy:W.startedBy,startedAt:W.startedAt,comments:W.comments,files:W.files,hist:W.hist}; rec.review={status:'pending'}; if(W.data)rec.data=W.data; }
   if(o.moved)rec.allowedDue=o.due;
   S.records.push(rec); Store.put('records',rec);
@@ -1437,8 +1493,9 @@ function detailModal(o){
    '<dt>Result</dt><dd>'+esc(r.result||'—')+'</dd><dt>Evidence</dt><dd style="white-space:normal">'+esc(r.evidence||'—')+'</dd>'+(r.lateReason?'<dt>Late Reason</dt><dd style="white-space:normal">'+esc(r.lateReason)+'</dd>':'')+(r.naReason?'<dt>Not Applicable Because</dt><dd style="white-space:normal">'+esc(r.naReason)+'</dd>':'')+(r.nextDue?'<dt>New Expiration</dt><dd>'+fmt(r.nextDue)+'</dd>':'')+(r.note?'<dt>Completion Notes</dt><dd style="white-space:normal">'+esc(r.note)+'</dd>':'')+(tk?'':'<dt>Entered</dt><dd>'+esc((r.createdAt||'').slice(0,10))+(r.by?' by '+esc(r.by):'')+'</dd>')+'</dl>'+(r.data&&formOf(t.ob)?formOf(t.ob).view(r.data,t):'')+
    (tk?'<div class="sec">Comments</div><div class="cmts">'+commentsHtml(tk.comments)+'</div><div class="sec">Documentation</div>'+attHtml(tk.files,false)+'<div class="sec">Activity</div><div class="cmts">'+histHtml((tk.hist||[]).concat(rv&&rv.status==='accepted'?[{at:rv.at,by:rv.by,act:'Reviewed: Accepted'+(rv.onBehalfOf?' (On Behalf Of '+rv.onBehalfOf+')':'')}]:[]))+'</div>':'')+
    chainSection(r,rv)+
-   (r.status==='void'?'':fld('Reason To Void (Only If Entered In Error)',inp('void','','text','Required to void')));
-  openModal('Completed Item',body,(r.status==='void'?'':'<button class="btn danger" data-act="mvoid" style="margin-right:auto">Void This Record</button>')+'<button class="btn" data-act="series" data-t="'+esc(o.trackKey)+'" data-k="'+esc(o.key)+'">View Series</button><button class="btn" data-act="mtrack" data-t="'+esc(o.trackKey)+'">Open Track</button>'+chainFoot(r,rv),{nofocus:true,wide:true});
+   (r.status==='void'||HXS()?'':fld('Reason To Void (Only If Entered In Error)',inp('void','','text','Required to void')));
+  const canRO=HXS()&&mayFinal()&&r.status!=='void', canReopen=canRO&&rv&&rv.status==='accepted';
+  openModal('Completed Item',body,(r.status==='void'?'':HXS()?(canReopen?'<button class="btn" data-act="mreopen" style="margin-right:auto">Reopen</button>':'')+(canRO?'<button class="btn danger" data-act="mvoid"'+(canReopen?'':' style="margin-right:auto"')+'>Void</button>':''):'<button class="btn danger" data-act="mvoid" style="margin-right:auto">Void This Record</button>')+'<button class="btn" data-act="series" data-t="'+esc(o.trackKey)+'" data-k="'+esc(o.key)+'">View Series</button><button class="btn" data-act="mtrack" data-t="'+esc(o.trackKey)+'">Open Track</button>'+chainFoot(r,rv),{nofocus:true,wide:true});
   MODAL.rec=r; MODAL.occ=o;
 }
 function acceptRec(){
@@ -1450,6 +1507,7 @@ function acceptRec(){
 }
 
 function voidRec(){
+  if(HXS()&&window.ILHOST&&ILHOST.call)return recActModal('void');
   const r0=MODAL&&MODAL.rec; if(!r0)return; const r=S.records.find(x=>x.id===r0.id)||r0; const why=V('void'); if(!why)return merr('Type A Reason In The Void Field.');
   r.status='void'; r.voidReason=why; r.voidedAt=new Date().toISOString(); Store.put('records',r);
   logAct('Voided Record',subjLine(MODAL.occ.track)+' ('+fmt(r.completedOn)+'): '+why); closeModal(); toast('Record voided. It stays in the log.'); changed('rec');
@@ -1806,7 +1864,8 @@ function pecModal(id){
 }
 
 Object.assign(ACT,{
-  maccept(){ reviewAct('accept'); }, mdpok(){ reviewAct('dpok'); }, mreturn(){ reviewAct('return'); },
+  maccept(){ reviewAct('accept'); }, mdpok(){ reviewAct('dpok'); }, mreturn(){ reviewAct('return'); }, mreopen(){ recActModal('reopen'); },
+  excnew(el){ excNew(el.dataset.k); }, excopen(el){ excView(el.dataset.id); }, excclose(){ excCloseAct(); },
   mresub(){ const r0=MODAL&&MODAL.rec; if(!r0)return; const r=S.records.find(x=>x.id===r0.id)||r0; closeModal(); resubModal(r); },
   calsub(el){ UI.calSub=el.dataset.v; render(); },
   auditopen(){ UI.from=UI.tab; UI.tab='audit'; render(); window.scrollTo(0,0); },

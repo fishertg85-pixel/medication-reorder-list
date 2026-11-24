@@ -47,7 +47,7 @@ http.createServer(async (req, res) => {
     if(!raw.startsWith('/public/') && (!claims || claims.token_use !== 'id' || claims.exp * 1000 < Date.now())){ res.writeHead(401, { 'content-type': 'application/json' }); res.end('{"message":"Unauthorized"}'); return; }
     const q = Object.fromEntries(u.searchParams);
     const ev = { rawPath: raw, queryStringParameters: Object.keys(q).length ? q : undefined, body: b || undefined,
-      requestContext: { http: { method: req.method }, authorizer: claims ? { jwt: { claims } } : undefined } };
+      headers: req.headers, requestContext: { http: { method: req.method, sourceIp: req.socket.remoteAddress }, authorizer: claims ? { jwt: { claims } } : undefined } };
     const out = await handler(ev);
     res.writeHead(out.statusCode, out.headers); res.end(out.body); return;
   }

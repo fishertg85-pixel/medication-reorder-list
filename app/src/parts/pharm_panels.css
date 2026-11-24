@@ -103,3 +103,11 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
 /* Add-user window (Users view): opens over the page from the Add user button at the top */
 .utop{margin:0 0 10px;} .drmodal{position:fixed;inset:0;background:rgba(10,20,35,.55);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:6vh 3vw;overflow:auto;}
 .drbox{background:var(--bg);border-radius:10px;width:min(640px,96vw);padding:14px 16px 12px;box-shadow:0 16px 48px rgba(0,0,0,.4);} .drhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:16px;}
+
+/* Street address starts under Pharmacy name */
+.pfields>.nlcol{grid-column:1 / span 2;grid-row:span 2;display:grid;grid-template-rows:subgrid;grid-template-columns:minmax(0,1fr);min-width:0;}
+/* licensed entity: three fields on one row, labels on one line, identical heights, square against the same edges */
+.entity .entrow{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1.2fr);gap:6px 10px;align-items:end;min-width:0;}
+.entity .entrow label span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.entity .entrow input,.entity .entrow select{height:36px;box-sizing:border-box;margin:0;}
+.entity>.btn2{margin-top:8px;} .entity .lockhint{margin-top:6px;}
