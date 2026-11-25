@@ -7,9 +7,9 @@ phone's home screen. Each pharmacy has its own list, archive and distributor mem
 INSTALL OR UPDATE: THE COMMANDS (START HERE)
 ==========================================================================================
   A. Upload the zip.   AWS console > CloudShell (the >_ icon in the top bar) > Actions > Upload file >
-     choose NorTex_Reorder_Cloud_39.4.zip   (use the same region as before).
+     choose NorTex_Reorder_Cloud_39.5.zip   (use the same region as before).
   B. Run it (copy the whole line; it works for a first install and for every update):
-         rm -rf ~/nortex && mkdir ~/nortex && unzip -q ~/NorTex_Reorder_Cloud_39.4.zip -d ~/nortex && cd ~/nortex && bash deploy.sh
+         rm -rf ~/nortex && mkdir ~/nortex && unzip -q ~/NorTex_Reorder_Cloud_39.5.zip -d ~/nortex && cd ~/nortex && bash deploy.sh
      A first install asks for the Account Owner and the first pharmacy (see FIRST DEPLOY below).
      An update asks nothing: it replaces only the app and server code. Lists, archives, memory and
      logins are never touched, and earlier settings (text codes, SUITE_USERS, PIN setting) are kept.
@@ -27,6 +27,25 @@ INSTALL OR UPDATE: THE COMMANDS (START HERE)
      bash host.sh off LOGIN  bash host.sh on LOGIN                 bash host.sh pharmacies
      bash host.sh add-pharmacy NTX2 "NorTex Pharmacy - Keller" central
      bash host.sh assign LOGIN NTX2        bash host.sh unassign LOGIN NTX2
+
+ZIP 39.5 (2026-11-25): WHAT CHANGED (on top of 39.4)
+  Employee who  An IronLedger employee whose login also works at a pharmacy is an ordinary user on the pharmacy side.
+  also works    Before, the server refused an account type, sub-roles, Designated Person, final approver, document
+  at a pharmacy duty and super user on such a login, so it could not be a Staff Pharmacist and had no Rx Intake tab.
+                Now the Account Owner, the PIC super user or an IronLedger supervisor sets them like anyone's.
+                The pharmacy's Users list no longer marks the login ("Also IronLedger" shows in the employee portal
+                only) and lists it in the normal order. What stays with IronLedger for that login: reset password,
+                temporary PIN, mobile number, name, login on/off and delete (the same login opens the employee
+                portal). Through the portal the person is IronLedger, not a pharmacist.
+  Named users   The Calendar / Documents / Rx Intake named list (template.yaml, SUITE_USERS) now also names the login
+                tfisher at NTX1 and TEST1 (Neo's pharmacist login; tfisher85 becomes the IronLedger employee login).
+  TWO LOGINS    1. Employee portal > the pharmacy > Users > Add User: Login ID tfisher, Account Type Staff Pharmacist,
+  (Neo)            RPh License #, mobile. Initials are one per person: clear them on tfisher85 first if you want the
+                   same ones. A temporary password is shown.
+                2. Sign in at the pharmacy site as tfisher; choose the password (it may be the one you use today).
+                3. Employee portal > Users > tfisher85 > switch off Access To <pharmacy> > Update (every pharmacy it
+                   has). If tfisher85 is an Account Owner anywhere, change that Account Owner to tfisher first.
+                4. New password for tfisher85:   cd ~/nortex && bash host.sh reset-password tfisher85
 
 ZIP 39.4 (2026-11-25): WHAT CHANGED (on top of 39.3)
   Phone, time   Phone and fax boxes format themselves as 000-000-0000 while typing. Every time field is a 00:00 box

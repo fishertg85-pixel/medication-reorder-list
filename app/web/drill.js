@@ -45,13 +45,16 @@ function drUsersHtml(U, o){
   const sid = U.store.id, can = U.canManage, S = o.st.staged, list = U.users.map(u => drEff(u, S, sid));
   const priv = (sw_, label, title) => `<span class="priv" title="${esc(title || label)}">${sw_}<span>${esc(label)}</span></span>`;
   const dpOf = u => DR_CHAPTERS.filter(c => u.dp && u.dp[c] === true), subName = u => (u.subs || []).map(k => (DR_SUBS[u.acctType] || {})[k]).filter(Boolean);
-  const role = u => u.isOwner ? '<span class="urole">Account Owner</span>' : (u.isAdmin ? '<span class="urole">Super user</span>' : u.employee ? '<span class="urole">Also IronLedger</span>' : '') + (dpOf(u).length ? ` <span class="urole">Designated Person ${dpOf(u).join(', ')}</span>` : '') + (subName(u).length ? ` <span class="urole">${esc(subName(u).join(', '))}</span>` : '');
+  // An IronLedger employee who also works at the pharmacy is an ordinary user there. Only the employee portal marks the login (u.employee is sent to IronLedger alone);
+  // a pharmacy gets u.locked instead, which only hides the sign-in controls IronLedger keeps (password, PIN, mobile, on/off, delete).
+  const lockd = u => !!(u.employee || u.locked);
+  const role = u => u.isOwner ? '<span class="urole">Account Owner</span>' : (u.isAdmin ? '<span class="urole">Super user</span>' : '') + (u.employee && o.host ? '<span class="urole">Also IronLedger</span>' : '') + (dpOf(u).length ? ` <span class="urole">Designated Person ${dpOf(u).join(', ')}</span>` : '') + (subName(u).length ? ` <span class="urole">${esc(subName(u).join(', '))}</span>` : '');
   const self = u => o.me && u.login === o.me.login;
-  const canPin = u => o.pinRequired && o.canPin && can && !self(u) && !u.isOwner && !u.employee;
+  const canPin = u => o.pinRequired && o.canPin && can && !self(u) && !u.isOwner && !lockd(u);
   const detail = u => {
     const st = S[u.sub], raw = U.users.find(x => x.sub === u.sub);
     const acts = !can ? '' : st ? `<button class="btn small" data-upd="${esc(u.sub)}">Update</button> <button class="btn2 small" data-undo="${esc(u.sub)}">Undo</button>`
-      : (self(u) ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`) + (u.isOwner || u.employee || self(u) ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`)
+      : (self(u) || (lockd(u) && !o.host) ? '' : `<button class="btn2 small" data-reset="${esc(u.sub)}">Reset password</button>`) + (u.isOwner || lockd(u) || self(u) ? '' : ` <button class="btn2 small danger" data-del="${esc(u.sub)}">${u.pending ? 'Cancel invite' : 'Delete'}</button>`)
         + (u.pending && o.st.temps[u.sub] ? ` <button class="btn2 small copyb" data-copy="${esc(u.sub)}" title="Copy Pharmacy ID, User ID and temporary password" aria-label="Copy sign-in details">${DR_COPY}</button>` : '');
     const signing = `<div class="upriv"><span class="plabel">Signing</span><input type="text" data-uini maxlength="3" value="${esc(u.initials || '')}" style="width:70px;text-transform:uppercase;" aria-label="Initials" placeholder="Initials">
         <span class="hint">Employee ID <b>${esc(u.empId || '-')}</b>${o.pinRequired ? ` · PIN: ${DR_PIN[u.pin || 'none']}` : ''}</span>
@@ -72,7 +75,7 @@ function drUsersHtml(U, o){
         ${u.perms.documents ? `<div class="upriv"><span class="plabel">Document duty</span>${u.acctType === 'pic' ? '<span class="hint">Pharmacist-In-Charge: manages and approves documents</span>' : `<select data-udoc>${Object.entries(DR_DUTY).map(([k, l]) => `<option value="${k}"${(u.docDuty || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select>`}</div>` : ''}
         <div class="upriv"><span class="plabel">This pharmacy</span><span class="pgroup">${priv(sw(`data-ust="${esc(sid)}"`, u.access === true, 'Access to ' + U.store.name), 'Access to ' + sid, 'Access to ' + U.store.name)}</span>${others}</div>
         <div class="upriv"><span class="plabel">Privileges</span><span class="pgroup">${Object.entries(DR_PERMS).map(([p, l]) => priv(sw(`data-uperm="${p}"`, !!u.perms[p], l + ' at ' + sid), l, l)).join('')}
-          ${self(u) || u.employee ? '' : priv(sw('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on')}</span></div>
+          ${self(u) || lockd(u) ? '' : priv(sw('data-uon="1"', !u.disabled, 'Switch this login on or off'), 'Login on')}</span></div>
         ${(o.host || o.ownerMe || o.picMe) && (u.acctType === 'pic' ? (o.host || o.ownerMe) : (u.acctType === 'pharmacist' || u.acctType === 'tech')) && u.access ? `<div class="upriv"><span class="plabel">Super user</span><span class="pgroup">${priv(sw(`data-uadm="${esc(sid)}"`, u.isAdmin === true, 'All administrator privileges at ' + U.store.name + ' except billing, the client page and ownership'), sid, 'Super user at ' + U.store.name)}</span>
           <span class="hint">All administrator privileges except billing, the client page and ownership.</span></div>` : ''}
         ${acts ? `<div class="upriv"><span class="plabel"></span>${acts}</div>` : ''}</div>`;
@@ -83,7 +86,7 @@ function drUsersHtml(U, o){
       <div class="ucols urowhead" role="button" tabindex="0" aria-expanded="${open}" data-open="${esc(u.sub)}">
         <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${role(u)}</div>
         <div class="ucell mono" data-l="Username">${esc(u.login)}</div>
-        <div class="ucell" data-l="Mobile"><span class="mono">${esc(u.phone || '')}</span>${can && !u.isOwner && !u.employee && open ? ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>` : u.isOwner ? ' <span class="hint" title="Sign-in codes are texted here, so only IronLedger changes it.">🔒</span>' : ''}</div>
+        <div class="ucell" data-l="Mobile"><span class="mono">${esc(u.phone || '')}</span>${can && !u.isOwner && !lockd(u) && open ? ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>` : u.isOwner ? ' <span class="hint" title="Sign-in codes are texted here, so only IronLedger changes it.">🔒</span>' : ''}</div>
         <div class="ucell" data-l="Status">${drStatus(u)}</div>
         <div class="ucell acts"><span class="chev" aria-hidden="true">${open ? '▾' : '▸'}</span></div></div>
       ${open ? detail(u) : ''}</div>`;

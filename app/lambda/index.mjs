@@ -203,6 +203,7 @@ const hasAny = m => !!m && typeof m === 'object' && Object.values(m).some(v => v
 // through the pharmacy app it is an ordinary pharmacy user (so one login, one password, can do both). With no portal client configured (older deploys, dev) the flag alone decides.
 const PORTAL_CLIENT = process.env.PORTAL_CLIENT_ID || '';
 const hasRole = p => !!p && (hasAny(p.stores) || hasAny(p.ownerStores) || hasAny(p.adminStores) || hasAny(p.ownerClients));
+const DUAL_KEYS = ['stores', 'perms', 'permStore', 'acctType', 'subs', 'dp', 'approver', 'docDuty', 'license', 'licExpires', 'initials', 'adminStores'];   // what a pharmacy may set on an employee login that works there
 const pureHost = p => !!p && p.host === true && !hasRole(p);     // an employee login with no pharmacy of its own: never shown in a pharmacy's people
 const trueKeys = m => Object.keys(m || {}).filter(k => m[k] === true);
 const ownsStore = (me, id) => !!(me && me.ownerStores && me.ownerStores[id] === true);
@@ -676,7 +677,9 @@ const personInScope = (me, p) => { if(me.host || p.sk === me.sk) return true; if
 function scopePeople(me, people){
   if(me.host) return people;
   const m = managedIds(me), only = o => Object.fromEntries(Object.entries(o || {}).filter(([k, v]) => v === true && m.has(k)));
-  return people.filter(p => personInScope(me, { ...p, sk: p.sub })).map(p => ({ ...p, stores: only(p.stores), ownerStores: only(p.ownerStores), adminStores: only(p.adminStores), storePerms: only(p.storePerms), ownerClients: {} }));
+  return people.filter(p => personInScope(me, { ...p, sk: p.sub })).map(p => ({ ...p, stores: only(p.stores), ownerStores: only(p.ownerStores), adminStores: only(p.adminStores), storePerms: only(p.storePerms), ownerClients: {},
+    host: false, hostRole: '', repStores: {}, employeeOnly: false, ...(p.host ? { locked: true } : {}) }))            // a pharmacy never sees who is an IronLedger employee
+    .sort((a, b) => (b.owner - a.owner) || (b.pending - a.pending) || (a.name || a.login).localeCompare(b.name || b.login));
 }
 function cleanPerms(obj){ const o = {}; for(const p of PERMS) if(obj && typeof obj[p] === 'boolean') o[p] = obj[p]; return o; }
 async function createLogin(b){
@@ -859,7 +862,9 @@ async function updatePerson(me, sub, seg3, body){
   // the host login belongs to IronLedger: the Account Owner sees it but only the host changes it
   // except which pharmacies it may open: only the Account Owner grants that
   // the Account Owner decides which pharmacies the host may open and what it may do there; nothing else about the host login
-  if(p.host && !me.host && (seg3 || Object.keys(body).some(k => k !== 'stores' && k !== 'perms' && k !== 'permStore'))) throw forbidden('This login is managed by IronLedger. You can change its access and privileges at your pharmacy only.');
+  // An IronLedger employee's login that also works at a pharmacy is an ordinary user there: the pharmacy sets its account type, role and privileges like anyone's.
+  // Its sign-in (password, PIN, phone, name, on/off, delete) stays with IronLedger, because the same login opens the employee portal.
+  if(p.host && !me.host && (seg3 || Object.keys(body).some(k => !DUAL_KEYS.includes(k)))) throw forbidden('The sign-in details of this login (password, PIN, mobile number, name, on or off) are changed by IronLedger.');
   if(sub === me.sk && body.disabled === true) throw bad('You can’t switch off your own login.');
   if(!me.host && sub !== me.sk && (hasAny(p.ownerStores) || isClientOwnerP(p))) throw forbidden('An Account Owner’s login is managed by IronLedger.');
   if(me.host && me.hostRole === 'rep') await repGuard(p, seg3, body);
@@ -894,20 +899,20 @@ async function updatePerson(me, sub, seg3, body){
   if(pureHost(p) && me.host && (body.stores !== undefined || body.perms !== undefined)) throw bad('This is an IronLedger employee login with no pharmacy of its own.');
   const upd = {};
   tierGuard(me, p, sub, body);
-  if(body.acctType !== undefined){ if(p.host) throw bad('The host login has its own account type.'); upd.acctType = cleanType(body.acctType); tierGuardType(me, p, sub, upd.acctType);
+  if(body.acctType !== undefined){ if(pureHost(p)) throw bad('This is an IronLedger employee login with no pharmacy of its own.'); upd.acctType = cleanType(body.acctType); tierGuardType(me, p, sub, upd.acctType);
     if(upd.acctType !== p.acctType){ upd.subs = []; if(upd.acctType !== 'pic' && upd.acctType !== 'pharmacist' && upd.acctType !== 'tech') upd.dp = {}; if(upd.acctType !== 'pic' && upd.acctType !== 'pharmacist') upd.approver = false; } }
-  if(body.subs !== undefined){ if(p.host) throw bad('The host login has no sub-roles.'); upd.subs = cleanSubs(body.subs, upd.acctType !== undefined ? upd.acctType : p.acctType); }
-  if(body.dp !== undefined){ if(p.host) throw bad('The host login can’t be a Designated Person.'); upd.dp = cleanDp(body.dp, upd.acctType !== undefined ? upd.acctType : p.acctType); }
-  if(body.approver !== undefined){ if(p.host) throw bad('The host login can’t approve.'); upd.approver = cleanApprover(me, body.approver, upd.acctType !== undefined ? upd.acctType : p.acctType); }
+  if(body.subs !== undefined){ if(pureHost(p)) throw bad('This is an IronLedger employee login with no pharmacy of its own.'); upd.subs = cleanSubs(body.subs, upd.acctType !== undefined ? upd.acctType : p.acctType); }
+  if(body.dp !== undefined){ if(pureHost(p)) throw bad('This is an IronLedger employee login with no pharmacy of its own.'); upd.dp = cleanDp(body.dp, upd.acctType !== undefined ? upd.acctType : p.acctType); }
+  if(body.approver !== undefined){ if(pureHost(p)) throw bad('This is an IronLedger employee login with no pharmacy of its own.'); upd.approver = cleanApprover(me, body.approver, upd.acctType !== undefined ? upd.acctType : p.acctType); }
   if(body.licExpires !== undefined) upd.licExpires = cleanLicDate(body.licExpires);
-  if(body.docDuty !== undefined){ if(p.host) throw bad('The host login has its own document duty.'); const dd = String(body.docDuty || ''); if(dd !== '' && !DOC_DUTIES.includes(dd)) throw bad('Pick the document duty from the list.'); upd.docDuty = dd; }
+  if(body.docDuty !== undefined){ if(pureHost(p)) throw bad('This is an IronLedger employee login with no pharmacy of its own.'); const dd = String(body.docDuty || ''); if(dd !== '' && !DOC_DUTIES.includes(dd)) throw bad('Pick the document duty from the list.'); upd.docDuty = dd; }
   if(body.initials !== undefined){ const ini = cleanInitials(body.initials); if(ini && await initialsTaken(ini, sub)) throw bad('Those initials are already used by someone else.'); upd.initials = ini; }
   if(body.license !== undefined) upd.license = cleanLicense(body.license);
   if(body.repStores !== undefined){ if(!isSupervisor(me)) throw forbidden('A supervisor assigns reps to pharmacies.'); if(!(p.host && p.hostRole === 'rep')) throw bad('Only rep logins have assigned pharmacies.'); upd.repStores = Object.assign({}, p.repStores || {}, await cleanStoreToggles(body.repStores)); }
   if(body.stores !== undefined) upd.stores = Object.assign({}, p.stores || {}, await cleanStoreToggles(body.stores, me));
   if(body.adminStores !== undefined){                // super user (administrator) privileges for a PIC at one pharmacy
     if(!body.adminStores || typeof body.adminStores !== 'object') throw bad('Bad administrator setting.');
-    if(p.host) throw bad('The host login can’t be an administrator.');
+    if(pureHost(p)) throw bad('This is an IronLedger employee login with no pharmacy of its own.');
     const cur = Object.assign({}, p.adminStores || {});
     for(const [id, v] of Object.entries(body.adminStores)){
       if(!okId(id)) throw bad('Bad pharmacy');
@@ -2174,8 +2179,9 @@ async function usersAt(me, st, r){
     const ids = new Set([...trueKeys(p.stores), ...trueKeys(p.ownerStores), ...trueKeys(p.adminStores)]); ids.delete(sid);
     return { sub: p.sub, login: p.login, name: p.name, phone: p.phone, acctType: p.acctType, docDuty: p.docDuty, initials: p.initials, license: p.license, licExpires: p.licExpires, subs: p.subs, dp: p.dp, approver: p.approver, empId: p.empId, pin: p.pin,
       disabled: p.disabled, status: p.status, pending: !!p.pending, tempExpired: !!p.tempExpired, tempExpires: p.tempExpires, access: p.stores[sid] === true, isOwner: p.ownerStores[sid] === true, isAdmin: p.adminStores[sid] === true,
-      perms: Object.assign({}, p.perms, p.storePerms[sid] || {}), others: ids.size, ...(me.host ? { otherIds: [...ids] } : {}), employee: p.host === true };
+      perms: Object.assign({}, p.perms, p.storePerms[sid] || {}), others: ids.size, ...(me.host ? { otherIds: [...ids], employee: p.host === true } : (p.host === true ? { locked: true } : {})) };
   });
+  if(!me.host) users.sort((a, b) => (b.isOwner - a.isOwner) || (b.pending - a.pending) || (a.name || a.login).localeCompare(b.name || b.login));     // the pharmacy's own order: no special place for an IronLedger employee
   return { store: { id: sid, name: st.name }, canManage: !!r.manage, users };
 }
 // ---------- router

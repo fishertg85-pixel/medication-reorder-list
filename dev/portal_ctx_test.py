@@ -59,4 +59,31 @@ B, BA = login("both2", r[1]["tempPassword"], "both2pass12345")
 check("pharmacy door: both2 is a plain user at NTX1, no employee tools", (any(s["id"] == "NTX1" for s in api(B, "GET", "/me")[1]["stores"]), api(B, "GET", "/host/stores")[0]), (True, 404))
 BP, BPA = login("both2", "both2pass12345", cid=PC)
 check("portal door: both2 gets in and has employee tools after unlocking", api(BP, "GET", "/me")[1].get("portal"), True)
+
+# ---- 39.5: an employee who also works at a pharmacy is an ordinary user there (account type, role and privileges like anyone's); nothing on the pharmacy side marks the login
+bsub = sub_of("both2"); nsub = sub_of("neo")
+ntx = lambda tok: [x for x in api(tok, "GET", "/me")[1]["stores"] if x["id"] == "NTX1"][0]
+check("before an account type is set: no pharmacist functions, no Rx Intake", (ntx(B).get("pharm"), ntx(B).get("rx")), (False, False))
+api(O, "POST", "/owner-unlock", {"password": "ownerpass99", "accessToken": OA})
+ulist = lambda tok, base: api(tok, "GET", "/pharmacy/NTX1/users")[1]["users"]
+row = lambda tok, base: [u for u in ulist(tok, base) if u["login"] == "both2"][0]
+check("the pharmacy's Users list does not say who is an IronLedger employee", ("employee" in row(O, "/owner"), row(O, "/owner").get("locked")), (False, True))
+check("the employee portal still marks the login", row(HP, "/host").get("employee"), True)
+ou = [u for u in api(O, "GET", "/owner/users")[1]["users"] if u["login"] == "both2"][0]
+check("the Account Owner's people list carries no employee fields either", (ou.get("host"), ou.get("hostRole"), ou.get("repStores"), ou.get("locked")), (False, "", {}, True))
+check("the Account Owner sets the account type, license and privileges like anyone's", api(O, "POST", "/owner/users/" + bsub, {"acctType": "pharmacist", "license": "TX12345", "perms": {"submit": True, "archive": True, "remove": True}, "permStore": "NTX1"})[0], 200)
+check("...and it is saved", (row(O, "/owner")["acctType"], row(O, "/owner")["license"], row(O, "/owner")["perms"]["archive"]), ("pharmacist", "TX12345", True))
+B, BA = login("both2", "both2pass12345")
+check("pharmacy door: now a staff pharmacist, with Rx Intake", (ntx(B).get("pharm"), ntx(B).get("rx"), api(B, "GET", "/host/stores")[0]), (True, True, 404))
+check("Rx Intake opens for them and names them as the receiving pharmacist", (lambda r: (r[0], (r[1].get("receiving") or {}).get("license")))(api(B, "GET", "/stores/NTX1/rx/config")), (200, "TX12345"))
+check("sub-roles, Designated Person and final approver can be given too", api(O, "POST", "/owner/users/" + bsub, {"subs": ["immunizer"], "dp": {"797": True}, "approver": True})[0], 200)
+check("the sign-in stays with IronLedger: the pharmacy cannot reset the password, issue a PIN, delete, switch off, rename or change the mobile",
+      (api(O, "POST", "/owner/users/" + bsub + "/reset-password", {})[0], api(O, "POST", "/owner/users/" + bsub + "/pin-reset", {})[0], api(O, "POST", "/owner/users/" + bsub + "/delete", {})[0],
+       api(O, "POST", "/owner/users/" + bsub, {"disabled": True})[0], api(O, "POST", "/owner/users/" + bsub, {"name": "X"})[0], api(O, "POST", "/owner/users/" + bsub, {"phone": "8175550000"})[0]), (403, 403, 403, 403, 403, 403))
+check("the refusal does not call it a host login", "host" in api(O, "POST", "/owner/users/" + bsub + "/reset-password", {})[1].get("error", "").lower(), False)
+check("they cannot change their own role from the pharmacy side (same as anyone)", api(B, "POST", "/owner/users/" + bsub, {"acctType": "pic"})[0] in (403, 404), True)
+api(BP, "POST", "/host-unlock", {"password": "both2pass12345", "accessToken": BPA})
+check("from the employee portal an IronLedger supervisor sets it, their own included", (api(BP, "POST", "/host/users/" + bsub, {"acctType": "pic"})[0], api(HP, "POST", "/host/users/" + bsub, {"acctType": "pharmacist", "license": "TX12345"})[0]), (200, 200))
+check("an employee login with no pharmacy still takes no pharmacy role", api(HP, "POST", "/host/users/" + nsub, {"acctType": "pharmacist"})[0], 400)
+check("through the portal the same person is IronLedger, not a pharmacist (no Rx Intake there)", api(BP, "GET", "/stores/NTX1/rx/config")[0], 403)
 print("\n" + ("all passed" if not fails else "FAILED: " + str(fails)))
