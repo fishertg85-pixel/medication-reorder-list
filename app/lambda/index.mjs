@@ -2099,7 +2099,9 @@ async function setStorePic(me, id, b){
     picLogin = String(b.picLogin || '').trim().toLowerCase();
     const pp = all.find(p => p.login === picLogin);
     if(!pp || !(pp.stores && pp.stores[id] === true || ownsStore(pp, id) || adminStore(pp, id))) throw bad('Pick the pharmacist in charge from the people who work at this pharmacy.');
-    if(pp.acctType !== 'pic' && pp.acctType !== 'pharmacist') throw bad('The pharmacist in charge must be a pharmacist (account type Staff Pharmacist or Pharmacist-In-Charge).');
+    // The PIC is designated on the person's login (account type Pharmacist-In-Charge, set in Users by the Account Owner or IronLedger); only such a login can be recorded here.
+    // A Staff Pharmacist recorded as PIC before this rule stays valid until someone else is picked.
+    if(pp.acctType !== 'pic' && !(pp.acctType === 'pharmacist' && picLogin === (s.picLogin || ''))) throw bad('The pharmacist in charge needs the account type Pharmacist-In-Charge on their login. Set it in Users first.');
     if(!pp.license) throw bad('The pharmacist in charge needs an RPh license number on their login. Enter it first.');
   }
   await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'STORES', sk: id }, UpdateExpression: 'SET ownerIsPic = :o, picLogin = :l, updatedAt = :u', ExpressionAttributeValues: { ':o': b.ownerIsPic, ':l': picLogin, ':u': now() } }));
@@ -2174,15 +2176,20 @@ async function clientPage(me, clientId){
 }
 // the people at one pharmacy, as the caller may see them. Other pharmacies' names and IDs stay hidden from everyone but the host.
 async function usersAt(me, st, r){
-  const sid = st.id, all = await listPeople();
+  const sid = st.id, all = await listPeople(), stores = await allStores();
+  // "at": the pharmacies each person is assigned to, for the Pharmacy column. An Account Owner sees only their own pharmacies there (never anyone else's); IronLedger sees all.
+  // The column is shown (multi) when the viewer has more than one pharmacy; for IronLedger, when the pharmacy's client has more than one or a listed person works at another.
+  const mine = me.host ? null : new Set(stores.filter(x => reachAt(me, x).users).map(x => x.id)), live = new Set(stores.map(x => x.id));     // the pharmacies whose people this viewer may see
   const users = all.filter(p => !p.employeeOnly && (p.stores[sid] === true || p.ownerStores[sid] === true || p.adminStores[sid] === true)).map(p => {
-    const ids = new Set([...trueKeys(p.stores), ...trueKeys(p.ownerStores), ...trueKeys(p.adminStores)]); ids.delete(sid);
+    const ids = new Set([...trueKeys(p.stores), ...trueKeys(p.ownerStores), ...trueKeys(p.adminStores)]); const at = [...ids].filter(i => live.has(i) && (!mine || mine.has(i))).sort(); ids.delete(sid);
     return { sub: p.sub, login: p.login, name: p.name, phone: p.phone, acctType: p.acctType, docDuty: p.docDuty, initials: p.initials, license: p.license, licExpires: p.licExpires, subs: p.subs, dp: p.dp, approver: p.approver, empId: p.empId, pin: p.pin,
       disabled: p.disabled, status: p.status, pending: !!p.pending, tempExpired: !!p.tempExpired, tempExpires: p.tempExpires, access: p.stores[sid] === true, isOwner: p.ownerStores[sid] === true, isAdmin: p.adminStores[sid] === true,
-      perms: Object.assign({}, p.perms, p.storePerms[sid] || {}), others: ids.size, ...(me.host ? { otherIds: [...ids], employee: p.host === true } : (p.host === true ? { locked: true } : {})) };
+      perms: Object.assign({}, p.perms, p.storePerms[sid] || {}), others: ids.size, at, ...(me.host ? { otherIds: [...ids], employee: p.host === true } : (p.host === true ? { locked: true } : {})) };
   });
   if(!me.host) users.sort((a, b) => (b.isOwner - a.isOwner) || (b.pending - a.pending) || (a.name || a.login).localeCompare(b.name || b.login));     // the pharmacy's own order: no special place for an IronLedger employee
-  return { store: { id: sid, name: st.name }, canManage: !!r.manage, users };
+  const multi = mine ? mine.size > 1 : (!!st.clientId && stores.filter(x => x.clientId === st.clientId).length > 1) || users.some(u => u.at.length > 1);
+  const places = {}; for(const u of users) for(const i of u.at) places[i] = (stores.find(x => x.id === i) || {}).name || i;
+  return { store: { id: sid, name: st.name }, canManage: !!r.manage, users, multi, places };
 }
 // ---------- router
 async function route(method, path, q, body, me, claims){
@@ -2390,6 +2397,23 @@ async function makeHost(b){
   return { ok: true, message: `Host login "${u.login}" created. Temporary password: ${u.tempPassword}`, tempPassword: u.tempPassword };
 }
 
+// The opposite of makeHost for a login that also works at a pharmacy: it stops being an IronLedger employee login and stays an ordinary pharmacy login.
+// Its Login ID, password, pharmacies, account type, Employee ID and history are untouched. It is signed out everywhere so an open portal session ends.
+// Never the last supervisor (the portal would be locked for everyone), and never a login with no pharmacy (that one is removed with remove-host).
+async function unmakeHost(b){
+  const people = await queryAll({ TableName: MAIN, KeyConditionExpression: 'pk = :p', ExpressionAttributeValues: { ':p': 'USERS' } });
+  const login = String(b.login || '').trim().toLowerCase();
+  const p = people.find(x => x.login === login && !x.deleted);
+  if(!p) return { ok: false, message: `No login "${login}" in the list.` };
+  if(p.host !== true) return { ok: true, message: `"${login}" is already a pharmacy login only.` };
+  if(!hasRole(p)) return { ok: false, message: `"${login}" has no pharmacy, so nothing would be left of it. To remove it completely: bash host.sh remove-host ${login}` };
+  const others = people.filter(x => x.sk !== p.sk && x.host === true && !x.deleted && !x.disabled && x.hostRole !== 'rep');
+  if(!others.length) return { ok: false, message: `"${login}" is the only IronLedger supervisor login. Make the new employee login first (bash host.sh make-host NEWLOGIN "NAME" NUMBER), then run this again.` };
+  await ddb.send(new UpdateCommand({ TableName: MAIN, Key: { pk: 'USERS', sk: p.sk }, UpdateExpression: 'REMOVE #h, hostRole, repStores, hostPersonnel', ExpressionAttributeNames: { '#h': 'host' } }));
+  await idp.send(new AdminUserGlobalSignOutCommand({ UserPoolId: POOL, Username: p.login })).catch(() => {});
+  return { ok: true, message: `"${login}" is now a pharmacy login only: it can no longer open the IronLedger employee portal. Its Login ID, password, pharmacies and history are unchanged. It was signed out everywhere; sign in again at the pharmacy site.` };
+}
+
 // Cognito runs this before it checks the password, for every sign-in on the pool. Through the portal's own app client only an IronLedger employee login gets through; anyone else
 // is refused with the same words as a wrong password, before any text code is sent. Every other app client is let straight through, and so is any failure here (the API
 // refuses non-employees on its own as well).
@@ -2419,6 +2443,7 @@ export const handler = async (event) => {
     if(event && event.notifyTick){ try{ return await notifyTick(event.notifyTick.now); }catch(e){ console.error('notifyTick', e); return { ok: false, message: e.message }; } }
     if(event && event.source === 'aws.events'){ try{ return await notifyTick(); }catch(e){ console.error('notifyTick', e); return { ok: false }; } }
     if(event && event.makeHost){ try{ return await makeHost(event.makeHost); }catch(e){ return { ok: false, message: 'Stopped: ' + e.message }; } }
+    if(event && event.unmakeHost){ try{ return await unmakeHost(event.unmakeHost); }catch(e){ return { ok: false, message: 'Stopped: ' + e.message }; } }
     const rp = (event.rawPath || '').replace(/^\/api/, '');
     if(event.requestContext && event.requestContext.http && event.requestContext.http.method === 'GET' && rp.startsWith('/public/pharmacy/'))
     { let id = ''; try{ id = decodeURIComponent(rp.slice('/public/pharmacy/'.length)); }catch(e){}

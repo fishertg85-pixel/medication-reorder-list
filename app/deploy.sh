@@ -62,7 +62,7 @@ if [ "$OWNERS" = "0" ]; then
   read -rp "Account Owner's full name: " NAME
   read -rp "Account Owner's Login ID (e.g. jsmith): " LOGIN
   read -rp "Account Owner's mobile number (sign-in codes are texted here): " PHONE
-  read -rp "First pharmacy's Pharmacy ID (typed at sign-in, e.g. NTX1): " PID
+  read -rp "First pharmacy's Pharmacy ID (typed at sign-in, e.g. NTX): " PID
   read -rp "First pharmacy's name: " PNAME
   read -rp "First pharmacy's time zone: 1 Eastern, 2 Central, 3 Mountain, 4 Arizona, 5 Pacific [2]: " TZN
   case "${TZN:-2}" in 1) TZ_ID=America/New_York;; 3) TZ_ID=America/Denver;; 4) TZ_ID=America/Phoenix;; 5) TZ_ID=America/Los_Angeles;; *) TZ_ID=America/Chicago;; esac

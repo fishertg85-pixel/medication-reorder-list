@@ -139,7 +139,8 @@ const PHARM_BODY = {
       ${I.admins.length ? `<div class="pid">Super user: <b>${esc(I.admins.map(ownLabel).join(', '))}</b></div>` : ''}`;
     if(!c.host || c.rep) return `<div class="pfields" style="display:block">${head}<div class="lockhint">${LOCKED}</div></div>`;
     const pool = (c.people || []).filter(u => !u.employeeOnly && !u.disabled), clientOwner = (c.people || []).find(u => u.ownerClients && u.ownerClients[s.clientId] === true);
-    const pharmacists = (c.people || []).filter(u => !u.employeeOnly && (u.acctType === 'pharmacist' || u.acctType === 'pic') && u.stores && u.stores[s.id] === true);
+    // the PIC is designated on the person's login (Users > Account Type: Pharmacist-in-Charge); this list shows those people at this pharmacy (and whoever is recorded now)
+    const pharmacists = (c.people || []).filter(u => !u.employeeOnly && (u.acctType === 'pic' || (!!s.picLogin && u.login === s.picLogin)) && u.stores && u.stores[s.id] === true);
     return `<div class="pfields" style="display:block">${head}
       <div class="ownbox"><b class="clh">Change the Account Owner</b>
         <label><span>Pick a login</span><select data-ownpick><option value="">—</option>${I.owner ? '<option value="@none">No Account Owner (remove)</option>' : ''}${clientOwner ? `<option value="@client">Same as the client’s Account Owner: ${esc(ownLabel(clientOwner))}</option>` : ''}${pool.map(u => `<option value="${esc(u.login)}">${esc(ownLabel(u))}</option>`).join('')}<option value="@new">New login…</option></select></label>
@@ -151,7 +152,8 @@ const PHARM_BODY = {
       <div class="ownbox"><b class="clh">Is The Owner The PIC?</b>
         <label class="chk"><input type="radio" name="pic-${esc(s.id)}" data-picyes value="yes"${s.ownerIsPic === true ? ' checked' : ''}> Yes: The Owner Is The PIC</label>
         <label class="chk"><input type="radio" name="pic-${esc(s.id)}" data-picyes value="no"${s.ownerIsPic === false ? ' checked' : ''}> No: A Pharmacist Is The PIC</label>
-        <label data-picwho${s.ownerIsPic === false ? '' : ' hidden'}><span>Pharmacist in charge</span><select data-picpick><option value="">—</option>${pharmacists.map(u => `<option value="${esc(u.login)}"${u.login === s.picLogin ? ' selected' : ''}>${esc(ownLabel(u))}${u.license ? '' : ' (no RPh license #)'}</option>`).join('')}</select></label>
+        <div data-picwho${s.ownerIsPic === false ? '' : ' hidden'}><label><span>Pharmacist In Charge</span><select data-picpick><option value="">—</option>${pharmacists.map(u => `<option value="${esc(u.login)}"${u.login === s.picLogin ? ' selected' : ''}>${esc(ownLabel(u))}${u.license ? '' : ' (no RPh license #)'}</option>`).join('')}</select></label>
+          <div class="hint">Not listed? Set Account Type in Users.</div></div>
         ${asked ? '<label><span>Reason for the change (required)</span><input type="text" data-picreason maxlength="300"></label>' : ''}
         <div class="hint">Only IronLedger changes this.</div>
         <button type="button" class="btn2 small" data-picsave="${esc(s.id)}">Save</button></div></div>`;

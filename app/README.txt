@@ -37,15 +37,32 @@ ZIP 39.5 (2026-11-25): WHAT CHANGED (on top of 39.4)
                 only) and lists it in the normal order. What stays with IronLedger for that login: reset password,
                 temporary PIN, mobile number, name, login on/off and delete (the same login opens the employee
                 portal). Through the portal the person is IronLedger, not a pharmacist.
-  Named users   The Calendar / Documents / Rx Intake named list (template.yaml, SUITE_USERS) now also names the login
-                tfisher at NTX1 and TEST1 (Neo's pharmacist login; tfisher85 becomes the IronLedger employee login).
-  TWO LOGINS    1. Employee portal > the pharmacy > Users > Add User: Login ID tfisher, Account Type Staff Pharmacist,
-  (Neo)            RPh License #, mobile. Initials are one per person: clear them on tfisher85 first if you want the
-                   same ones. A temporary password is shown.
-                2. Sign in at the pharmacy site as tfisher; choose the password (it may be the one you use today).
-                3. Employee portal > Users > tfisher85 > switch off Access To <pharmacy> > Update (every pharmacy it
-                   has). If tfisher85 is an Account Owner anywhere, change that Account Owner to tfisher first.
-                4. New password for tfisher85:   cd ~/nortex && bash host.sh reset-password tfisher85
+  Users list    When the viewer has more than one pharmacy, the Users list gets a Pharmacy column (between Username
+                and Mobile): the pharmacies each person is assigned to, by ID; the names show on hover. An Account
+                Owner sees only their own pharmacies there (a person's access elsewhere stays a count). IronLedger
+                sees all. An owner with one pharmacy sees no extra column.
+  Named users   The Calendar / Documents / Rx Intake named list (template.yaml, SUITE_USERS) was keyed to pharmacy ID
+                NTX1, which does not exist, so it never applied. It is now keyed to NTX. AFTER THIS DEPLOY, at NTX only
+                tfisher85, mferreiro, eoviedo and mamare have Calendar and Documents (and Rx Intake when their Account
+                Type is a pharmacist's). Everyone else at NTX has none of the three.
+  PIC           The Pharmacist In Charge is designated on the person's login: Users > Account Type:
+                Pharmacist-in-Charge, with the RPh License # (Account Owner or IronLedger). The dropdown on the
+                portal's pharmacy page lists those people; IronLedger picks one and saves. A Staff Pharmacist is no
+                longer offered there (one already recorded stays until someone else is picked).
+  Host tools    New:  bash host.sh pharmacy-only LOGIN   An employee login that also works at a pharmacy stops being
+                an employee login. The login is KEPT: same Login ID, password, pharmacies, Employee ID, history. It is
+                signed out everywhere and can no longer open the employee portal. Refused when it is the only
+                supervisor login (make the new employee login first) or when the login has no pharmacy.
+                remove-host DELETES a login. It now refuses a login that also works at a pharmacy.
+  TWO LOGINS    tfisher85 = pharmacist login (kept as it is).  tfisher = new IronLedger employee login.
+  (Neo)         1. cd ~/nortex && bash host.sh make-host tfisher "Thomas Fisher" 8175551234      (your mobile number)
+                   It prints a temporary password. Open <web address>/host.html, sign in as tfisher, choose a new
+                   password (not the one tfisher85 uses). A new Employee ID is assigned by itself.
+                2. bash host.sh pharmacy-only tfisher85
+                3. Employee portal (as tfisher) > the pharmacy > Users > tfisher85 > Account Type: Staff Pharmacist,
+                   RPh License #, Update.
+                4. Sign in at the pharmacy site as tfisher85 with its usual password: Rx Intake shows.
+                Do NOT run remove-host on tfisher85.
 
 ZIP 39.4 (2026-11-25): WHAT CHANGED (on top of 39.3)
   Phone, time   Phone and fax boxes format themselves as 000-000-0000 while typing. Every time field is a 00:00 box
@@ -199,6 +216,8 @@ IRONLEDGER EMPLOYEE PORTAL (no CloudShell needed)
   Once for a new employee:  bash host.sh make-host neo "Thomas Fisher" 8175551234    (prints a temporary password)
   For a login that already exists (e.g. your own pharmacy login):  bash host.sh make-host tfisher85
   (it keeps its ID and password; the same login then also opens the portal).
+  To undo that for a login that works at a pharmacy (the login is kept, only the portal access goes):  bash host.sh pharmacy-only LOGIN
+  remove-host LOGIN deletes an employee login that has no pharmacy.
   Open  <web address>/host.html  and sign in with the Login ID and password (no Pharmacy ID), then the texted code.
   The portal has its own sign-in entry (a separate Cognito app client, same user pool). A pre-sign-in check
   refuses a pharmacy login there exactly like a wrong password ("Incorrect ID or password.") before any text code is sent.

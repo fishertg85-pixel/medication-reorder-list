@@ -69,8 +69,12 @@ AS, ASA = login("assoc1", r[1]["tempPassword"], "asspass12345")
 check("PIC: owner-is-PIC needs an RPh license on the owner's login", api(H, "POST", "/host/stores/LAG1/pic", {"ownerIsPic": True})[0], 400)
 check("PIC: answer must be yes/no", api(H, "POST", "/host/stores/LAG1/pic", {"ownerIsPic": "maybe"})[0], 400)
 check("PIC: not the owner -> pick a pharmacist who works there", api(H, "POST", "/host/stores/LAG1/pic", {"ownerIsPic": False, "picLogin": "tech1"})[0], 400)
-check("PIC: staff pharmacist recorded", api(H, "POST", "/host/stores/LAG1/pic", {"ownerIsPic": False, "picLogin": "rph1"})[0], 200)
-check("PIC: a change needs a reason", api(H, "POST", "/host/stores/LAG1/pic", {"ownerIsPic": False, "picLogin": "rph1"})[0], 400)
+r = api(H, "POST", "/host/stores/LAG1/pic", {"ownerIsPic": False, "picLogin": "rph1"})
+check("PIC: a Staff Pharmacist is not accepted; the PIC is designated on the login first (account type Pharmacist-In-Charge)", (r[0], "Pharmacist-In-Charge" in r[1].get("error", "")), (400, True))
+r = api(H, "POST", "/host/users", {"login": "pic1", "name": "Pia Charge", "phone": "(817) 555-0155", "smsConsent": True, "stores": {"LAG1": True}, "perms": {"calendar": True}, "acctType": "pic", "initials": "PC"})
+check("PIC: designated in Users (account type), but still needs an RPh license number", (r[0], api(H, "POST", "/host/stores/LAG1/pic", {"ownerIsPic": False, "picLogin": "pic1"})[0]), (200, 400))
+check("PIC: with the license on the login it is recorded", (api(H, "POST", "/host/users/" + r[1]["user"]["sub"], {"license": "RPH-7"})[0], api(H, "POST", "/host/stores/LAG1/pic", {"ownerIsPic": False, "picLogin": "pic1"})[0]), (200, 200))
+check("PIC: a change needs a reason", api(H, "POST", "/host/stores/LAG1/pic", {"ownerIsPic": False, "picLogin": "pic1"})[0], 400)
 check("PIC: owner cannot change it", api(LO, "POST", "/owner/stores/LAG1/pic", {"ownerIsPic": True})[0], 403)
 meo = api(LO, "GET", "/me")[1]; lag = [s for s in meo["stores"] if s["id"] == "LAG1"][0]
 check("owner not PIC: no pharmacist functions, no Rx tab", (lag["pharm"], lag["rx"]), (False, False))
@@ -84,7 +88,7 @@ check("reorder switch off blocks the list", (api(H, "POST", "/host/stores/LAG1",
 api(H, "POST", "/host/stores/LAG1", {"reorder": True})
 check("owner is the PIC: give the owner a license, then yes", (api(H, "POST", "/host/users/" + [u for u in api(H, "GET", "/host/users")[1]["users"] if u["login"] == "lagown"][0]["sub"], {"license": "RPH-9"})[0], api(H, "POST", "/host/stores/LAG1/pic", {"ownerIsPic": True, "reason": "Owner took over as PIC at licensure"})[0]), (200, 200))
 check("owner is PIC: pharmacist functions and Rx now allowed", (api(LO, "GET", "/stores/LAG1/rx/config")[0]), 200)
-api(H, "POST", "/host/stores/LAG1/pic", {"ownerIsPic": False, "picLogin": "rph1", "reason": "Back to the staff pharmacist as PIC"})
+check("back to the designated PIC", api(H, "POST", "/host/stores/LAG1/pic", {"ownerIsPic": False, "picLogin": "pic1", "reason": "Back to the designated pharmacist in charge"})[0], 200)
 
 # ---- calendar completion by role
 api(H, "POST", "/host/stores/LAG1", {"calendar": True})

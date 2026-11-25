@@ -1542,7 +1542,8 @@ const PHARM_BODY = {
       ${I.admins.length ? `<div class="pid">Super user: <b>${esc(I.admins.map(ownLabel).join(', '))}</b></div>` : ''}`;
     if(!c.host || c.rep) return `<div class="pfields" style="display:block">${head}<div class="lockhint">${LOCKED}</div></div>`;
     const pool = (c.people || []).filter(u => !u.employeeOnly && !u.disabled), clientOwner = (c.people || []).find(u => u.ownerClients && u.ownerClients[s.clientId] === true);
-    const pharmacists = (c.people || []).filter(u => !u.employeeOnly && (u.acctType === 'pharmacist' || u.acctType === 'pic') && u.stores && u.stores[s.id] === true);
+    // the PIC is designated on the person's login (Users > Account Type: Pharmacist-in-Charge); this list shows those people at this pharmacy (and whoever is recorded now)
+    const pharmacists = (c.people || []).filter(u => !u.employeeOnly && (u.acctType === 'pic' || (!!s.picLogin && u.login === s.picLogin)) && u.stores && u.stores[s.id] === true);
     return `<div class="pfields" style="display:block">${head}
       <div class="ownbox"><b class="clh">Change the Account Owner</b>
         <label><span>Pick a login</span><select data-ownpick><option value="">—</option>${I.owner ? '<option value="@none">No Account Owner (remove)</option>' : ''}${clientOwner ? `<option value="@client">Same as the client’s Account Owner: ${esc(ownLabel(clientOwner))}</option>` : ''}${pool.map(u => `<option value="${esc(u.login)}">${esc(ownLabel(u))}</option>`).join('')}<option value="@new">New login…</option></select></label>
@@ -1554,7 +1555,8 @@ const PHARM_BODY = {
       <div class="ownbox"><b class="clh">Is The Owner The PIC?</b>
         <label class="chk"><input type="radio" name="pic-${esc(s.id)}" data-picyes value="yes"${s.ownerIsPic === true ? ' checked' : ''}> Yes: The Owner Is The PIC</label>
         <label class="chk"><input type="radio" name="pic-${esc(s.id)}" data-picyes value="no"${s.ownerIsPic === false ? ' checked' : ''}> No: A Pharmacist Is The PIC</label>
-        <label data-picwho${s.ownerIsPic === false ? '' : ' hidden'}><span>Pharmacist in charge</span><select data-picpick><option value="">—</option>${pharmacists.map(u => `<option value="${esc(u.login)}"${u.login === s.picLogin ? ' selected' : ''}>${esc(ownLabel(u))}${u.license ? '' : ' (no RPh license #)'}</option>`).join('')}</select></label>
+        <div data-picwho${s.ownerIsPic === false ? '' : ' hidden'}><label><span>Pharmacist In Charge</span><select data-picpick><option value="">—</option>${pharmacists.map(u => `<option value="${esc(u.login)}"${u.login === s.picLogin ? ' selected' : ''}>${esc(ownLabel(u))}${u.license ? '' : ' (no RPh license #)'}</option>`).join('')}</select></label>
+          <div class="hint">Not listed? Set Account Type in Users.</div></div>
         ${asked ? '<label><span>Reason for the change (required)</span><input type="text" data-picreason maxlength="300"></label>' : ''}
         <div class="hint">Only IronLedger changes this.</div>
         <button type="button" class="btn2 small" data-picsave="${esc(s.id)}">Save</button></div></div>`;
@@ -1959,6 +1961,8 @@ function drUsersHtml(U, o){
   // An IronLedger employee who also works at the pharmacy is an ordinary user there. Only the employee portal marks the login (u.employee is sent to IronLedger alone);
   // a pharmacy gets u.locked instead, which only hides the sign-in controls IronLedger keeps (password, PIN, mobile, on/off, delete).
   const lockd = u => !!(u.employee || u.locked);
+  // Pharmacy column: which pharmacies each person is assigned to. Shown when the viewer has more than one pharmacy (the server says so and sends only the viewer's own).
+  const multi = U.multi === true, atOf = u => (U.users.find(x => x.sub === u.sub) || {}).at || [];
   const role = u => u.isOwner ? '<span class="urole">Account Owner</span>' : (u.isAdmin ? '<span class="urole">Super user</span>' : '') + (u.employee && o.host ? '<span class="urole">Also IronLedger</span>' : '') + (dpOf(u).length ? ` <span class="urole">Designated Person ${dpOf(u).join(', ')}</span>` : '') + (subName(u).length ? ` <span class="urole">${esc(subName(u).join(', '))}</span>` : '');
   const self = u => o.me && u.login === o.me.login;
   const canPin = u => o.pinRequired && o.canPin && can && !self(u) && !u.isOwner && !lockd(u);
@@ -1996,7 +2000,8 @@ function drUsersHtml(U, o){
     return `<div class="urow${u.disabled ? ' off' : ''}${S[u.sub] ? ' dirty' : ''}${open ? ' open' : ''}" data-sub="${esc(u.sub)}">
       <div class="ucols urowhead" role="button" tabindex="0" aria-expanded="${open}" data-open="${esc(u.sub)}">
         <div class="ucell uname" data-l="User"><b>${esc(u.name || u.login)}</b>${role(u)}</div>
-        <div class="ucell mono" data-l="Username">${esc(u.login)}</div>
+        <div class="ucell mono" data-l="Username">${esc(u.login)}</div>${multi ? `
+        <div class="ucell uat" data-l="Pharmacy" title="${esc(atOf(u).map(i => i + ' · ' + ((U.places || {})[i] || i)).join('\n'))}">${esc(atOf(u).join(', '))}</div>` : ''}
         <div class="ucell" data-l="Mobile"><span class="mono">${esc(u.phone || '')}</span>${can && !u.isOwner && !lockd(u) && open ? ` <button class="edit" data-phone="${esc(u.sub)}" title="Change mobile number">✎</button>` : u.isOwner ? ' <span class="hint" title="Sign-in codes are texted here, so only IronLedger changes it.">🔒</span>' : ''}</div>
         <div class="ucell" data-l="Status">${drStatus(u)}</div>
         <div class="ucell acts"><span class="chev" aria-hidden="true">${open ? '▾' : '▸'}</span></div></div>
@@ -2017,7 +2022,7 @@ function drUsersHtml(U, o){
       <label class="chk" style="margin-top:10px"><input type="checkbox" data-np="consent" style="width:18px;height:18px;"> They signed the SMS consent form for this mobile number.</label>
       <div class="toolbar row" style="margin-top:10px"><button class="btn" data-npadd="1">Add user</button> <button class="btn2" data-npgen="1">New temporary password</button> <button class="btn2" data-npclose="1">Cancel</button></div>
       <div class="npmsg msg" data-npmsg role="status"></div></div></div>`;
-  return `${top}<div class="ulist"><div class="uhead ucols"><div>User</div><div>Username</div><div>Mobile</div><div>Status</div><div></div></div>${rows || '<div class="hint" style="padding:10px">No one has access here yet.</div>'}</div>
+  return `${top}<div class="ulist${multi ? ' multi' : ''}"><div class="uhead ucols"><div>User</div><div>Username</div>${multi ? '<div>Pharmacy</div>' : ''}<div>Mobile</div><div>Status</div><div></div></div>${rows || '<div class="hint" style="padding:10px">No one has access here yet.</div>'}</div>
     ${can ? '' : '<div class="hint" style="margin-top:10px">View only. Changes to people at this pharmacy are made by its Account Owner or IronLedger.</div>'}${add}`;
 }
 // behaviour: env = {sid, base:'/host'|'/owner', U:()=>answer, st:drState(), me:()=>ME, reload:async()=>…, paint:()=>…, say:text=>…, pass:html=>…}

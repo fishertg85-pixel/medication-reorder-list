@@ -9,7 +9,8 @@
 #   bash host.sh assign LOGIN PHARMACY_ID     give a person access to a pharmacy
 #   bash host.sh unassign LOGIN PHARMACY_ID   take that access away
 #   bash host.sh make-host LOGIN ["NAME" NUMBER]  IronLedger employee portal (web address/host.html). An existing pharmacy login (e.g. your own) needs only LOGIN: it keeps its ID and password.
-#   bash host.sh remove-host LOGIN           remove an extra host login (never the last one)
+#   bash host.sh pharmacy-only LOGIN         an employee login that also works at a pharmacy stops being an employee login; the login itself is kept
+#   bash host.sh remove-host LOGIN           DELETE an extra host login that has no pharmacy (never the last one)
 # Optional: APP=other-name bash host.sh ...   for a separate copy
 set -euo pipefail
 APP="${APP:-nortex-reorder}"
@@ -89,11 +90,18 @@ case "$cmd" in
     site="$(out SiteUrl 2>/dev/null || true)"
     [ -n "$site" ] && [ "$site" != "None" ] && echo "Host page: ${site%/}/host.html"
     echo "Sign in there with that Login ID and password (no Pharmacy ID). A code is texted to your phone." ;;
+  pharmacy-only)
+    need_login
+    payload="$(jq -cn --arg l "$login" '{unmakeHost:{login:$l}}')"
+    aws lambda invoke --function-name "$(out FunctionName)" --region "$REGION" --cli-binary-format raw-in-base64-out --payload "$payload" .host.json >/dev/null
+    jq -r '.message // .errorMessage // .' .host.json; rm -f .host.json ;;
   remove-host)
     need_login
     p="$(aws dynamodb query --table-name "$MAIN" --region "$REGION" --key-condition-expression "pk = :p" --expression-attribute-values '{":p":{"S":"USERS"}}' --output json | jq -c --arg l "$login" '[.Items[] | select(.login.S == $l and (.deleted.BOOL // false | not))][0]')"
     [ "$p" != "null" ] || { echo "No login \"$login\" in the list."; exit 1; }
     [ "$(echo "$p" | jq -r '.host.BOOL // false')" = true ] || { echo "\"$login\" is not a host login. Delete staff from the Account Owner tab or the host page."; exit 1; }
+    # this command deletes the login. One that also works at a pharmacy is kept: use pharmacy-only for it.
+    [ "$(echo "$p" | jq -r '[(.stores.M // {}), (.ownerStores.M // {}), (.adminStores.M // {}), (.ownerClients.M // {})] | map(to_entries[] | select(.value.BOOL == true)) | length')" = 0 ] || { echo "\"$login\" also works at a pharmacy, and this command would delete the login. Not removed. To keep it as a pharmacy login only:  bash host.sh pharmacy-only $login"; exit 1; }
     hosts="$(aws dynamodb query --table-name "$MAIN" --region "$REGION" --key-condition-expression "pk = :p" --expression-attribute-values '{":p":{"S":"USERS"}}' --output json | jq '[.Items[] | select((.host.BOOL // false) and (.deleted.BOOL // false | not))] | length')"
     [ "$hosts" -gt 1 ] || { echo "That is the only host login. Not removed."; exit 1; }
     sub="$(echo "$p" | jq -r '.sk.S')"
@@ -103,5 +111,5 @@ case "$cmd" in
       --update-expression "SET deleted = :t, disabled = :t, deletedAt = :n, deletedBy = :b" \
       --expression-attribute-values "{\":t\":{\"BOOL\":true},\":n\":{\"S\":\"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\"},\":b\":{\"S\":\"host (CloudShell)\"}}" >/dev/null
     echo "Host login \"$login\" removed." ;;
-  *) sed -n '2,13p' "$0" ;;
+  *) sed -n '2,14p' "$0" ;;
 esac

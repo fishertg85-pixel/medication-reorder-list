@@ -92,6 +92,7 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
 .dfound .hit{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line-soft,var(--line));padding:8px 12px;cursor:pointer;font:inherit;color:var(--ink);min-height:0;} .dfound .hit:hover{background:var(--accent-soft);}
 .dfound .hit span{display:block;font-size:12px;color:var(--muted);} .dfound .hits .hg{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:6px 12px 2px;}
 .ulist .ucols{grid-template-columns:minmax(170px,1.6fr) minmax(100px,1fr) minmax(150px,1fr) minmax(170px,1.3fr) 40px;}
+.ulist.multi .ucols{grid-template-columns:minmax(170px,1.6fr) minmax(100px,1fr) minmax(max-content,1fr) minmax(150px,1fr) minmax(170px,1.3fr) 40px;}   /* + Pharmacy: never narrower than its text */
 .urowhead{cursor:pointer;} .urowhead:hover{background:var(--accent-soft);} .urow.open{background:var(--panel);border-radius:6px;} .urowhead .chev{color:var(--muted);}
 .udetail{padding:2px 6px 10px 10px;border-left:3px solid var(--accent);margin:6px 0 4px 6px;}
 .urole{margin-left:8px;font-size:11.5px;font-weight:600;color:var(--muted);}

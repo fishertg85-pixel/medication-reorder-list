@@ -86,4 +86,26 @@ api(BP, "POST", "/host-unlock", {"password": "both2pass12345", "accessToken": BP
 check("from the employee portal an IronLedger supervisor sets it, their own included", (api(BP, "POST", "/host/users/" + bsub, {"acctType": "pic"})[0], api(HP, "POST", "/host/users/" + bsub, {"acctType": "pharmacist", "license": "TX12345"})[0]), (200, 200))
 check("an employee login with no pharmacy still takes no pharmacy role", api(HP, "POST", "/host/users/" + nsub, {"acctType": "pharmacist"})[0], 400)
 check("through the portal the same person is IronLedger, not a pharmacist (no Rx Intake there)", api(BP, "GET", "/stores/NTX1/rx/config")[0], 403)
+
+# ---- pharmacy-only (host.sh pharmacy-only LOGIN): an employee login that also works at a pharmacy stops being an employee login; the login is kept
+d = boto3.client("dynamodb", endpoint_url="http://localhost:5005", region_name="us-east-1", aws_access_key_id="x", aws_secret_access_key="x")
+TBL = "nortex-reorder-main"
+def setdis(sub_, v): d.update_item(TableName=TBL, Key={"pk": {"S": "USERS"}, "sk": {"S": sub_}}, UpdateExpression="SET disabled = :d", ExpressionAttributeValues={":d": {"BOOL": v}})
+un = lambda l: node({"unmakeHost": {"login": l}}, {"PORTAL_CLIENT_ID": PC})
+r = un("neo"); check("a login with no pharmacy is not turned into a pharmacy login (nothing would be left of it)", (r.get("ok"), "no pharmacy" in r.get("message", "")), (False, True))
+r = un("nobody9"); check("an unknown login: said so", (r.get("ok"), "No login" in r.get("message", "")), (False, True))
+setdis(nsub, True); r = un("both2"); setdis(nsub, False)
+check("never the last working supervisor: refused, with the command to make the new employee login first", (r.get("ok"), "only IronLedger supervisor" in r.get("message", ""), "make-host" in r.get("message", "")), (False, True, True))
+check("...and nothing changed: still an employee", row(HP, "/host").get("employee"), True)
+before = row(HP, "/host")
+r = un("both2"); check("with another supervisor in place it goes through", r.get("ok"), True)
+check("portal door: now refused like a wrong password", pre(PC, "both2", {"PORTAL_CLIENT_ID": PC}).get("threw"), "Incorrect ID or password.")
+B, BA = login("both2", "both2pass12345")
+me2 = api(B, "GET", "/me")[1]
+check("pharmacy door: same Login ID and password, still a Staff Pharmacist with Rx Intake, no portal", (me2.get("portal"), ntx(B).get("pharm"), ntx(B).get("rx"), api(B, "GET", "/host/stores")[0]), (False, True, True, 404))
+after = row(HP, "/host")
+check("account type, license, Employee ID, initials and privileges are untouched", [(before.get(k), ) for k in ("acctType", "license", "empId", "initials", "perms", "access")], [(after.get(k), ) for k in ("acctType", "license", "empId", "initials", "perms", "access")])
+check("the employee portal no longer marks it, and the pharmacy now manages its sign-in like anyone's", (after.get("employee"), "locked" in row(O, "/owner"), api(O, "POST", "/owner/users/" + bsub + "/reset-password", {})[0]), (False, False, 200))
+r = un("both2"); check("running it again changes nothing", (r.get("ok"), "already" in r.get("message", "")), (True, True))
+check("the other supervisor still has the employee tools", api(HP, "GET", "/host/stores")[0], 200)
 print("\n" + ("all passed" if not fails else "FAILED: " + str(fails)))
