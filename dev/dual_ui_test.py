@@ -1,5 +1,5 @@
 # An IronLedger employee who also works at a pharmacy: on the pharmacy side the login is an ordinary user (no employee marking, account type and role like anyone's);
-# the employee portal still marks it. Run ./reset.sh first.
+# the employee portal: no marking either. Run ./reset.sh first.
 import json, urllib.request, urllib.error, boto3, subprocess, os
 from playwright.sync_api import sync_playwright
 ids = json.load(open('moto_ids.json')); BASE = 'http://localhost:8790/'
@@ -70,6 +70,9 @@ with sync_playwright() as pw:
     p.click('#side [data-view=users]'); p.wait_for_selector('.ug-back:not([hidden]), #vUsers .urow')
     if p.is_visible('.ug-back:not([hidden])'): p.click('[data-ug=no]')
     p.wait_for_selector('#vUsers .urow')
-    check("employee portal: the login is marked Also IronLedger, and shows as a Staff Pharmacist", ("Also IronLedger" in p.locator('#vUsers .urow:has-text("dual1")').inner_text(), u["acctType"]), (True, "pharmacist"))
+    prow = p.locator('#vUsers .urow:has-text("dual1")')
+    check("employee portal: no screen marks the login as IronLedger either; it shows as a Staff Pharmacist like anyone", ("IronLedger" in prow.inner_text(), "IronLedger" in p.inner_text('#vUsers'), u["acctType"]), (False, False, "pharmacist"))
+    prow.locator('.urowhead').click(); p.wait_for_selector('#vUsers .udetail')
+    check("employee portal: opened, still no such text; the row works like any other (account type, license)", ("IronLedger" in prow.inner_text(), prow.locator('select[data-utype]').count(), prow.locator('[data-ulic]').count()), (False, 1, 1))
     p.close(); b.close()
 check("no script errors", errs, []); print("\nFAILED:", fails if fails else "none"); import sys; sys.exit(1 if fails else 0)

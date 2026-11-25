@@ -7,9 +7,9 @@ phone's home screen. Each pharmacy has its own list, archive and distributor mem
 INSTALL OR UPDATE: THE COMMANDS (START HERE)
 ==========================================================================================
   A. Upload the zip.   AWS console > CloudShell (the >_ icon in the top bar) > Actions > Upload file >
-     choose NorTex_Reorder_Cloud_39.5.zip   (use the same region as before).
+     choose NorTex_Reorder_Cloud_39.6.zip   (use the same region as before).
   B. Run it (copy the whole line; it works for a first install and for every update):
-         rm -rf ~/nortex && mkdir ~/nortex && unzip -q ~/NorTex_Reorder_Cloud_39.5.zip -d ~/nortex && cd ~/nortex && bash deploy.sh
+         rm -rf ~/nortex && mkdir ~/nortex && unzip -q ~/NorTex_Reorder_Cloud_39.6.zip -d ~/nortex && cd ~/nortex && bash deploy.sh
      A first install asks for the Account Owner and the first pharmacy (see FIRST DEPLOY below).
      An update asks nothing: it replaces only the app and server code. Lists, archives, memory and
      logins are never touched, and earlier settings (text codes, SUITE_USERS, PIN setting) are kept.
@@ -27,6 +27,11 @@ INSTALL OR UPDATE: THE COMMANDS (START HERE)
      bash host.sh off LOGIN  bash host.sh on LOGIN                 bash host.sh pharmacies
      bash host.sh add-pharmacy NTX2 "NorTex Pharmacy - Keller" central
      bash host.sh assign LOGIN NTX2        bash host.sh unassign LOGIN NTX2
+
+ZIP 39.6 (2026-11-25): WHAT CHANGED (on top of 39.5)
+  Users list    The "Also IronLedger" text is gone from the Users list everywhere, the employee portal included.
+                Nothing on screen marks a login as an IronLedger employee. (For such a login the sign-in controls
+                are still not offered to a pharmacy: reset password, PIN, mobile, login on/off, delete.)
 
 ZIP 39.5 (2026-11-25): WHAT CHANGED (on top of 39.4)
   Employee who  An IronLedger employee whose login also works at a pharmacy is an ordinary user on the pharmacy side.

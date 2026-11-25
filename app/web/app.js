@@ -1958,12 +1958,12 @@ function drUsersHtml(U, o){
   const sid = U.store.id, can = U.canManage, S = o.st.staged, list = U.users.map(u => drEff(u, S, sid));
   const priv = (sw_, label, title) => `<span class="priv" title="${esc(title || label)}">${sw_}<span>${esc(label)}</span></span>`;
   const dpOf = u => DR_CHAPTERS.filter(c => u.dp && u.dp[c] === true), subName = u => (u.subs || []).map(k => (DR_SUBS[u.acctType] || {})[k]).filter(Boolean);
-  // An IronLedger employee who also works at the pharmacy is an ordinary user there. Only the employee portal marks the login (u.employee is sent to IronLedger alone);
-  // a pharmacy gets u.locked instead, which only hides the sign-in controls IronLedger keeps (password, PIN, mobile, on/off, delete).
+  // An IronLedger employee who also works at the pharmacy is an ordinary user there, and no screen marks the login (no badge, in the portal either).
+  // u.employee (sent to IronLedger alone) and u.locked (sent to a pharmacy) only hide the sign-in controls IronLedger keeps (password, PIN, mobile, on/off, delete).
   const lockd = u => !!(u.employee || u.locked);
   // Pharmacy column: which pharmacies each person is assigned to. Shown when the viewer has more than one pharmacy (the server says so and sends only the viewer's own).
   const multi = U.multi === true, atOf = u => (U.users.find(x => x.sub === u.sub) || {}).at || [];
-  const role = u => u.isOwner ? '<span class="urole">Account Owner</span>' : (u.isAdmin ? '<span class="urole">Super user</span>' : '') + (u.employee && o.host ? '<span class="urole">Also IronLedger</span>' : '') + (dpOf(u).length ? ` <span class="urole">Designated Person ${dpOf(u).join(', ')}</span>` : '') + (subName(u).length ? ` <span class="urole">${esc(subName(u).join(', '))}</span>` : '');
+  const role = u => u.isOwner ? '<span class="urole">Account Owner</span>' : (u.isAdmin ? '<span class="urole">Super user</span>' : '') + (dpOf(u).length ? ` <span class="urole">Designated Person ${dpOf(u).join(', ')}</span>` : '') + (subName(u).length ? ` <span class="urole">${esc(subName(u).join(', '))}</span>` : '');
   const self = u => o.me && u.login === o.me.login;
   const canPin = u => o.pinRequired && o.canPin && can && !self(u) && !u.isOwner && !lockd(u);
   const detail = u => {
