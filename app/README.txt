@@ -3,6 +3,15 @@ NorTex Reorder List — Cloud Version (AWS)
 Hosted on your AWS account. Works in any browser on computers, phones and tablets, and installs to a
 phone's home screen. Each pharmacy has its own list, archive and distributor memory.
 
+ZIP 39.3 (2026-11-25): WHAT CHANGED (on top of 39.2)
+  Setup pages   Pharmacy and client pages: Pharmacy Name on its own row; then [Street Address][Suite / Unit],
+                [City][State][ZIP], [Phone][Fax], [Email]. Same pattern for the client business and billing addresses.
+  Save          A Save button at the top, right-aligned above the panels (Create on new pharmacies and clients).
+  Hours         Time Zone sits in the Hours Of Operation box, right of the Sunday row. A day switched to Closed grays
+                out its time fields.
+  Fit           Labels and buttons never wrap. A text too long for its box gets a smaller type size and the full text
+                as a hover tip. Shorter hint texts. Default layouts: Hours Of Operation is 5 columns wide.
+
 ZIP 39.2 (2026-11-24): WHAT CHANGED
   Records       The approver reopens a record (back to review, old version kept) or voids it (reason required,
                 hidden from lists and the inspector, kept on file). Nothing is deleted. Excursion and
