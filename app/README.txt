@@ -3,6 +3,31 @@ NorTex Reorder List — Cloud Version (AWS)
 Hosted on your AWS account. Works in any browser on computers, phones and tablets, and installs to a
 phone's home screen. Each pharmacy has its own list, archive and distributor memory.
 
+==========================================================================================
+INSTALL OR UPDATE: THE COMMANDS (START HERE)
+==========================================================================================
+  A. Upload the zip.   AWS console > CloudShell (the >_ icon in the top bar) > Actions > Upload file >
+     choose NorTex_Reorder_Cloud_39.3.zip   (use the same region as before).
+  B. Run it (copy the whole line; it works for a first install and for every update):
+         rm -rf ~/nortex && mkdir ~/nortex && unzip -q ~/NorTex_Reorder_Cloud_39.3.zip -d ~/nortex && cd ~/nortex && bash deploy.sh
+     A first install asks for the Account Owner and the first pharmacy (see FIRST DEPLOY below).
+     An update asks nothing: it replaces only the app and server code. Lists, archives, memory and
+     logins are never touched, and earlier settings (text codes, SUITE_USERS, PIN setting) are kept.
+  C. Afterwards: hard-refresh the site (Ctrl+Shift+R), then sign in on the employee portal with a
+     PHARMACY login; it must say "Incorrect ID or password." and no text may arrive.
+
+  Options (put them in front of bash deploy.sh; each is remembered until you change it):
+     TEXT_CODES=off bash deploy.sh        password-only sign-in until the texting number is approved
+     TEXT_CODES=on  bash deploy.sh        texted sign-in codes back on
+     NOTIFY_FROM=notices@ironledgerrx.com bash deploy.sh    email reminders (needs a verified SES sender)
+     NOTIFY_TEXT=on bash deploy.sh        text reminders (needs the approved texting number)
+     APP=othername bash deploy.sh         a second, separate copy (another business)
+  Host tools, from the same folder (cd ~/nortex):
+     bash host.sh people     bash host.sh reset-password LOGIN     bash host.sh set-phone LOGIN 8175551234
+     bash host.sh off LOGIN  bash host.sh on LOGIN                 bash host.sh pharmacies
+     bash host.sh add-pharmacy NTX2 "NorTex Pharmacy - Keller" central
+     bash host.sh assign LOGIN NTX2        bash host.sh unassign LOGIN NTX2
+
 ZIP 39.3 (2026-11-25): WHAT CHANGED (on top of 39.2)
   Setup pages   Pharmacy and client pages: Pharmacy Name on its own row; then [Street Address][Suite / Unit],
                 [City][State][ZIP], [Phone][Fax], [Email]. Same pattern for the client business and billing addresses.
@@ -109,8 +134,7 @@ FIRST DEPLOY (about 15 minutes, mostly waiting)
   1. Sign in to the AWS console with an account that can create resources (an admin user, not root if
      you can avoid it). Pick the region at the top right (same as above).
   2. Open CloudShell (the >_ icon in the top bar).
-  3. Actions > Upload file > choose NorTex_Reorder_Cloud.zip. Then type:
-         unzip -o NorTex_Reorder_Cloud.zip -d nortex && cd nortex && bash deploy.sh
+  3. Upload the zip and run the command in INSTALL OR UPDATE (at the top of this file).
   4. It builds everything (5–10 minutes the first time), then asks for:
        the Account Owner's name, Login ID and mobile number, and the first pharmacy's ID and name.
      It prints a temporary password and the web address (something like https://d1abc2def3.cloudfront.net).
@@ -156,7 +180,7 @@ HOST TOOLS (CloudShell, in the same folder)
   change the same records.
 
 UPDATES
-  Upload the new zip to CloudShell and run the same commands. Updates replace only the app and server
+  Upload the new zip to CloudShell and run the command in INSTALL OR UPDATE (top of this file). Updates replace only the app and server
   code. Lists, archives, memory and logins are never touched.
 
 ==========================================================================================
