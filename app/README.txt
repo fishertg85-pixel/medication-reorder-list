@@ -7,9 +7,9 @@ phone's home screen. Each pharmacy has its own list, archive and distributor mem
 INSTALL OR UPDATE: THE COMMANDS (START HERE)
 ==========================================================================================
   A. Upload the zip.   AWS console > CloudShell (the >_ icon in the top bar) > Actions > Upload file >
-     choose NorTex_Reorder_Cloud_39.3.zip   (use the same region as before).
+     choose NorTex_Reorder_Cloud_39.4.zip   (use the same region as before).
   B. Run it (copy the whole line; it works for a first install and for every update):
-         rm -rf ~/nortex && mkdir ~/nortex && unzip -q ~/NorTex_Reorder_Cloud_39.3.zip -d ~/nortex && cd ~/nortex && bash deploy.sh
+         rm -rf ~/nortex && mkdir ~/nortex && unzip -q ~/NorTex_Reorder_Cloud_39.4.zip -d ~/nortex && cd ~/nortex && bash deploy.sh
      A first install asks for the Account Owner and the first pharmacy (see FIRST DEPLOY below).
      An update asks nothing: it replaces only the app and server code. Lists, archives, memory and
      logins are never touched, and earlier settings (text codes, SUITE_USERS, PIN setting) are kept.
@@ -27,6 +27,32 @@ INSTALL OR UPDATE: THE COMMANDS (START HERE)
      bash host.sh off LOGIN  bash host.sh on LOGIN                 bash host.sh pharmacies
      bash host.sh add-pharmacy NTX2 "NorTex Pharmacy - Keller" central
      bash host.sh assign LOGIN NTX2        bash host.sh unassign LOGIN NTX2
+
+ZIP 39.4 (2026-11-25): WHAT CHANGED (on top of 39.3)
+  Phone, time   Phone and fax boxes format themselves as 000-000-0000 while typing. Every time field is a 00:00 box
+                (digits only, the colon is added) with an AM/PM dropdown; 13:00 typed becomes 01:00 PM. The
+                formatting is for the person reading; the server keeps plain values (24-hour times).
+  Hours         Hours Of Operation is one grid with column titles (Opens, Closes, Closed, Time Zone); every day row
+                lines up under them. Beside the right-hand list the panels stack in one column below 1366 px wide.
+  Holidays      The Federal Holidays Closed list is two columns (the second starts with Labor Day). The dates are
+                worked out from the federal rules for every year on the server as well as in the Calendar (tested
+                identical for 2021 through 2050), so nothing is entered by hand. A reminder is not sent on a
+                federal holiday the pharmacy is closed for. Additional Closed Days show on the Calendar by name
+                and are shaded like every other closed day; an Every Year day repeats.
+  Portal frame  Employee portal: the IronLedger header, the Refresh row, the Find box, the breadcrumb and the
+                right-hand list stay put; only the middle scrolls. Logo and tag line line up with the page edges.
+                The middle box and the right-hand list start and end at the same height.
+  Save          Save / Create sits in the fixed row at the top right, outside the scrolling box, so it never scrolls
+                away. The Save box on the client page is gone (Change History moved beside Unlock Fields).
+  Layouts       Default layouts are in aligned bands: panels side by side share the same top and bottom edge.
+                Client page: [Client And Legal Entity | Account Owner], [Addresses | Phone, Fax And Contacts].
+  Unsaved       Leaving a page or window with changes asks "Save your changes?" Yes saves, then leaves (a save that
+                is refused keeps you there with the message). No leaves without saving. Covered: employee portal
+                (client, new client, pharmacy, Add Pharmacy window; breadcrumb, lists, search, Refresh, Lock, Sign
+                Out), the Account tab (pharmacy page; lists, breadcrumb, tabs, Sign Out), every Calendar window
+                (Cancel, click outside, Escape, changing tabs). Closing the browser tab shows the browser's own
+                warning (a page cannot draw its own window there). Not covered yet: the Users lists, Documents
+                and Rx Intake.
 
 ZIP 39.3 (2026-11-25): WHAT CHANGED (on top of 39.2)
   Setup pages   Pharmacy and client pages: Pharmacy Name on its own row; then [Street Address][Suite / Unit],

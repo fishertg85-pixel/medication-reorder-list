@@ -1665,11 +1665,31 @@ async function notifyCfg(store){
   const r = await ddb.send(new GetCommand({ TableName: MAIN, Key: { pk: docPk(store), sk: 'NOTIFYCFG' } })); let c = {}; try{ c = r.Item ? JSON.parse(r.Item.j) : {}; }catch(e){}
   return { ...NOTIFY_DEF, ...(Number.isFinite(c.firstHours) ? { firstHours: c.firstHours } : {}) };
 }
+// Federal holidays by year (5 U.S.C. 6103), computed from the weekday rules so they follow the calendar every year: the same dates the Calendar page uses.
+// A pharmacy that closes on a holiday is closed on its legal date, and a Sunday holiday is also observed (closed) on the Monday after. A Saturday holiday does not close the Friday before.
+export const FED_DEFAULT = ['newyear', 'memorial', 'july4', 'labor', 'thanks', 'xmas'];
+const nthWd = (y, m, dow, n) => { const f = new Date(Date.UTC(y, m - 1, 1)).getUTCDay(); return 1 + ((dow - f + 7) % 7) + 7 * (n - 1); };
+const lastWd = (y, m, dow) => { const dim = new Date(Date.UTC(y, m, 0)).getUTCDate(), l = new Date(Date.UTC(y, m - 1, dim)).getUTCDay(); return dim - ((l - dow + 7) % 7); };
+export function fedDates(y){
+  const d = (m, dd) => `${y}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+  const L = [['newyear', d(1, 1)], ['mlk', d(1, nthWd(y, 1, 1, 3))], ['presidents', d(2, nthWd(y, 2, 1, 3))], ['memorial', d(5, lastWd(y, 5, 1))]];
+  if(y >= 2021) L.push(['juneteenth', d(6, 19)]);
+  L.push(['july4', d(7, 4)], ['labor', d(9, nthWd(y, 9, 1, 1))], ['columbus', d(10, nthWd(y, 10, 1, 2))], ['veterans', d(11, 11)], ['thanks', d(11, nthWd(y, 11, 4, 4))], ['xmas', d(12, 25)]);
+  return L;
+}
+export function holidayClosed(storeItem, ymd){                              // the id of the federal holiday this pharmacy is closed for on that date, or ''
+  const y = +ymd.slice(0, 4), shut = Array.isArray(storeItem.holClosed) ? storeItem.holClosed : FED_DEFAULT;
+  for(const [id, date] of fedDates(y)){ if(!shut.includes(id)) continue;
+    if(date === ymd) return id;
+    if(new Date(date + 'T00:00:00Z').getUTCDay() === 0){ const n = new Date(Date.parse(date + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10); if(n === ymd) return id; } }
+  return '';
+}
 function openAt(storeItem, ms){                                           // is the pharmacy open at this moment (its own time zone, weekly hours, closed days)?
   const tz = storeItem.timezone || DEFAULT_TZ, h = Array.isArray(storeItem.hours) && storeItem.hours.length === 7 ? storeItem.hours : null; if(!h) return true;
   try{
     const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms)).map(x => [x.type, x.value]));
     if((((storeItem.closures || {}).days) || []).includes(`${p.year}-${p.month}-${p.day}`)) return false;
+    if(holidayClosed(storeItem, `${p.year}-${p.month}-${p.day}`)) return false;
     const d = h[['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday)]; if(!d || !d.o || !d.c) return false;
     const t = `${p.hour}:${p.minute}`; return d.o <= t && t < d.c;
   }catch(e){ return true; }

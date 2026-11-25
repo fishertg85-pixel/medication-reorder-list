@@ -328,7 +328,7 @@ rep('''/* ======================================================================
    Drug search: NLM RxTerms / RxNav live, FDA NDC Directory backup. DailyMed links open labels.
    ======================================================================= */''')
 cut('/* ---------------- shared state ---------------- */', '/* ---------------- drug search:', open(P + 'state.js').read() + '\n' + open(P + 'login.js').read() + '\n')
-cut('/* ---------------- safety net:', '</script>', open(P + 'layout_engine.js').read() + '\n' + open(P + 'pharm_panels.js').read() + '\n' + open(P + 'client_panels.js').read() + '\n' + open(P + 'drill.js').read() + '\n' + open(P + 'owner.js').read() + '\n' + open(P + 'calendar.js').read() + '\n' + open(P + 'documents_panels.js').read() + '\n' + open(P + 'rx.js').read() + '\n' + open(P + 'start.js').read())
+cut('/* ---------------- safety net:', '</script>', open(P + 'layout_engine.js').read() + '\n' + open(P + 'timepick.js').read() + '\n' + open(P + 'unsaved.js').read() + '\n' + open(P + 'pharm_panels.js').read() + '\n' + open(P + 'client_panels.js').read() + '\n' + open(P + 'drill.js').read() + '\n' + open(P + 'owner.js').read() + '\n' + open(P + 'calendar.js').read() + '\n' + open(P + 'documents_panels.js').read() + '\n' + open(P + 'rx.js').read() + '\n' + open(P + 'start.js').read())
 # remove the old tabs/start (now in start.js) — it was after the safety-net block, so already cut
 
 # ---------- list rows: who added it, labels for phone layout, remove only with permission
@@ -434,6 +434,8 @@ open(OUT.replace('index.html', 'pharm_panels.css'), 'w').write(PCSS)
 open(OUT.replace('index.html', 'suite.css'), 'w').write(open(P + 'suite.css').read())
 FLD = open(P + 'fields.css').read(); open(OUT.replace('index.html', 'fields.css'), 'w').write(FLD)
 open(OUT.replace('index.html', 'layout_engine.js'), 'w').write(open(P + 'layout_engine.js').read())
+open(OUT.replace('index.html', 'timepick.js'), 'w').write(open(P + 'timepick.js').read())
+open(OUT.replace('index.html', 'unsaved.js'), 'w').write(open(P + 'unsaved.js').read())                          # unsaved-changes window (host page)                      # time fields: 00:00 + AM/PM (host page)
 open(OUT.replace('index.html', 'pharm_panels.js'), 'w').write(open(P + 'pharm_panels.js').read())
 open(OUT.replace('index.html', 'documents_panels.js'), 'w').write(open(P + 'documents_panels.js').read())
 open(OUT.replace('index.html', 'client_panels.js'), 'w').write(open(P + 'client_panels.js').read())          # the host page uses the same card and layout
@@ -455,6 +457,8 @@ cal = cal.replace('window.IL_BLANK=true;\n', HOOK, 1)
 cal = cal.replace('</head>', '<style>header.top .brand .mark{display:none}</style><link rel="stylesheet" href="fields.css"></head>', 1)   # the suite header above already shows the IronLedger name
 assert cal.startswith('<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8">')
 cal = cal.replace('<meta charset="utf-8">', '<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="%s"><link rel="stylesheet" href="fonts.css">' % CAL_CSP, 1)
+k = cal.rindex('</body>')                                   # the last one (the audit-report template inside the page has its own)
+cal = cal[:k] + '<script>\n' + open(P + 'timepick.js').read() + '\n' + open(P + 'unsaved.js').read() + '</script>' + cal[k:]
 open(OUT.replace('index.html', 'calendar.html'), 'w', encoding='utf-8').write(cal)
 # the Rx Intake page (rx/ folder: the handoff form, adapted): runs in the browser only; nothing about a patient reaches the server
 RXD = os.path.join(HERE, 'rx'); rd = lambda n: open(os.path.join(RXD, n), encoding='utf-8').read()

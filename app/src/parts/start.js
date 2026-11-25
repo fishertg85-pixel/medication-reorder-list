@@ -1,5 +1,6 @@
 /* ---------------- tabs, render, start ---------------- */
-document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = async () => {
+  if(!(await UG.leave())) return;                                      // unsaved changes: Yes saves, No leaves
   document.querySelectorAll('#tabs button').forEach(x => { x.classList.toggle('active', x === b); x.classList.toggle('sub', b.dataset.tab === 'archive' && x.dataset.tab === 'list'); });
   $('acctBtn').classList.toggle('on', b.dataset.tab === 'owner');
   const pan = b.dataset.tab === 'dashboard' ? 'calendar' : b.dataset.tab;                  // Dashboard and Calendar are two views of the same page

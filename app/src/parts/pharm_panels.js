@@ -2,11 +2,11 @@
    Built on the layout engine (layout_engine.js). PHARM_LAYOUT is set once by Neo with the layout editor and is the same for everyone. */
 const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
 const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['own', 'Account Owner And PIC'], ['mgr', 'Who Can Manage Users'], ['act', 'Modules And Save']];
-const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,40],"own":[1,41,3,49],"contact":[4,1,4,37],"reg":[4,38,4,52],"hrs":[8,1,5,71],"mgr":[8,72,5,18],"svc":[1,90,7,26],"act":[8,90,5,26]}};
+const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,36],"contact":[4,1,4,36],"hrs":[8,1,5,59],"own":[1,37,3,39],"reg":[4,37,4,55],"mgr":[1,76,3,16],"act":[8,60,5,32],"svc":[1,92,12,18]}};
 const PHARM_PAGE = { id: 'pharm', title: 'Host Pharmacy Setup Page', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
   render: (sample, panels) => pharmCardHtml(sample, { logo: '', holder: 'Pat Owner (owner)', host: true, clients: [{ id: 'IL-000001', legalName: 'NorTex Holdings LLC', entityType: 'llc', ein: '12-3456789' }] }, { panels }) };
 // The Account Owner's version of the same page has its own layout (Neo arranges it separately in the layout editor: page key pharm_owner).
-const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,41],"own":[1,42,3,12],"act":[1,54,3,20],"contact":[4,1,4,42],"reg":[4,43,4,31],"hrs":[8,1,5,73],"svc":[1,74,12,9]}};
+const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,35],"contact":[4,1,4,35],"hrs":[8,1,5,64],"own":[1,36,3,10],"act":[1,46,3,19],"reg":[4,36,4,29],"svc":[1,65,12,9]}};
 const PHARM_OWNER_PANELS = PHARM_PANELS.filter(p => p[0] !== 'mgr');      // the switches are IronLedger's alone
 const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_OWNER_PANELS, layout: PHARM_OWNER_LAYOUT,
   render: (sample, panels) => pharmCardHtml(Object.assign({}, sample, { ein: '', einMasked: '••-•••4321' }), { logo: '', holder: 'Pat Owner (owner)' }, { panels }) };
@@ -123,7 +123,8 @@ const PHARM_BODY = {
     : `<div class="pfields"><div class="chips">${(s.services || []).map(k => `<span class="chip">${esc(SVC_LABELS[k] || k)}</span>`).join('') || '<span class="hint">None set yet.</span>'}</div>
           ${s.servicesOther ? `<div class="pid">Other: ${esc(s.servicesOther)}</div>` : ''}<div class="lockhint">${LOCKED}</div></div>`,
   hrs: s => `<div class="pfields"><div class="hrs">${s.hours ? '' : '<div class="hint">Not set yet; these are suggestions until you save.</div>'}
-          ${hoursOf(s).map((h, i) => `<div class="hrow"><span title="${DAYS[i]}">${DAYS[i].slice(0, 3)}</span><input type="time" data-ho="${i}" value="${h ? h.o : '09:00'}"${h ? '' : ' disabled'}><input type="time" data-hc="${i}" value="${h ? h.c : '18:00'}"${h ? '' : ' disabled'}><label class="chk">${sw(`data-hx="${i}"`, !h)} Closed</label>${i === 0 ? tzSelect('data-sf="timezone" class="tzsel" title="Time Zone"', s.timezone) : ''}</div>`).join('')}</div>
+          <div class="hrow hhead"><span></span><span>Opens</span><span>Closes</span><span>Closed</span><span class="tzh">Time Zone</span></div>
+          ${hoursOf(s).map((h, i) => `<div class="hrow"><span title="${DAYS[i]}">${DAYS[i].slice(0, 3)}</span><input type="time" data-ho="${i}" aria-label="${DAYS[i]} opens" value="${h ? h.o : '09:00'}"${h ? '' : ' disabled'}><input type="time" data-hc="${i}" aria-label="${DAYS[i]} closes" value="${h ? h.c : '18:00'}"${h ? '' : ' disabled'}>${sw(`data-hx="${i}" aria-label="${DAYS[i]} closed"`, !h, 'Closed')}${i === 0 ? tzSelect('data-sf="timezone" class="tzsel" title="Time Zone"', s.timezone) : ''}</div>`).join('')}</div>
           <div class="hdrop"><b class="clh">Federal holidays closed</b><div class="hdlist">${FED_HOL.map(([k, l]) => `<label class="chk">${sw(`data-hol="${k}"`, holOf(s).includes(k))} ${l}</label>`).join('')}</div></div>
           <div class="closed" data-cl='${esc(JSON.stringify(closuresOf(s).days))}'><b class="clh">Additional closed days</b>
             <div class="cllist" data-cllist>${closeRows(closuresOf(s).days)}</div>
@@ -362,4 +363,17 @@ function pharmCardEvents(root, o){
   document.addEventListener('change', e => { if(e.target.closest && e.target.closest('.pcard .pfields')) fit(e.target); });
   new MutationObserver(later).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
   window.addEventListener('resize', later); later();
+})();
+
+// Phone and fax boxes type themselves into 000-000-0000 (digits only, a leading 1 is dropped, the cursor stays where you are typing).
+// Dates are the browser's own date box (mm/dd/yyyy, filled in as you type); the Rx Intake text dates and phones have their own masks.
+(function(){
+  const SEL = 'input[type=tel], input[data-sf=phone], input[data-sf=fax], input[data-cf=phone], input[data-cf=fax]';
+  const fmt = v => { let d = String(v || '').replace(/\D/g, ''); if(d.length === 11 && d[0] === '1') d = d.slice(1); d = d.slice(0, 10); return d.length > 6 ? d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6) : d.length > 3 ? d.slice(0, 3) + '-' + d.slice(3) : d; };
+  const apply = e => { if(e.readOnly || e.disabled) return; const before = e.value, caret = e.selectionStart, digitsBefore = before.slice(0, caret == null ? before.length : caret).replace(/\D/g, '').length, out = fmt(before);
+    if(out === before) return; e.value = out; if(document.activeElement === e && caret != null){ let n = 0, pos = 0; while(pos < out.length && n < digitsBefore){ if(/\d/.test(out[pos])) n++; pos++; } try{ e.setSelectionRange(pos, pos); }catch(_){} } };
+  const tidy = e => { const d = String(e.value || '').replace(/\D/g, ''); if(d && (d.length === 10 || (d.length === 11 && d[0] === '1')) && e.value !== fmt(e.value) && !e.dataset.phoneFmt){ e.dataset.phoneFmt = '1'; e.value = fmt(e.value); } };
+  document.addEventListener('input', e => { if(e.target.matches && e.target.matches(SEL)) apply(e.target); });
+  const sweep = () => document.querySelectorAll(SEL).forEach(tidy);
+  let t = 0; new MutationObserver(() => { cancelAnimationFrame(t); t = requestAnimationFrame(sweep); }).observe(document.documentElement, { childList: true, subtree: true }); sweep();
 })();

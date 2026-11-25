@@ -32,10 +32,10 @@ with sync_playwright() as p:
     pg.click("#crumb [data-crumb=home]"); pg.wait_for_selector("#vNew .pcard"); nc = "#vNew .pcard"
     pg.select_option(nc + " [data-cf=entityType]", "llc"); pg.fill(nc + " [data-cf=legalName]", "NorTex Holdings LLC"); pg.fill(nc + " [data-cf=ein]", "22-2222222")
     pg.fill(nc + " [data-cf=address]", "1 Main"); pg.fill(nc + " [data-cf=city]", "Haslet"); pg.select_option(nc + " [data-cf=state]", "TX"); pg.fill(nc + " [data-cf=zip]", "76052")
-    pg.click(nc + " [data-createclient]"); pg.wait_for_selector("#vClient .pcard")
+    pg.click("#tbSave [data-createclient]"); pg.wait_for_selector("#vClient .pcard")
     pg.click("#crumb [data-crumb=home]"); pg.wait_for_selector("#side [data-qs=NTX1]")
     pg.click("#side [data-qs=NTX1]"); pg.wait_for_selector("#vPharm .pcard[data-store='NTX1']")
-    k = pg.locator("#vPharm [data-sf=clientId]"); k.select_option(index=1); pg.click("#vPharm [data-savestore]"); pg.wait_for_timeout(1500)
+    k = pg.locator("#vPharm [data-sf=clientId]"); k.select_option(index=1); pg.click("#tbSave [data-savestore]"); pg.wait_for_timeout(1500)
     check("linking moves it inside the client (crumb shows the client)", "NorTex Holdings" in pg.inner_text("#crumb"))
     check("no longer in the unlinked list", (pg.click("#crumb [data-crumb=home]"), pg.wait_for_selector("#vNew .pcard"), pg.locator("#side [data-qs=NTX1]").count())[2] == 0)
     check("no script errors", not errs)

@@ -123,3 +123,5 @@ function calPaint(){                                             // called whene
     if(tabs.some(t => t.classList.contains('active'))) homeTab();
   }
 }
+// a window open inside the Calendar page counts for leaving the Calendar tab
+UG.external({ dirty: () => { try{ const w = $('calFrame').contentWindow; return !!(w.ILUG && w.ILUG.dirty()); }catch(e){ return false; } }, save: async () => { $('calFrame').contentWindow.ILUG.save(); }, discard: () => { $('calFrame').contentWindow.ILUG.discard(); } });

@@ -418,7 +418,7 @@ async function signOut(quiet){
   if(typeof AC_ST !== 'undefined'){ AC_ST.open = null; for(const k in AC_ST.staged) delete AC_ST.staged[k]; }       // copied temporary passwords go with the session
   if(!quiet){ $('liUser').value = ''; showLogin('Signed out. The next person can sign in.'); }   // shared computers: leave nobody's Login ID behind
 }
-$('signOutBtn').onclick = () => { if(confirm('Sign out of the Reorder List on this device?')) signOut(); };
+$('signOutBtn').onclick = async () => { if(!(await UG.leave())) return; if(confirm('Sign out of the Reorder List on this device?')) signOut(); };
 
 /* ---------------- drug search: NLM RxTerms + RxNav (same lookups as the NorTex Rx Intake form) ----------------
    Name as you type  -> RxTerms (clinicaltables.nlm.nih.gov): drug names with every strength and form.
@@ -1237,15 +1237,179 @@ function layoutGridHtml(page, L, body){
     return `<section class="pnl" data-pnl="${id}" style="--x:${x};--y:${y};--w:${w};--h:${h}"><h4 class="pt">${title}</h4><div class="pb">${body(id)}</div></section>`; }).join('')}</div>`;
 }
 
+/* Time fields, one standard for the whole suite.
+   Every <input type="time"> is shown as a 00:00 box (digits only, the colon is added for you) with an AM/PM dropdown.
+   The original input stays in the page, hidden, and always holds the plain 24-hour value (HH:MM) that the code and the
+   server read. The formatting is only for the person looking at the screen. */
+(function () {
+  'use strict';
+  if (window.__tpInit) return; window.__tpInit = true;
+  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  var vdesc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+
+  function parts24(v) {                       // "HH:MM" (24 h) -> {h12, m, ap}
+    var m = /^(\d{1,2}):(\d{2})/.exec(v || ''); if (!m) return null;
+    var h = +m[1]; if (h > 24) return null;
+    return { h12: (h % 12) || 12, m: +m[2], ap: (h >= 12 && h < 24) ? 'PM' : 'AM' };
+  }
+  function to24(h12, m, ap) { var h = h12 % 12; if (ap === 'PM') h += 12; return pad(h) + ':' + pad(m); }
+
+  function mask(raw) {                         // digits only, 00:00
+    var d = String(raw || '').replace(/\D/g, '').slice(0, 4);
+    if (d.length >= 1 && +d[0] > 2) d = '0' + d;           // 9 -> 09
+    if (d.length >= 2 && +d.slice(0, 2) > 23) d = d[0] + d.slice(2);   // 3x is not an hour
+    return d.length > 2 ? d.slice(0, 2) + ':' + d.slice(2) : d;
+  }
+
+  function enhance(src) {
+    if (src.__tp || src.type !== 'time') return;
+    var w = document.createElement('div'); w.className = 'tp';      // a div: page rules for spans (day labels) must not reach it
+    var t = document.createElement('input'); t.type = 'text'; t.className = 'tp-t'; t.inputMode = 'numeric'; t.placeholder = '00:00'; t.maxLength = 5; t.autocomplete = 'off';
+    t.setAttribute('aria-label', src.getAttribute('aria-label') || src.title || 'Time');
+    var s = document.createElement('select'); s.className = 'tp-m'; s.setAttribute('aria-label', 'AM or PM');
+    s.innerHTML = '<option value="AM">AM</option><option value="PM">PM</option>';
+    w.appendChild(t); w.appendChild(s);
+    src.__tp = w; src.classList.add('tp-src'); src.tabIndex = -1; src.setAttribute('aria-hidden', 'true');
+    src.parentNode.insertBefore(w, src.nextSibling);
+
+    var getv = function () { return vdesc.get.call(src); };
+    function show() {                          // original -> boxes
+      var p = parts24(getv());
+      if (!p) { t.value = ''; return; }
+      t.value = pad(p.h12) + ':' + pad(p.m); s.value = p.ap;
+    }
+    function commit(fire) {                    // boxes -> original
+      var d = t.value.replace(/\D/g, '');
+      var nv = '';
+      if (d.length) {
+        var h, mi;
+        if (d.length <= 2) { h = +d; mi = 0; } else { h = +d.slice(0, 2); mi = +d.slice(2).padEnd(2, '0'); }
+        if (mi > 59) mi = 59;
+        var ap = s.value;
+        if (h > 12) { h -= 12; ap = 'PM'; s.value = 'PM'; }          // 13:00 typed -> 01:00 PM
+        else if (h === 0) { h = 12; ap = 'AM'; s.value = 'AM'; }      // 00:30 typed -> 12:30 AM
+        nv = to24(h, mi, ap);
+        if (fire) t.value = pad(h) + ':' + pad(mi);
+      }
+      if (getv() !== nv) { vdesc.set.call(src, nv); if (fire) { src.dispatchEvent(new Event('input', { bubbles: true })); src.dispatchEvent(new Event('change', { bubbles: true })); } }
+    }
+    t.addEventListener('input', function () {
+      var m = mask(t.value); if (m !== t.value) t.value = m;
+      if (t.value.replace(/\D/g, '').length === 4) commit(true);
+    });
+    t.addEventListener('blur', function () { commit(true); show(); });
+    t.addEventListener('keydown', function (e) { if (e.key === 'Enter') { commit(true); show(); } });
+    s.addEventListener('change', function () { commit(true); });
+    // code that sets src.value = "13:30" keeps the boxes in step
+    Object.defineProperty(src, 'value', { configurable: true, get: function () { return vdesc.get.call(src); }, set: function (v) { vdesc.set.call(src, v); show(); } });
+    // disabled follows the original
+    function dis() { t.disabled = s.disabled = src.disabled; w.classList.toggle('off', src.disabled); }
+    new MutationObserver(dis).observe(src, { attributes: true, attributeFilter: ['disabled'] });
+    dis(); show();
+  }
+
+  function scan(root) {
+    if (!root || root.nodeType !== 1 && root.nodeType !== 9) return;
+    if (root.matches && root.matches('input[type=time]')) enhance(root);
+    var l = root.querySelectorAll ? root.querySelectorAll('input[type=time]') : []; for (var i = 0; i < l.length; i++) enhance(l[i]);
+  }
+  function start() {
+    scan(document);
+    new MutationObserver(function (ms) {
+      for (var i = 0; i < ms.length; i++) for (var j = 0; j < ms[i].addedNodes.length; j++) scan(ms[i].addedNodes[j]);
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
+
+/* Unsaved changes: when a page or window with edits is about to be left, ask "Save your changes?"  Yes saves, then leaves.  No leaves without saving.
+   A form is watched with UG.watch(container). The first thing a person does inside it (click, key, focus) takes a picture of its values; it is "changed" when the values
+   differ from that picture. A save re-draws the form, which starts it over. Call  await UG.leave()  before any move away; it answers true when the move may go ahead.
+   Closing the browser tab can only show the browser's own warning (a page cannot draw its own window there). */
+(function () {
+  'use strict';
+  if (window.UG) return;
+  var W = [];                                                   // watched forms: {root, base, save}
+  var SKIP = '[data-ownpick],[data-ownreason],[data-on],[data-cn],[data-cownpick],[data-cownreason],[data-cld],[data-cln],[data-cly],[data-draftnote],[data-reason],[data-npires],[type=file],[type=button],[type=submit],[type=password]';
+  function snap(root) {
+    var out = [];
+    root.querySelectorAll('input,select,textarea').forEach(function (e) {
+      if (e.matches(SKIP) || e.closest('[data-noguard]') || e.classList.contains('tp-t') || e.classList.contains('tp-m')) return;    // the visible time boxes mirror the hidden time input
+      out.push(e.type === 'checkbox' || e.type === 'radio' ? (e.checked ? 1 : 0) : e.value);
+    });
+    root.querySelectorAll('[data-cl],[data-ctcs]').forEach(function (e) { out.push(e.dataset.cl || e.dataset.ctcs || ''); });
+    return JSON.stringify(out);
+  }
+  function shown(w) { var r = w.root; return !!r && !r.hidden && r.isConnected && r.getClientRects().length > 0; }
+  function dirty(w) { if (w.ext) { try { return !!w.ext.dirty(); } catch (e) { return false; } } return !!w.base && shown(w) && snap(w.root) !== w.base; }
+  function realSave(w) { return w.root.querySelector('.savebar button') || w.root.querySelector('[data-savestore],[data-saveclient],[data-createclient],[data-createstore]'); }
+
+  function watch(root, opt) {
+    if (!root || root.__ug) return; root.__ug = true;
+    var w = { root: root, base: null, save: (opt && opt.save) || null };
+    var first = function () { if (!w.base && !root.hidden) w.base = snap(root); };
+    var later = function () { w.base = null; setTimeout(function () { if (!w.base && shown(w)) w.base = snap(root); }, 400); };    // the picture is taken once the page has settled (formats, time boxes)
+    ['pointerdown', 'keydown', 'focusin'].forEach(function (t) { root.addEventListener(t, first, true); });
+    new MutationObserver(function (ms) {                        // the form was drawn again (after a save, or another page opened)
+      for (var i = 0; i < ms.length; i++) for (var j = 0; j < ms[i].addedNodes.length; j++) { var n = ms[i].addedNodes[j]; if (n.nodeType === 1 && (n.matches('.pcard') || n.querySelector('.pcard'))) { later(); return; } }
+    }).observe(root, { childList: true });
+    if (root.querySelector('.pcard')) later();
+    W.push(w);
+  }
+
+  var box = null;
+  function ask() {
+    return new Promise(function (res) {
+      if (!box) {
+        box = document.createElement('div'); box.className = 'ug-back'; box.hidden = true; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', 'Unsaved changes');
+        box.innerHTML = '<div class="ug-box"><div class="ug-q">Save your changes?</div><div class="ug-btns"><button type="button" class="btn" data-ug="yes">Yes</button><button type="button" class="btn2" data-ug="no">No</button></div></div>';
+        document.body.appendChild(box);
+      }
+      box.hidden = false; var yes = box.querySelector('[data-ug=yes]'); yes.focus();
+      var done = function (v) { box.hidden = true; box.removeEventListener('click', onClick); document.removeEventListener('keydown', onKey, true); res(v); };
+      var onClick = function (e) { var b = e.target.closest('[data-ug]'); if (b) done(b.dataset.ug === 'yes'); };
+      var onKey = function (e) { if (e.key === 'Tab') { var bs = box.querySelectorAll('button'); var i = [].indexOf.call(bs, document.activeElement); bs[(i + (e.shiftKey ? -1 : 1) + bs.length) % bs.length].focus(); e.preventDefault(); } else if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); } };
+      box.addEventListener('click', onClick); document.addEventListener('keydown', onKey, true);
+    });
+  }
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  async function saveOne(w) {
+    if (w.ext) { try { await w.ext.save(); } catch (e) { return false; } await sleep(250); return !dirty(w); }
+    var b = realSave(w); if (!b) return false;
+    b.click(); await sleep(300);
+    var t0 = Date.now();
+    while ((b.disabled && b.isConnected) && Date.now() - t0 < 15000) await sleep(150);
+    await sleep(150);
+    return !dirty(w);                                           // still changed means the save was refused (a message is on the page): stay
+  }
+  var asking = null;
+  async function leave() {
+    if (asking) return asking;
+    var ds = W.filter(dirty); if (!ds.length) return true;
+    asking = (async function () {
+      try {
+        var yes = await ask();
+        if (!yes) { ds.forEach(function (w) { if (w.ext) { try { w.ext.discard(); } catch (e) {} } else w.base = null; }); return true; }
+        for (var i = 0; i < ds.length; i++) if (!(await saveOne(ds[i]))) return false;
+        return true;
+      } finally { asking = null; }
+    })();
+    return asking;
+  }
+  window.addEventListener('beforeunload', function (e) { if (W.some(dirty)) { e.preventDefault(); e.returnValue = ''; } });
+  function external(ext) { W.push({ ext: ext }); }                // a form that lives in another page (the Calendar window): {dirty(), save(), discard()}
+  window.UG = { watch: watch, leave: leave, ask: ask, external: external, changed: function () { return W.some(dirty); }, _snap: snap };
+})();
+
 /* ---------------- pharmacy setup page (host) and pharmacy account page (Account Owner): panels and their layout ----------------
    Built on the layout engine (layout_engine.js). PHARM_LAYOUT is set once by Neo with the layout editor and is the same for everyone. */
 const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
 const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['own', 'Account Owner And PIC'], ['mgr', 'Who Can Manage Users'], ['act', 'Modules And Save']];
-const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,40],"own":[1,41,3,49],"contact":[4,1,4,37],"reg":[4,38,4,52],"hrs":[8,1,5,71],"mgr":[8,72,5,18],"svc":[1,90,7,26],"act":[8,90,5,26]}};
+const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,36],"contact":[4,1,4,36],"hrs":[8,1,5,59],"own":[1,37,3,39],"reg":[4,37,4,55],"mgr":[1,76,3,16],"act":[8,60,5,32],"svc":[1,92,12,18]}};
 const PHARM_PAGE = { id: 'pharm', title: 'Host Pharmacy Setup Page', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
   render: (sample, panels) => pharmCardHtml(sample, { logo: '', holder: 'Pat Owner (owner)', host: true, clients: [{ id: 'IL-000001', legalName: 'NorTex Holdings LLC', entityType: 'llc', ein: '12-3456789' }] }, { panels }) };
 // The Account Owner's version of the same page has its own layout (Neo arranges it separately in the layout editor: page key pharm_owner).
-const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,41],"own":[1,42,3,12],"act":[1,54,3,20],"contact":[4,1,4,42],"reg":[4,43,4,31],"hrs":[8,1,5,73],"svc":[1,74,12,9]}};
+const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,35],"contact":[4,1,4,35],"hrs":[8,1,5,64],"own":[1,36,3,10],"act":[1,46,3,19],"reg":[4,36,4,29],"svc":[1,65,12,9]}};
 const PHARM_OWNER_PANELS = PHARM_PANELS.filter(p => p[0] !== 'mgr');      // the switches are IronLedger's alone
 const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_OWNER_PANELS, layout: PHARM_OWNER_LAYOUT,
   render: (sample, panels) => pharmCardHtml(Object.assign({}, sample, { ein: '', einMasked: '••-•••4321' }), { logo: '', holder: 'Pat Owner (owner)' }, { panels }) };
@@ -1362,7 +1526,8 @@ const PHARM_BODY = {
     : `<div class="pfields"><div class="chips">${(s.services || []).map(k => `<span class="chip">${esc(SVC_LABELS[k] || k)}</span>`).join('') || '<span class="hint">None set yet.</span>'}</div>
           ${s.servicesOther ? `<div class="pid">Other: ${esc(s.servicesOther)}</div>` : ''}<div class="lockhint">${LOCKED}</div></div>`,
   hrs: s => `<div class="pfields"><div class="hrs">${s.hours ? '' : '<div class="hint">Not set yet; these are suggestions until you save.</div>'}
-          ${hoursOf(s).map((h, i) => `<div class="hrow"><span title="${DAYS[i]}">${DAYS[i].slice(0, 3)}</span><input type="time" data-ho="${i}" value="${h ? h.o : '09:00'}"${h ? '' : ' disabled'}><input type="time" data-hc="${i}" value="${h ? h.c : '18:00'}"${h ? '' : ' disabled'}><label class="chk">${sw(`data-hx="${i}"`, !h)} Closed</label>${i === 0 ? tzSelect('data-sf="timezone" class="tzsel" title="Time Zone"', s.timezone) : ''}</div>`).join('')}</div>
+          <div class="hrow hhead"><span></span><span>Opens</span><span>Closes</span><span>Closed</span><span class="tzh">Time Zone</span></div>
+          ${hoursOf(s).map((h, i) => `<div class="hrow"><span title="${DAYS[i]}">${DAYS[i].slice(0, 3)}</span><input type="time" data-ho="${i}" aria-label="${DAYS[i]} opens" value="${h ? h.o : '09:00'}"${h ? '' : ' disabled'}><input type="time" data-hc="${i}" aria-label="${DAYS[i]} closes" value="${h ? h.c : '18:00'}"${h ? '' : ' disabled'}>${sw(`data-hx="${i}" aria-label="${DAYS[i]} closed"`, !h, 'Closed')}${i === 0 ? tzSelect('data-sf="timezone" class="tzsel" title="Time Zone"', s.timezone) : ''}</div>`).join('')}</div>
           <div class="hdrop"><b class="clh">Federal holidays closed</b><div class="hdlist">${FED_HOL.map(([k, l]) => `<label class="chk">${sw(`data-hol="${k}"`, holOf(s).includes(k))} ${l}</label>`).join('')}</div></div>
           <div class="closed" data-cl='${esc(JSON.stringify(closuresOf(s).days))}'><b class="clh">Additional closed days</b>
             <div class="cllist" data-cllist>${closeRows(closuresOf(s).days)}</div>
@@ -1603,13 +1768,26 @@ function pharmCardEvents(root, o){
   window.addEventListener('resize', later); later();
 })();
 
+// Phone and fax boxes type themselves into 000-000-0000 (digits only, a leading 1 is dropped, the cursor stays where you are typing).
+// Dates are the browser's own date box (mm/dd/yyyy, filled in as you type); the Rx Intake text dates and phones have their own masks.
+(function(){
+  const SEL = 'input[type=tel], input[data-sf=phone], input[data-sf=fax], input[data-cf=phone], input[data-cf=fax]';
+  const fmt = v => { let d = String(v || '').replace(/\D/g, ''); if(d.length === 11 && d[0] === '1') d = d.slice(1); d = d.slice(0, 10); return d.length > 6 ? d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6) : d.length > 3 ? d.slice(0, 3) + '-' + d.slice(3) : d; };
+  const apply = e => { if(e.readOnly || e.disabled) return; const before = e.value, caret = e.selectionStart, digitsBefore = before.slice(0, caret == null ? before.length : caret).replace(/\D/g, '').length, out = fmt(before);
+    if(out === before) return; e.value = out; if(document.activeElement === e && caret != null){ let n = 0, pos = 0; while(pos < out.length && n < digitsBefore){ if(/\d/.test(out[pos])) n++; pos++; } try{ e.setSelectionRange(pos, pos); }catch(_){} } };
+  const tidy = e => { const d = String(e.value || '').replace(/\D/g, ''); if(d && (d.length === 10 || (d.length === 11 && d[0] === '1')) && e.value !== fmt(e.value) && !e.dataset.phoneFmt){ e.dataset.phoneFmt = '1'; e.value = fmt(e.value); } };
+  document.addEventListener('input', e => { if(e.target.matches && e.target.matches(SEL)) apply(e.target); });
+  const sweep = () => document.querySelectorAll(SEL).forEach(tidy);
+  let t = 0; new MutationObserver(() => { cancelAnimationFrame(t); t = requestAnimationFrame(sweep); }).observe(document.documentElement, { childList: true, subtree: true }); sweep();
+})();
+
 /* ---------------- client account page (host): who the client is, for account creation and billing ----------------
    Built on the layout engine (layout_engine.js) like every page of the suite. CLIENT_LAYOUT is set by Neo with the layout editor
    (dev/build_layout_editor.py client) and is the same for everyone. Uses helpers from pharm_panels.js (stateSelect, entTypeSelect, ENT_TYPES, esc).
    A client is the bill-to account: the legal entity that pays, its EIN, addresses and contacts, and the generated IL- account number (the client's key;
    it never changes). Pharmacies belong to a client; each pharmacy also carries its own licensed entity (that EIN can differ). */
-const CLIENT_PANELS = [['ent', 'Client And Legal Entity'], ['addr', 'Addresses'], ['contact', 'Phone, Fax And Contacts'], ['own', 'Account Owner'], ['act', 'Save']];
-const CLIENT_LAYOUT = {"v":2,"cols":12,"panels":{"ent":[1,1,6,18],"addr":[1,19,6,23],"act":[1,42,6,14],"own":[7,1,6,27],"contact":[7,28,6,28]}};
+const CLIENT_PANELS = [['ent', 'Client And Legal Entity'], ['addr', 'Addresses'], ['contact', 'Phone, Fax And Contacts'], ['own', 'Account Owner']];
+const CLIENT_LAYOUT = {"v":2,"cols":12,"panels":{"ent":[1,1,6,27],"own":[7,1,6,27],"addr":[1,28,6,27],"contact":[7,28,6,27]}};
 const CLIENT_SAMPLE = {id:'IL-000001', legalName:'NorTex Holdings LLC', dba:'NorTex Pharmacy', entityType:'llc', ein:'12-3456789', address:'100 Main St', suite:'Suite 5', city:'Haslet', state:'TX', zip:'76052', billingSame:false, bAddress:'PO Box 12', bCity:'Haslet', bState:'TX', bZip:'76052', phone:'817-555-0100', fax:'817-555-0101',
   contacts:[{role:'relations', name:'Pat Owner', title:'Owner', email:'pat@example.com', phone:'817-555-0102'},{role:'billing', name:'Sam Books', title:'Bookkeeper', email:'sam@example.com', phone:''}], pharmacies:['NTX1','NTX2']};
 const CLIENT_PAGE = { id: 'client', title: 'Host Account (Client) Setup Page', panels: CLIENT_PANELS, layout: CLIENT_LAYOUT,
@@ -1627,8 +1805,8 @@ const CLIENT_BODY = {
       ${cfIn(cl, 'dba', 'DBA (Doing Business As), If Any', c, { max: 160, w2: true })}
       <label><span>Entity Type (Required)</span>${entTypeSelect(`data-cf="entityType"${clientLocked('entityType', cl, c) ? ' disabled data-ident="1"' : ''}`, cl.entityType)}</label>
       ${cfIn(cl, 'ein', 'EIN (Required)', c, { ident: true, max: 11, ph: '12-3456789' })}
-      ${!c.isNew && !c.ro ? `<div class="identbar"><button type="button" class="btn2 small" data-unlockclient="1" title="Legal name, entity type and EIN are locked once on file. A reason is required and every change is kept in the history.">Unlock fields</button>
-        <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label></div>` : ''}</div>`,
+      ${!c.isNew && !c.ro ? `<div class="identbar"><button type="button" class="btn2 small" data-unlockclient="1" title="Legal name, entity type and EIN are locked once on file. A reason is required and every change is kept in the history.">Unlock fields</button><button type="button" class="btn2 small" data-chist="${esc(cl.id)}">Change history</button>
+        <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label></div><div data-histout></div>` : ''}</div>`,
   addr: (cl, c) => `<div class="pfields"><b class="clh">Business address</b>
       ${cfIn(cl, 'address', 'Street Address', c, { max: 200, w2: true })}${cfIn(cl, 'suite', 'Suite / Unit', c, { max: 40 })}${cfIn(cl, 'city', 'City', c, { max: 80 })}
       <label><span>State</span>${stateSelect('data-cf="state"', cl.state)}</label>${cfIn(cl, 'zip', 'ZIP Code', c, { max: 10 })}
@@ -1656,10 +1834,7 @@ const CLIENT_BODY = {
         <label class="chk" style="grid-column:1/-1"><input type="checkbox" data-cn="consent"> They signed the SMS consent form for this mobile number.</label></div>
       ${!c.isNew && owner ? '<label><span>Reason for the change (required)</span><input type="text" data-cownreason maxlength="300"></label>' : ''}
       ${c.isNew ? '' : `<button type="button" class="btn2 small" data-cownsave="${esc(cl.id)}">Save Account Owner</button>`}</div></div>`;
-  },
-  act: (cl, c) => `<div class="pfields" style="display:block">
-      <div style="margin-top:10px">${c.ro ? '' : c.isNew ? '<button type="button" class="btn small" data-createclient="1">Create client</button>' : `<button type="button" class="btn small" data-saveclient="${esc(cl.id)}">Save client</button>`}</div>
-      ${c.isNew ? '' : `<div style="margin-top:8px"><button type="button" class="btn2 small" data-chist="${esc(cl.id)}">Change history</button><div data-histout></div></div>`}</div>`
+  }
 };
 // read-only view (the client's Account Owner): everything shown, nothing editable
 function clientFreeze(root){ root.querySelectorAll('input,select,textarea,button[data-ctdel]').forEach(e => { e.disabled = true; }); root.querySelectorAll('.ctadd,[data-ctdel],.identbar,[data-pnl=act]').forEach(e => { e.hidden = true; e.style.display = 'none'; }); }
@@ -2085,14 +2260,17 @@ const AC_BO = {edit:false, filter:'all'};
 const acUsersOpts = () => ({st:AC_ST, me:ME, host:false, ownerMe:ownedHere(AC.pharm), picMe:ME.acctType === 'pic', pinRequired:!!ME.pinRequired, canPin:true});
 // People & Assets and the calendar's Setup belong to the pharmacy account: opened from here, shown in the calendar page
 const calLinks = id => { const st = (ME.stores || []).find(x => x.id === id); if(!(st && st.calendar && st.owner)) return ''; const row = (v, t, sub) => `<button type="button" class="qrow big" data-calview="${v}"><b>${t}</b><span>${sub}</span></button>`; return row('people', 'People & Assets', 'Staff records, equipment, rooms') + row('setup', 'Calendar Setup', 'Programs, hours, tasks'); };
-$('acSide').addEventListener('click', e => {
-  const cv = e.target.closest('[data-calview]'); if(cv){ calOpenView(cv.dataset.calview); return; }
-  const p = e.target.closest('[data-qs]'), v = e.target.closest('[data-view]');
-  if(p) acGo(AC.client, p.dataset.qs, 'acct'); else if(v){ AC.view = v.dataset.view; AC_ST.open = null; AC_BO.filter = 'all'; acMsg(''); acLoad(); }
+$('acSide').addEventListener('click', async e => {
+  const cv = e.target.closest('[data-calview]'), p = e.target.closest('[data-qs]'), v = e.target.closest('[data-view]'); if(!(cv || p || v)) return;
+  const pq = p && p.dataset.qs, vv = v && v.dataset.view, cvv = cv && cv.dataset.calview;
+  if(!(await UG.leave())) return;
+  if(cv){ calOpenView(cvv); return; }
+  if(p) acGo(AC.client, pq, 'acct'); else if(v){ AC.view = vv; AC_ST.open = null; AC_BO.filter = 'all'; acMsg(''); acLoad(); }
 });
-$('acCrumb').addEventListener('click', e => { const b = e.target.closest('[data-crumb]'); if(!b) return; const w = b.dataset.crumb; if(w === 'pharm') acGo(AC.client, AC.pharm, 'acct'); else acGo(AC.client, null); });
-$('acCrumb').addEventListener('change', e => { const s = e.target.closest('#acPick'); if(s) acGo(s.value, null); });
+$('acCrumb').addEventListener('click', async e => { const b = e.target.closest('[data-crumb]'); if(!b) return; const w = b.dataset.crumb; if(!(await UG.leave())) return; if(w === 'pharm') acGo(AC.client, AC.pharm, 'acct'); else acGo(AC.client, null); });
+$('acCrumb').addEventListener('change', async e => { const s = e.target.closest('#acPick'); if(!s) return; const v = s.value; if(await UG.leave()) acGo(v, null); });
 // pharmacy account page (Account Owner): the same card and events as before
+UG.watch($('acPharm')); UG.watch($('acClient'));
 pharmCardEvents($('acPharm'), {base:'/owner', stores:() => ACD.stores, say:toast, after: async () => { await refreshMe(); await acLoad(); }});
 $('acPharm').addEventListener('click', async e => {
   const nl = e.target.closest('[data-nologo]');
@@ -2285,6 +2463,8 @@ function calPaint(){                                             // called whene
     if(tabs.some(t => t.classList.contains('active'))) homeTab();
   }
 }
+// a window open inside the Calendar page counts for leaving the Calendar tab
+UG.external({ dirty: () => { try{ const w = $('calFrame').contentWindow; return !!(w.ILUG && w.ILUG.dirty()); }catch(e){ return false; } }, save: async () => { $('calFrame').contentWindow.ILUG.save(); }, discard: () => { $('calFrame').contentWindow.ILUG.discard(); } });
 
 /* ---------------- Documents page: a pharmacy's own compliance document library ----------------
    Built on the layout engine (layout_engine.js) like every page of the suite. DOCS_LAYOUT is set by Neo with the layout editor
@@ -2893,7 +3073,8 @@ function rxPaint(){                                               // called when
 }
 
 /* ---------------- tabs, render, start ---------------- */
-document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = async () => {
+  if(!(await UG.leave())) return;                                      // unsaved changes: Yes saves, No leaves
   document.querySelectorAll('#tabs button').forEach(x => { x.classList.toggle('active', x === b); x.classList.toggle('sub', b.dataset.tab === 'archive' && x.dataset.tab === 'list'); });
   $('acctBtn').classList.toggle('on', b.dataset.tab === 'owner');
   const pan = b.dataset.tab === 'dashboard' ? 'calendar' : b.dataset.tab;                  // Dashboard and Calendar are two views of the same page

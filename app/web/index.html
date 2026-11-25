@@ -230,7 +230,7 @@
 .ctadd button{justify-self:start;}
 
 /* holiday list: a floating popover, never pushes the page down */
-.hdrop .clh{display:block;margin-bottom:4px;} .hdrop,.pfields .closed{grid-column:1/-1;} .hdrop .hdlist{grid-template-columns:1fr;gap:0;padding:0;} .hdrop label.chk{white-space:nowrap;} .hdrop label.chk{margin:2px 0;}
+.hdrop .clh{display:block;margin-bottom:4px;} .hdrop,.pfields .closed{grid-column:1/-1;} .hdrop .hdlist{grid-template-columns:repeat(2,max-content);grid-template-rows:repeat(6,auto);grid-auto-flow:column;column-gap:28px;row-gap:0;padding:0;} /* first column ends with Independence Day, the second starts with Labor Day */ .hdrop label.chk{white-space:nowrap;} .hdrop label.chk{margin:2px 0;}
 /* NPI / DEA buttons sit next to their boxes; inline digit errors; state licenses; owner and PIC panel */
 .fbtn{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;} .fbtn>label{flex:1 1 160px;min-width:0;} .fbtn .btn2{white-space:nowrap;margin-bottom:1px;}
 .fe{grid-column:1/-1;margin:-4px 0 4px;font-size:12.5px;color:var(--bad,#a11);font-weight:600;} input.bad{border-color:var(--bad,#a11)!important;}
@@ -310,6 +310,14 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
 .savebar .btn{white-space:nowrap;} .licrow label:nth-child(4){flex-basis:116px;}
 .pcard .btn,.pcard .btn2{white-space:nowrap;}
 .hrow input[type=time]:disabled{opacity:.45;background:var(--line,#e3e6ea);cursor:not-allowed;}
+/* Hours Of Operation: one grid, every row the same columns (day, opens, closes, closed, time zone), with column titles */
+.hrs .hrow{display:grid;grid-template-columns:30px 96px 96px 52px minmax(56px,1fr);column-gap:6px;align-items:center;white-space:nowrap;}
+.hrs .hrow>span{width:auto;} .hrs .hrow .switch{justify-self:start;margin:0;}
+.hrs .hhead{margin:0 0 2px;} .hrs .hhead>span{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);}
+.hrs .hhead .tzh{justify-self:end;width:100%;max-width:130px;}
+.hrs .hrow .tzsel{margin-left:0;justify-self:end;width:100%;max-width:130px;min-width:0;flex:none;}
+/* beside the 300 px list (portal and Account tab) the panels need a wider screen: below 1366 px they stack in one column */
+@media (max-width:1365px){ .cw .pgrid{display:block;} .cw .pnl{margin-bottom:10px;} }
 /* ---- Documents tab ---- */
 #panel-documents{position:relative;}
 #panel-documents .pgrid{margin-top:2px;}

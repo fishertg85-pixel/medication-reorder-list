@@ -110,14 +110,17 @@ const AC_BO = {edit:false, filter:'all'};
 const acUsersOpts = () => ({st:AC_ST, me:ME, host:false, ownerMe:ownedHere(AC.pharm), picMe:ME.acctType === 'pic', pinRequired:!!ME.pinRequired, canPin:true});
 // People & Assets and the calendar's Setup belong to the pharmacy account: opened from here, shown in the calendar page
 const calLinks = id => { const st = (ME.stores || []).find(x => x.id === id); if(!(st && st.calendar && st.owner)) return ''; const row = (v, t, sub) => `<button type="button" class="qrow big" data-calview="${v}"><b>${t}</b><span>${sub}</span></button>`; return row('people', 'People & Assets', 'Staff records, equipment, rooms') + row('setup', 'Calendar Setup', 'Programs, hours, tasks'); };
-$('acSide').addEventListener('click', e => {
-  const cv = e.target.closest('[data-calview]'); if(cv){ calOpenView(cv.dataset.calview); return; }
-  const p = e.target.closest('[data-qs]'), v = e.target.closest('[data-view]');
-  if(p) acGo(AC.client, p.dataset.qs, 'acct'); else if(v){ AC.view = v.dataset.view; AC_ST.open = null; AC_BO.filter = 'all'; acMsg(''); acLoad(); }
+$('acSide').addEventListener('click', async e => {
+  const cv = e.target.closest('[data-calview]'), p = e.target.closest('[data-qs]'), v = e.target.closest('[data-view]'); if(!(cv || p || v)) return;
+  const pq = p && p.dataset.qs, vv = v && v.dataset.view, cvv = cv && cv.dataset.calview;
+  if(!(await UG.leave())) return;
+  if(cv){ calOpenView(cvv); return; }
+  if(p) acGo(AC.client, pq, 'acct'); else if(v){ AC.view = vv; AC_ST.open = null; AC_BO.filter = 'all'; acMsg(''); acLoad(); }
 });
-$('acCrumb').addEventListener('click', e => { const b = e.target.closest('[data-crumb]'); if(!b) return; const w = b.dataset.crumb; if(w === 'pharm') acGo(AC.client, AC.pharm, 'acct'); else acGo(AC.client, null); });
-$('acCrumb').addEventListener('change', e => { const s = e.target.closest('#acPick'); if(s) acGo(s.value, null); });
+$('acCrumb').addEventListener('click', async e => { const b = e.target.closest('[data-crumb]'); if(!b) return; const w = b.dataset.crumb; if(!(await UG.leave())) return; if(w === 'pharm') acGo(AC.client, AC.pharm, 'acct'); else acGo(AC.client, null); });
+$('acCrumb').addEventListener('change', async e => { const s = e.target.closest('#acPick'); if(!s) return; const v = s.value; if(await UG.leave()) acGo(v, null); });
 // pharmacy account page (Account Owner): the same card and events as before
+UG.watch($('acPharm')); UG.watch($('acClient'));
 pharmCardEvents($('acPharm'), {base:'/owner', stores:() => ACD.stores, say:toast, after: async () => { await refreshMe(); await acLoad(); }});
 $('acPharm').addEventListener('click', async e => {
   const nl = e.target.closest('[data-nologo]');

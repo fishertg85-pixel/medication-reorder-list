@@ -3,8 +3,8 @@
    (dev/build_layout_editor.py client) and is the same for everyone. Uses helpers from pharm_panels.js (stateSelect, entTypeSelect, ENT_TYPES, esc).
    A client is the bill-to account: the legal entity that pays, its EIN, addresses and contacts, and the generated IL- account number (the client's key;
    it never changes). Pharmacies belong to a client; each pharmacy also carries its own licensed entity (that EIN can differ). */
-const CLIENT_PANELS = [['ent', 'Client And Legal Entity'], ['addr', 'Addresses'], ['contact', 'Phone, Fax And Contacts'], ['own', 'Account Owner'], ['act', 'Save']];
-const CLIENT_LAYOUT = {"v":2,"cols":12,"panels":{"ent":[1,1,6,18],"addr":[1,19,6,23],"act":[1,42,6,14],"own":[7,1,6,27],"contact":[7,28,6,28]}};
+const CLIENT_PANELS = [['ent', 'Client And Legal Entity'], ['addr', 'Addresses'], ['contact', 'Phone, Fax And Contacts'], ['own', 'Account Owner']];
+const CLIENT_LAYOUT = {"v":2,"cols":12,"panels":{"ent":[1,1,6,27],"own":[7,1,6,27],"addr":[1,28,6,27],"contact":[7,28,6,27]}};
 const CLIENT_SAMPLE = {id:'IL-000001', legalName:'NorTex Holdings LLC', dba:'NorTex Pharmacy', entityType:'llc', ein:'12-3456789', address:'100 Main St', suite:'Suite 5', city:'Haslet', state:'TX', zip:'76052', billingSame:false, bAddress:'PO Box 12', bCity:'Haslet', bState:'TX', bZip:'76052', phone:'817-555-0100', fax:'817-555-0101',
   contacts:[{role:'relations', name:'Pat Owner', title:'Owner', email:'pat@example.com', phone:'817-555-0102'},{role:'billing', name:'Sam Books', title:'Bookkeeper', email:'sam@example.com', phone:''}], pharmacies:['NTX1','NTX2']};
 const CLIENT_PAGE = { id: 'client', title: 'Host Account (Client) Setup Page', panels: CLIENT_PANELS, layout: CLIENT_LAYOUT,
@@ -22,8 +22,8 @@ const CLIENT_BODY = {
       ${cfIn(cl, 'dba', 'DBA (Doing Business As), If Any', c, { max: 160, w2: true })}
       <label><span>Entity Type (Required)</span>${entTypeSelect(`data-cf="entityType"${clientLocked('entityType', cl, c) ? ' disabled data-ident="1"' : ''}`, cl.entityType)}</label>
       ${cfIn(cl, 'ein', 'EIN (Required)', c, { ident: true, max: 11, ph: '12-3456789' })}
-      ${!c.isNew && !c.ro ? `<div class="identbar"><button type="button" class="btn2 small" data-unlockclient="1" title="Legal name, entity type and EIN are locked once on file. A reason is required and every change is kept in the history.">Unlock fields</button>
-        <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label></div>` : ''}</div>`,
+      ${!c.isNew && !c.ro ? `<div class="identbar"><button type="button" class="btn2 small" data-unlockclient="1" title="Legal name, entity type and EIN are locked once on file. A reason is required and every change is kept in the history.">Unlock fields</button><button type="button" class="btn2 small" data-chist="${esc(cl.id)}">Change history</button>
+        <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label></div><div data-histout></div>` : ''}</div>`,
   addr: (cl, c) => `<div class="pfields"><b class="clh">Business address</b>
       ${cfIn(cl, 'address', 'Street Address', c, { max: 200, w2: true })}${cfIn(cl, 'suite', 'Suite / Unit', c, { max: 40 })}${cfIn(cl, 'city', 'City', c, { max: 80 })}
       <label><span>State</span>${stateSelect('data-cf="state"', cl.state)}</label>${cfIn(cl, 'zip', 'ZIP Code', c, { max: 10 })}
@@ -51,10 +51,7 @@ const CLIENT_BODY = {
         <label class="chk" style="grid-column:1/-1"><input type="checkbox" data-cn="consent"> They signed the SMS consent form for this mobile number.</label></div>
       ${!c.isNew && owner ? '<label><span>Reason for the change (required)</span><input type="text" data-cownreason maxlength="300"></label>' : ''}
       ${c.isNew ? '' : `<button type="button" class="btn2 small" data-cownsave="${esc(cl.id)}">Save Account Owner</button>`}</div></div>`;
-  },
-  act: (cl, c) => `<div class="pfields" style="display:block">
-      <div style="margin-top:10px">${c.ro ? '' : c.isNew ? '<button type="button" class="btn small" data-createclient="1">Create client</button>' : `<button type="button" class="btn small" data-saveclient="${esc(cl.id)}">Save client</button>`}</div>
-      ${c.isNew ? '' : `<div style="margin-top:8px"><button type="button" class="btn2 small" data-chist="${esc(cl.id)}">Change history</button><div data-histout></div></div>`}</div>`
+  }
 };
 // read-only view (the client's Account Owner): everything shown, nothing editable
 function clientFreeze(root){ root.querySelectorAll('input,select,textarea,button[data-ctdel]').forEach(e => { e.disabled = true; }); root.querySelectorAll('.ctadd,[data-ctdel],.identbar,[data-pnl=act]').forEach(e => { e.hidden = true; e.style.display = 'none'; }); }

@@ -1332,8 +1332,17 @@ function openModal(title,body,foot,o){
   o=o||{}; MODAL={save:o.save||null};
   $('#modal').innerHTML='<div class="ov" data-act="ovclose"><div class="modal'+(o.wide?' wide':'')+(o.xwide?' xwide':'')+'" role="dialog" aria-modal="true" aria-label="'+esc(title)+'"><h3>'+esc(title)+'</h3><div class="mb">'+body+'<div class="err" id="merr"></div></div><div class="mf">'+(foot||'')+'</div></div></div>';
   const f=document.querySelector('#modal input:not([type=checkbox]),#modal select,#modal textarea'); if(f&&!o.nofocus)f.focus();
+  const M=MODAL; setTimeout(()=>{ if(MODAL===M&&!M.base)M.base=UG._snap(document.getElementById('modal')); },350);
 }
 function closeModal(){ $('#modal').innerHTML=''; MODAL=null; }
+/* Unsaved changes in a window: the picture of its values is taken once it has settled (or at the first touch); Cancel, a click outside or Escape then ask "Save your changes?" */
+function modalDirty(){ if(!MODAL||!(MODAL.save||MODAL.work)||!MODAL.base)return false; const m=document.getElementById('modal'); return !!m.firstChild&&UG._snap(m)!==MODAL.base; }
+async function modalLeave(){
+  if(modalDirty()){ if(await UG.ask()){ const f=MODAL.save||MODAL.work; if(f)f(); return; } }
+  closeModal();
+}
+['pointerdown','keydown','focusin'].forEach(t=>document.addEventListener(t,()=>{ if(MODAL&&!MODAL.base&&document.getElementById('modal').firstChild)MODAL.base=UG._snap(document.getElementById('modal')); },true));
+window.ILUG={ dirty:()=>modalDirty(), save:()=>{ const f=MODAL&&(MODAL.save||MODAL.work); return f?f():null; }, discard:()=>closeModal() };
 function merr(m){ const e=$('#merr'); if(e){e.textContent=m;} return false; }
 const FOOT_SAVE=(lbl)=>'<button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="msave">'+(lbl||'Save')+'</button>';
 /* generic form: fields [{id,label,type,opts,hint,ph,req}] */
@@ -1727,10 +1736,10 @@ function ctxClose(){ const c=document.getElementById('ctx'); if(c)c.remove(); }
 /* ===== actions ===== */
 const ACT={
   tab(el){ UI.tab=el.dataset.v; location.hash='#'+UI.tab; render(); window.scrollTo(0,0); },
-  close(){ closeModal(); }, msave(){ if(MODAL&&MODAL.save)MODAL.save(); }, mna(){ if(MODAL&&MODAL.na)MODAL.na(); }, mvoid(){ voidRec(); }, mwork(){ if(MODAL&&MODAL.work)MODAL.work(); }, maccept(){ acceptRec(); },
+  close(){ modalLeave(); }, msave(){ if(MODAL&&MODAL.save)MODAL.save(); }, mna(){ if(MODAL&&MODAL.na)MODAL.na(); }, mvoid(){ voidRec(); }, mwork(){ if(MODAL&&MODAL.work)MODAL.work(); }, maccept(){ acceptRec(); },
   rmatt(el){ if(MODAL&&MODAL.files){ MODAL.files.splice(+el.dataset.i,1); refreshAtt(); } },
   viewrec(el){ const o=D.occs.find(x=>x.done&&x.rec&&x.rec.id===el.dataset.id); if(!o){ toast('Could not open this record.'); return; } detailModal(o); },
-  ovclose(el,e){ if(e.target===el)closeModal(); },
+  ovclose(el,e){ if(e.target===el)modalLeave(); },
   addsched(el){ const e=addGate(); if(e){ toast(e); return; } schedModal(el.dataset.d); },
   remdel(el){ delete S.reminders[el.dataset.id]; closeModal(); changed('config'); },
   remdone(el){ const r=S.reminders[el.dataset.id]; if(r){ r.done=!r.done; r.doneAt=r.done?nowIso():''; } closeModal(); changed('config'); },
@@ -1770,7 +1779,7 @@ document.addEventListener('change',e=>{ const el=e.target.closest('[data-chg]');
   else if(c==='obon'){ const id=el.dataset.id; const o=Object.assign({},S.obl[id]||{},{id,active:el.checked}); S.obl[id]=o; Store.put('obl',o); logAct(el.checked?'Turned On Obligation':'Turned Off Obligation',(D.obs.find(x=>x.id===id)||{}).title||id); changed('obl'); return; }
   render(); });
 document.addEventListener('input',e=>{ const el=e.target.closest('[data-inp]'); if(!el)return; UI[el.dataset.inp]=el.value; render(); const n=document.querySelector('[data-inp="'+el.dataset.inp+'"]'); if(n){ n.focus(); try{n.setSelectionRange(n.value.length,n.value.length);}catch(x){} } });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ if(document.getElementById('ctx'))ctxClose(); else if(MODAL)closeModal(); } });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ if(document.getElementById('ctx'))ctxClose(); else if(MODAL)modalLeave(); } });
 window.addEventListener('scroll',ctxClose,true);
 document.addEventListener('contextmenu',e=>{ const el=e.target.closest('[data-act="occ"],[data-act="track"],.chip[data-t]'); if(!el||!el.dataset.t||el.dataset.t==='rem'||(MODAL&&!MODAL.series))return; e.preventDefault(); ctxClose();
   const isT=el.dataset.act==='track', at=' data-t="'+esc(el.dataset.t)+'" data-k="'+esc(el.dataset.k||'')+'"'; const c=document.createElement('div'); c.id='ctx'; c.className='ctx'; c.setAttribute('role','menu');
@@ -1891,4 +1900,168 @@ window.addEventListener('message',e=>{ if(e.origin!==location.origin)return; con
   setInterval(()=>{ try{ if(!D)return; if(localToday()!==D.today){ recompute(); render(); } else updateClock(); }catch(e){} },1000);
 })();
 
+</script><script>
+/* Time fields, one standard for the whole suite.
+   Every <input type="time"> is shown as a 00:00 box (digits only, the colon is added for you) with an AM/PM dropdown.
+   The original input stays in the page, hidden, and always holds the plain 24-hour value (HH:MM) that the code and the
+   server read. The formatting is only for the person looking at the screen. */
+(function () {
+  'use strict';
+  if (window.__tpInit) return; window.__tpInit = true;
+  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  var vdesc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+
+  function parts24(v) {                       // "HH:MM" (24 h) -> {h12, m, ap}
+    var m = /^(\d{1,2}):(\d{2})/.exec(v || ''); if (!m) return null;
+    var h = +m[1]; if (h > 24) return null;
+    return { h12: (h % 12) || 12, m: +m[2], ap: (h >= 12 && h < 24) ? 'PM' : 'AM' };
+  }
+  function to24(h12, m, ap) { var h = h12 % 12; if (ap === 'PM') h += 12; return pad(h) + ':' + pad(m); }
+
+  function mask(raw) {                         // digits only, 00:00
+    var d = String(raw || '').replace(/\D/g, '').slice(0, 4);
+    if (d.length >= 1 && +d[0] > 2) d = '0' + d;           // 9 -> 09
+    if (d.length >= 2 && +d.slice(0, 2) > 23) d = d[0] + d.slice(2);   // 3x is not an hour
+    return d.length > 2 ? d.slice(0, 2) + ':' + d.slice(2) : d;
+  }
+
+  function enhance(src) {
+    if (src.__tp || src.type !== 'time') return;
+    var w = document.createElement('div'); w.className = 'tp';      // a div: page rules for spans (day labels) must not reach it
+    var t = document.createElement('input'); t.type = 'text'; t.className = 'tp-t'; t.inputMode = 'numeric'; t.placeholder = '00:00'; t.maxLength = 5; t.autocomplete = 'off';
+    t.setAttribute('aria-label', src.getAttribute('aria-label') || src.title || 'Time');
+    var s = document.createElement('select'); s.className = 'tp-m'; s.setAttribute('aria-label', 'AM or PM');
+    s.innerHTML = '<option value="AM">AM</option><option value="PM">PM</option>';
+    w.appendChild(t); w.appendChild(s);
+    src.__tp = w; src.classList.add('tp-src'); src.tabIndex = -1; src.setAttribute('aria-hidden', 'true');
+    src.parentNode.insertBefore(w, src.nextSibling);
+
+    var getv = function () { return vdesc.get.call(src); };
+    function show() {                          // original -> boxes
+      var p = parts24(getv());
+      if (!p) { t.value = ''; return; }
+      t.value = pad(p.h12) + ':' + pad(p.m); s.value = p.ap;
+    }
+    function commit(fire) {                    // boxes -> original
+      var d = t.value.replace(/\D/g, '');
+      var nv = '';
+      if (d.length) {
+        var h, mi;
+        if (d.length <= 2) { h = +d; mi = 0; } else { h = +d.slice(0, 2); mi = +d.slice(2).padEnd(2, '0'); }
+        if (mi > 59) mi = 59;
+        var ap = s.value;
+        if (h > 12) { h -= 12; ap = 'PM'; s.value = 'PM'; }          // 13:00 typed -> 01:00 PM
+        else if (h === 0) { h = 12; ap = 'AM'; s.value = 'AM'; }      // 00:30 typed -> 12:30 AM
+        nv = to24(h, mi, ap);
+        if (fire) t.value = pad(h) + ':' + pad(mi);
+      }
+      if (getv() !== nv) { vdesc.set.call(src, nv); if (fire) { src.dispatchEvent(new Event('input', { bubbles: true })); src.dispatchEvent(new Event('change', { bubbles: true })); } }
+    }
+    t.addEventListener('input', function () {
+      var m = mask(t.value); if (m !== t.value) t.value = m;
+      if (t.value.replace(/\D/g, '').length === 4) commit(true);
+    });
+    t.addEventListener('blur', function () { commit(true); show(); });
+    t.addEventListener('keydown', function (e) { if (e.key === 'Enter') { commit(true); show(); } });
+    s.addEventListener('change', function () { commit(true); });
+    // code that sets src.value = "13:30" keeps the boxes in step
+    Object.defineProperty(src, 'value', { configurable: true, get: function () { return vdesc.get.call(src); }, set: function (v) { vdesc.set.call(src, v); show(); } });
+    // disabled follows the original
+    function dis() { t.disabled = s.disabled = src.disabled; w.classList.toggle('off', src.disabled); }
+    new MutationObserver(dis).observe(src, { attributes: true, attributeFilter: ['disabled'] });
+    dis(); show();
+  }
+
+  function scan(root) {
+    if (!root || root.nodeType !== 1 && root.nodeType !== 9) return;
+    if (root.matches && root.matches('input[type=time]')) enhance(root);
+    var l = root.querySelectorAll ? root.querySelectorAll('input[type=time]') : []; for (var i = 0; i < l.length; i++) enhance(l[i]);
+  }
+  function start() {
+    scan(document);
+    new MutationObserver(function (ms) {
+      for (var i = 0; i < ms.length; i++) for (var j = 0; j < ms[i].addedNodes.length; j++) scan(ms[i].addedNodes[j]);
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
+
+/* Unsaved changes: when a page or window with edits is about to be left, ask "Save your changes?"  Yes saves, then leaves.  No leaves without saving.
+   A form is watched with UG.watch(container). The first thing a person does inside it (click, key, focus) takes a picture of its values; it is "changed" when the values
+   differ from that picture. A save re-draws the form, which starts it over. Call  await UG.leave()  before any move away; it answers true when the move may go ahead.
+   Closing the browser tab can only show the browser's own warning (a page cannot draw its own window there). */
+(function () {
+  'use strict';
+  if (window.UG) return;
+  var W = [];                                                   // watched forms: {root, base, save}
+  var SKIP = '[data-ownpick],[data-ownreason],[data-on],[data-cn],[data-cownpick],[data-cownreason],[data-cld],[data-cln],[data-cly],[data-draftnote],[data-reason],[data-npires],[type=file],[type=button],[type=submit],[type=password]';
+  function snap(root) {
+    var out = [];
+    root.querySelectorAll('input,select,textarea').forEach(function (e) {
+      if (e.matches(SKIP) || e.closest('[data-noguard]') || e.classList.contains('tp-t') || e.classList.contains('tp-m')) return;    // the visible time boxes mirror the hidden time input
+      out.push(e.type === 'checkbox' || e.type === 'radio' ? (e.checked ? 1 : 0) : e.value);
+    });
+    root.querySelectorAll('[data-cl],[data-ctcs]').forEach(function (e) { out.push(e.dataset.cl || e.dataset.ctcs || ''); });
+    return JSON.stringify(out);
+  }
+  function shown(w) { var r = w.root; return !!r && !r.hidden && r.isConnected && r.getClientRects().length > 0; }
+  function dirty(w) { if (w.ext) { try { return !!w.ext.dirty(); } catch (e) { return false; } } return !!w.base && shown(w) && snap(w.root) !== w.base; }
+  function realSave(w) { return w.root.querySelector('.savebar button') || w.root.querySelector('[data-savestore],[data-saveclient],[data-createclient],[data-createstore]'); }
+
+  function watch(root, opt) {
+    if (!root || root.__ug) return; root.__ug = true;
+    var w = { root: root, base: null, save: (opt && opt.save) || null };
+    var first = function () { if (!w.base && !root.hidden) w.base = snap(root); };
+    var later = function () { w.base = null; setTimeout(function () { if (!w.base && shown(w)) w.base = snap(root); }, 400); };    // the picture is taken once the page has settled (formats, time boxes)
+    ['pointerdown', 'keydown', 'focusin'].forEach(function (t) { root.addEventListener(t, first, true); });
+    new MutationObserver(function (ms) {                        // the form was drawn again (after a save, or another page opened)
+      for (var i = 0; i < ms.length; i++) for (var j = 0; j < ms[i].addedNodes.length; j++) { var n = ms[i].addedNodes[j]; if (n.nodeType === 1 && (n.matches('.pcard') || n.querySelector('.pcard'))) { later(); return; } }
+    }).observe(root, { childList: true });
+    if (root.querySelector('.pcard')) later();
+    W.push(w);
+  }
+
+  var box = null;
+  function ask() {
+    return new Promise(function (res) {
+      if (!box) {
+        box = document.createElement('div'); box.className = 'ug-back'; box.hidden = true; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', 'Unsaved changes');
+        box.innerHTML = '<div class="ug-box"><div class="ug-q">Save your changes?</div><div class="ug-btns"><button type="button" class="btn" data-ug="yes">Yes</button><button type="button" class="btn2" data-ug="no">No</button></div></div>';
+        document.body.appendChild(box);
+      }
+      box.hidden = false; var yes = box.querySelector('[data-ug=yes]'); yes.focus();
+      var done = function (v) { box.hidden = true; box.removeEventListener('click', onClick); document.removeEventListener('keydown', onKey, true); res(v); };
+      var onClick = function (e) { var b = e.target.closest('[data-ug]'); if (b) done(b.dataset.ug === 'yes'); };
+      var onKey = function (e) { if (e.key === 'Tab') { var bs = box.querySelectorAll('button'); var i = [].indexOf.call(bs, document.activeElement); bs[(i + (e.shiftKey ? -1 : 1) + bs.length) % bs.length].focus(); e.preventDefault(); } else if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); } };
+      box.addEventListener('click', onClick); document.addEventListener('keydown', onKey, true);
+    });
+  }
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  async function saveOne(w) {
+    if (w.ext) { try { await w.ext.save(); } catch (e) { return false; } await sleep(250); return !dirty(w); }
+    var b = realSave(w); if (!b) return false;
+    b.click(); await sleep(300);
+    var t0 = Date.now();
+    while ((b.disabled && b.isConnected) && Date.now() - t0 < 15000) await sleep(150);
+    await sleep(150);
+    return !dirty(w);                                           // still changed means the save was refused (a message is on the page): stay
+  }
+  var asking = null;
+  async function leave() {
+    if (asking) return asking;
+    var ds = W.filter(dirty); if (!ds.length) return true;
+    asking = (async function () {
+      try {
+        var yes = await ask();
+        if (!yes) { ds.forEach(function (w) { if (w.ext) { try { w.ext.discard(); } catch (e) {} } else w.base = null; }); return true; }
+        for (var i = 0; i < ds.length; i++) if (!(await saveOne(ds[i]))) return false;
+        return true;
+      } finally { asking = null; }
+    })();
+    return asking;
+  }
+  window.addEventListener('beforeunload', function (e) { if (W.some(dirty)) { e.preventDefault(); e.returnValue = ''; } });
+  function external(ext) { W.push({ ext: ext }); }                // a form that lives in another page (the Calendar window): {dirty(), save(), discard()}
+  window.UG = { watch: watch, leave: leave, ask: ask, external: external, changed: function () { return W.some(dirty); }, _snap: snap };
+})();
 </script></body></html>

@@ -10,3 +10,16 @@
   input:disabled:not([type=checkbox]):not([type=radio]),
   select:disabled, textarea[readonly], textarea:disabled, select[readonly]{ background-color:var(--fld-off) !important; border-color:transparent !important; box-shadow:none !important; }
 }
+
+/* Time fields: 00:00 box + AM/PM dropdown (the original time input stays hidden and holds the 24-hour value) */
+input.tp-src{display:none !important;}
+.tp{display:inline-flex;align-items:stretch;vertical-align:middle;white-space:nowrap;flex:0 0 auto;width:auto !important;min-width:max-content;}
+.tp .tp-t,.tp .tp-m{font:inherit;color:inherit;min-height:34px;height:34px;box-sizing:border-box;border:1px solid var(--line,#c9d2da);margin:0;}
+.tp .tp-t,.tp .tp-m{flex:0 0 auto;} .tp .tp-t{width:46px;padding:0 3px;text-align:center;border-radius:6px 0 0 6px;font-variant-numeric:tabular-nums;}
+.tp .tp-m{width:50px;padding:0 0 0 4px;border-radius:0 6px 6px 0;border-left-width:0;cursor:pointer;}
+.tp.off .tp-t,.tp.off .tp-m{opacity:.45;cursor:not-allowed;}
+
+/* Unsaved changes window: Yes / No */
+.ug-back{position:fixed;inset:0;z-index:300;background:rgba(10,20,35,.55);display:flex;align-items:center;justify-content:center;} .ug-back[hidden]{display:none;}
+.ug-box{background:var(--bg,#fff);color:var(--ink,var(--text,#17212b));border-radius:10px;padding:20px 24px;min-width:260px;box-shadow:0 16px 48px rgba(0,0,0,.4);text-align:center;}
+.ug-q{font-size:17px;font-weight:600;margin:0 0 16px;white-space:nowrap;} .ug-btns{display:flex;gap:10px;justify-content:center;} .ug-btns button{min-width:84px;white-space:nowrap;}

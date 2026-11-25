@@ -1329,8 +1329,17 @@ function openModal(title,body,foot,o){
   o=o||{}; MODAL={save:o.save||null};
   $('#modal').innerHTML='<div class="ov" data-act="ovclose"><div class="modal'+(o.wide?' wide':'')+(o.xwide?' xwide':'')+'" role="dialog" aria-modal="true" aria-label="'+esc(title)+'"><h3>'+esc(title)+'</h3><div class="mb">'+body+'<div class="err" id="merr"></div></div><div class="mf">'+(foot||'')+'</div></div></div>';
   const f=document.querySelector('#modal input:not([type=checkbox]),#modal select,#modal textarea'); if(f&&!o.nofocus)f.focus();
+  const M=MODAL; setTimeout(()=>{ if(MODAL===M&&!M.base)M.base=UG._snap(document.getElementById('modal')); },350);
 }
 function closeModal(){ $('#modal').innerHTML=''; MODAL=null; }
+/* Unsaved changes in a window: the picture of its values is taken once it has settled (or at the first touch); Cancel, a click outside or Escape then ask "Save your changes?" */
+function modalDirty(){ if(!MODAL||!(MODAL.save||MODAL.work)||!MODAL.base)return false; const m=document.getElementById('modal'); return !!m.firstChild&&UG._snap(m)!==MODAL.base; }
+async function modalLeave(){
+  if(modalDirty()){ if(await UG.ask()){ const f=MODAL.save||MODAL.work; if(f)f(); return; } }
+  closeModal();
+}
+['pointerdown','keydown','focusin'].forEach(t=>document.addEventListener(t,()=>{ if(MODAL&&!MODAL.base&&document.getElementById('modal').firstChild)MODAL.base=UG._snap(document.getElementById('modal')); },true));
+window.ILUG={ dirty:()=>modalDirty(), save:()=>{ const f=MODAL&&(MODAL.save||MODAL.work); return f?f():null; }, discard:()=>closeModal() };
 function merr(m){ const e=$('#merr'); if(e){e.textContent=m;} return false; }
 const FOOT_SAVE=(lbl)=>'<button class="btn" data-act="close">Cancel</button><button class="btn pri" data-act="msave">'+(lbl||'Save')+'</button>';
 /* generic form: fields [{id,label,type,opts,hint,ph,req}] */
@@ -1724,10 +1733,10 @@ function ctxClose(){ const c=document.getElementById('ctx'); if(c)c.remove(); }
 /* ===== actions ===== */
 const ACT={
   tab(el){ UI.tab=el.dataset.v; location.hash='#'+UI.tab; render(); window.scrollTo(0,0); },
-  close(){ closeModal(); }, msave(){ if(MODAL&&MODAL.save)MODAL.save(); }, mna(){ if(MODAL&&MODAL.na)MODAL.na(); }, mvoid(){ voidRec(); }, mwork(){ if(MODAL&&MODAL.work)MODAL.work(); }, maccept(){ acceptRec(); },
+  close(){ modalLeave(); }, msave(){ if(MODAL&&MODAL.save)MODAL.save(); }, mna(){ if(MODAL&&MODAL.na)MODAL.na(); }, mvoid(){ voidRec(); }, mwork(){ if(MODAL&&MODAL.work)MODAL.work(); }, maccept(){ acceptRec(); },
   rmatt(el){ if(MODAL&&MODAL.files){ MODAL.files.splice(+el.dataset.i,1); refreshAtt(); } },
   viewrec(el){ const o=D.occs.find(x=>x.done&&x.rec&&x.rec.id===el.dataset.id); if(!o){ toast('Could not open this record.'); return; } detailModal(o); },
-  ovclose(el,e){ if(e.target===el)closeModal(); },
+  ovclose(el,e){ if(e.target===el)modalLeave(); },
   addsched(el){ const e=addGate(); if(e){ toast(e); return; } schedModal(el.dataset.d); },
   remdel(el){ delete S.reminders[el.dataset.id]; closeModal(); changed('config'); },
   remdone(el){ const r=S.reminders[el.dataset.id]; if(r){ r.done=!r.done; r.doneAt=r.done?nowIso():''; } closeModal(); changed('config'); },
@@ -1767,7 +1776,7 @@ document.addEventListener('change',e=>{ const el=e.target.closest('[data-chg]');
   else if(c==='obon'){ const id=el.dataset.id; const o=Object.assign({},S.obl[id]||{},{id,active:el.checked}); S.obl[id]=o; Store.put('obl',o); logAct(el.checked?'Turned On Obligation':'Turned Off Obligation',(D.obs.find(x=>x.id===id)||{}).title||id); changed('obl'); return; }
   render(); });
 document.addEventListener('input',e=>{ const el=e.target.closest('[data-inp]'); if(!el)return; UI[el.dataset.inp]=el.value; render(); const n=document.querySelector('[data-inp="'+el.dataset.inp+'"]'); if(n){ n.focus(); try{n.setSelectionRange(n.value.length,n.value.length);}catch(x){} } });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ if(document.getElementById('ctx'))ctxClose(); else if(MODAL)closeModal(); } });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ if(document.getElementById('ctx'))ctxClose(); else if(MODAL)modalLeave(); } });
 window.addEventListener('scroll',ctxClose,true);
 document.addEventListener('contextmenu',e=>{ const el=e.target.closest('[data-act="occ"],[data-act="track"],.chip[data-t]'); if(!el||!el.dataset.t||el.dataset.t==='rem'||(MODAL&&!MODAL.series))return; e.preventDefault(); ctxClose();
   const isT=el.dataset.act==='track', at=' data-t="'+esc(el.dataset.t)+'" data-k="'+esc(el.dataset.k||'')+'"'; const c=document.createElement('div'); c.id='ctx'; c.className='ctx'; c.setAttribute('role','menu');

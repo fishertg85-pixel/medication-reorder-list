@@ -94,6 +94,23 @@
     table.stack td::before { content: attr(data-l); color: var(--muted); font-size: 13px; text-align: left; }
     input[type=text], input[type=password], input[type=tel], select { font-size: 16px; }
   }
+  /* the portal frame: header, Refresh row, Find field, breadcrumb and the right-hand list stay put; only the middle scrolls */
+  .topbar .in { max-width: min(1660px, 100%); padding: 10px 0; box-sizing: border-box; } .topbar .tag { padding-right: 0; }   /* logo and tag line up with the page below */
+  .crow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; min-height: 34px; } #tbSave { display: none; } #tbSave .btn { min-width: 96px; white-space: nowrap; }
+  .cmain > .msg:empty { display: none; }                                  /* an empty status line no longer pushes the middle box down */
+  @media (min-width: 1101px) and (min-height: 540px) {
+    body.hshell { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    body.hshell .topbar, body.hshell .foot { flex: none; }
+    body.hshell main.wrap { flex: 1; min-height: 0; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; padding-top: 12px; padding-bottom: 0; }
+    body.hshell #gBody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    body.hshell #gBody > * { flex: none; }
+    body.hshell .bar { margin-bottom: 8px; } body.hshell .crow { margin: 8px 0; } body.hshell .crumb { margin: 0; }
+    body.hshell #tbSave { display: flex; } body.hshell .cmain .savebar { display: none; }   /* the Save button lives in the fixed row above the scrolling middle */
+    body.hshell #gBody > .cw { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(0, 1fr); align-items: stretch; padding-bottom: 12px; }
+    body.hshell .cmain { min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 0 6px 0 0; }
+    body.hshell .cq { position: static; max-height: none; min-height: 0; overflow-y: auto; margin: 0; }
+    body.hshell .foot { padding: 6px 20px 8px; }
+  }
 </style>
 <link rel="stylesheet" href="fields.css">
 </head>
@@ -145,11 +162,11 @@
       <button class="btn2 small" id="bLock">Lock</button>
       <button class="btn2 small" id="bOut">Sign out</button>
     </div>
-    <div class="pass" id="passBox"></div>
     <div class="dfound"><input type="text" class="dsearch" id="gFind" placeholder="Find a client, pharmacy or person" autocomplete="off" maxlength="60" aria-label="Find a client, pharmacy or person"><div class="hits" id="gHits" hidden></div></div>
-    <div class="crumb" id="crumb" style="margin-top:12px"></div>
+    <div class="crow"><div class="crumb" id="crumb"></div><div id="tbSave"></div></div>
     <div class="cw">
       <div class="cmain">
+        <div class="pass" id="passBox"></div>
         <div class="msg ok" id="clientMsg" role="status" style="margin:0 0 8px"></div>
         <div id="vNew"></div>
         <div id="vClient" hidden></div>
@@ -172,6 +189,8 @@
 <footer class="foot"><img src="mark.svg" alt=""><span>2026 IronLedger LLC</span></footer>
 <script src="config.js"></script>
 <script src="layout_engine.js"></script>
+<script src="timepick.js"></script>
+<script src="unsaved.js"></script>
 <script src="pharm_panels.js"></script>
 <script src="client_panels.js"></script>
 <script src="drill.js"></script>

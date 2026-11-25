@@ -135,4 +135,4 @@ async function signOut(quiet){
   if(typeof AC_ST !== 'undefined'){ AC_ST.open = null; for(const k in AC_ST.staged) delete AC_ST.staged[k]; }       // copied temporary passwords go with the session
   if(!quiet){ $('liUser').value = ''; showLogin('Signed out. The next person can sign in.'); }   // shared computers: leave nobody's Login ID behind
 }
-$('signOutBtn').onclick = () => { if(confirm('Sign out of the Reorder List on this device?')) signOut(); };
+$('signOutBtn').onclick = async () => { if(!(await UG.leave())) return; if(confirm('Sign out of the Reorder List on this device?')) signOut(); };

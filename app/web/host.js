@@ -69,7 +69,7 @@ const NAV = {client:null, pharm:null, view:'acct'};       // client: null (the s
 const TEMPS = {};                                         // temporary passwords made in this tab, so they can be copied again while the person is pending
 const PS = {U:null, B:null, st:drState(TEMPS), bo:{edit:true, filter:'all'}};      // the open pharmacy's people and billing
 const SIGN = {step:'start', session:null, user:'', pw:''};
-function only(id){ ['gSign', 'gLock', 'gBody'].forEach(k => $(k).style.display = k === id ? '' : 'none'); }
+function only(id){ ['gSign', 'gLock', 'gBody'].forEach(k => $(k).style.display = k === id ? '' : 'none'); document.body.classList.toggle('hshell', id === 'gBody'); }
 function clearData(){ DATA = {stores:[], users:[], clients:[]}; LOGOS = {}; NAV.client = NAV.pharm = null; NAV.view = 'acct'; PS.U = PS.B = null; PS.st.open = null; for(const k in PS.st.staged) delete PS.st.staged[k]; PS.bo.filter = 'all';
   ['vNew', 'vClient', 'vPharm', 'vUsers', 'vBill', 'side', 'gHits'].forEach(k => $(k).innerHTML = ''); $('gFind').value = ''; $('gHits').hidden = true; $('clientMsg').textContent = ''; $('pmodal').hidden = true; $('newStore').innerHTML = ''; $('passBox').style.display = 'none'; $('passBox').innerHTML = ''; }
 function showSign(msg, ok){
@@ -150,9 +150,10 @@ async function signOut(msg){
   }
   SES = null; store(); for(const k in TEMPS) delete TEMPS[k]; showSign(msg || 'Signed out.', !msg);
 }
-$('lOut').onclick = $('bOut').onclick = () => signOut();
-$('bLock').onclick = () => lockNow('Locked.');
-$('bRefresh').onclick = () => load();
+$('lOut').onclick = () => signOut();
+$('bOut').onclick = async () => { if(await UG.leave()) signOut(); };
+$('bLock').onclick = async () => { if(await UG.leave()) lockNow('Locked.'); };
+$('bRefresh').onclick = async () => { if(await UG.leave()) load(); };
 ['keydown', 'pointerdown', 'input', 'wheel'].forEach(t => $('gBody').addEventListener(t, () => { lastAct = Date.now(); }, {passive:true}));
 setInterval(() => {
   if(!(UNTIL > 0)) return;
@@ -254,12 +255,15 @@ function renderNav(){
   else if(!$('vNew').querySelector('[data-is-new]')) $('vNew').innerHTML = `<div class="pcard" data-is-new="1"><h3 class="clt">New client</h3>${clientCardHtml({billingSame:true}, {host:true, isNew:true, stores:DATA.stores, people:DATA.users}, undefined)}</div>`;
 }
 const usersOpts = () => ({st:PS.st, me:ME, host:true, ownerMe:false, pinRequired:!!(ME && ME.pinRequired), canPin:!isRepMe()});
-$('side').addEventListener('click', e => {
-  const q = e.target.closest('[data-q]'), p = e.target.closest('[data-qs]'), v = e.target.closest('[data-view]');
-  if(q) goto(q.dataset.q, null); else if(p) goto(NAV.client || (storeOf(p.dataset.qs) || {}).clientId || null, p.dataset.qs); else if(v){ NAV.view = v.dataset.view; PS.st.open = null; $('clientMsg').textContent = ''; load(); }
-  else if(e.target.closest('#addP')) openAddPharm(NAV.client);
+$('side').addEventListener('click', async e => {
+  const q = e.target.closest('[data-q]'), p = e.target.closest('[data-qs]'), v = e.target.closest('[data-view]'), qd = q && q.dataset.q, pd = p && p.dataset.qs, vd = v && v.dataset.view;
+  if(!(q || p || v || e.target.closest('#addP'))) return;
+  if(!(await UG.leave())) return;                                          // unsaved changes: Yes saves, No leaves
+  if(q) goto(qd, null); else if(p) goto(NAV.client || (storeOf(pd) || {}).clientId || null, pd); else if(v){ NAV.view = vd; PS.st.open = null; $('clientMsg').textContent = ''; load(); }
+  else openAddPharm(NAV.client);
 });
-$('crumb').addEventListener('click', e => { const b = e.target.closest('[data-crumb]'); if(!b) return; const w = b.dataset.crumb;
+$('crumb').addEventListener('click', async e => { const b = e.target.closest('[data-crumb]'); if(!b) return; const w = b.dataset.crumb;
+  if(!(await UG.leave())) return;
   if(w === 'home') goto(null, null); else if(w === 'client') goto(NAV.client, null); else goto(NAV.client, NAV.pharm, 'acct'); });
 
 /* ---- one search bar: clients, pharmacies and people (name, username or employee ID) ---- */
@@ -280,12 +284,23 @@ $('gFind').addEventListener('input', e => {
   box.innerHTML = HITS.map((h, i) => (h.g !== g ? `<div class="hg">${g = h.g}</div>` : '') + `<button type="button" class="hit" data-hit="${i}"><b>${esc(h.t)}</b><span>${esc(h.s)}</span></button>`).join('') || '<div class="hint" style="padding:8px 12px">No match.</div>';
   box.hidden = e.target.value.trim().length < 2;
 });
-$('gHits').addEventListener('click', e => { const b = e.target.closest('[data-hit]'); if(!b) return; const h = HITS[+b.dataset.hit]; $('gFind').value = ''; $('gHits').hidden = true; if(h) h.go(); });
+$('gHits').addEventListener('click', async e => { const b = e.target.closest('[data-hit]'); if(!b) return; const h = HITS[+b.dataset.hit]; $('gHits').hidden = true; if(!(await UG.leave())) return; $('gFind').value = ''; if(h) h.go(); });
 document.addEventListener('click', e => { if(!e.target.closest('.dfound')) $('gHits').hidden = true; });
 $('gFind').addEventListener('keydown', e => { if(e.key === 'Escape'){ $('gHits').hidden = true; } else if(e.key === 'Enter'){ const b = $('gHits').querySelector('[data-hit]'); if(b) b.click(); } });
 
 /* ---- the open things and what they do ---- */
 const clientEv = {stores:() => DATA.stores, say:sayStore, pass:showPass, after: async newId => { if(newId){ NAV.client = newId; NAV.pharm = null; NAV.view = 'acct'; $('vNew').innerHTML = ''; } await load(); }};
+// The Save / Create button of the open card sits in the fixed row above the scrolling middle. The real button stays in the card (hidden on wide screens); this one passes the click on.
+function syncSave(){
+  const slot = $('tbSave'), v = ['vNew', 'vClient', 'vPharm'].map($).find(e => e && !e.hidden), real = v && v.querySelector('.savebar button');
+  if(!real){ slot.textContent = ''; slot._real = null; return; }
+  let b = slot.firstElementChild;
+  if(!b){ b = document.createElement('button'); b.type = 'button'; slot.appendChild(b); b.addEventListener('click', () => { if(slot._real) slot._real.click(); }); }
+  slot._real = real; b.className = real.className + ' small'; b.textContent = real.textContent; b.disabled = real.disabled;
+  [...b.attributes].filter(x => x.name.startsWith('data-')).forEach(x => b.removeAttribute(x.name)); [...real.attributes].filter(x => x.name.startsWith('data-')).forEach(x => b.setAttribute(x.name, x.value));
+}
+new MutationObserver(syncSave).observe(document.querySelector('.cmain'), { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'disabled'] });
+UG.watch($('vNew')); UG.watch($('vClient')); UG.watch($('vPharm'));
 clientCardEvents($('vClient'), clientEv); clientCardEvents($('vNew'), clientEv);
 const pharmEv = {base:'/host', stores:() => DATA.stores, clients:() => DATA.clients, say:sayStore, pass:showPass, after: async () => { await load(); }};
 pharmCardEvents($('vPharm'), pharmEv);
@@ -314,9 +329,11 @@ function openAddPharm(clientId){
   $('pmodal').hidden = false; $('pmodal').querySelector('.mbox').scrollTop = 0; const i = $('newStore').querySelector('[data-newid]'); if(i) i.focus();
 }
 const closeAddPharm = () => { $('pmodal').hidden = true; $('newStore').innerHTML = ''; };
-$('pmClose').onclick = closeAddPharm;
-$('pmodal').addEventListener('mousedown', e => { if(e.target === $('pmodal')) closeAddPharm(); });
-document.addEventListener('keydown', e => { if(e.key === 'Escape' && !$('pmodal').hidden) closeAddPharm(); });
+const askCloseAddPharm = async () => { if(await UG.leave()) closeAddPharm(); };          // unsaved entries: Yes creates the pharmacy, No closes without it
+$('pmClose').onclick = askCloseAddPharm;
+$('pmodal').addEventListener('mousedown', e => { if(e.target === $('pmodal')) askCloseAddPharm(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && !$('pmodal').hidden && !document.querySelector('.ug-back:not([hidden])')) askCloseAddPharm(); });
+UG.watch($('newStore'));
 pharmCardEvents($('newStore'), {base:'/host', stores:() => DATA.stores, clients:() => DATA.clients, say:sayStore, pass:showPass, after: async isNew => {
   if(isNew){ const id = (($('newStore').querySelector('[data-newid]') || {}).value || '').trim().toUpperCase(); closeAddPharm(); NAV.pharm = id || null; NAV.view = 'acct'; await load(); }
   else await load(); }});
