@@ -79,7 +79,7 @@ with sync_playwright() as pw:
     check("no services switches, no Calendar switch, no registry buttons", (card.locator('[data-svc]').count(), card.locator('[data-sfcal]').count(), card.locator('[data-npilook]').count(), card.locator('[data-deaok]').count()), (0, 0, 0, 0))
     check("locked message and services shown", ("Set by IronLedger" in card.inner_text(), "Sterile compounding" in card.inner_text(), "Calendar: On" in card.inner_text()), (True, True, True))
     check("no Add-a-pharmacy form for the Account Owner", p.locator('#psAdd').count(), 0)
-    card.locator('[data-sf=phone]').fill('(817) 555-0123'); card.locator('[data-savestore]').click(); p.wait_for_timeout(1500)
+    card.locator('[data-sf=phone]').fill('(817) 555-0123'); card.locator('[data-savestore]').first.click(); p.wait_for_timeout(1500)
     ns = [x for x in api(H, "GET", "/host/stores")[1]["stores"] if x["id"] == "NTX1"][0]
     check("phone saved from the screen; services, identifiers and hours untouched", (ns["phone"], ns["npi"], ns["services"], ns["hours"][1]), ("(817) 555-0123", "1234567893", ["controlled", "sterile", "immunizations"], {"o": "08:00", "c": "20:00"}))
     # closed days on the Hours panel: the Account Owner adds them; they show on the calendar for everyone who can open it
@@ -90,7 +90,7 @@ with sync_playwright() as pw:
     card.locator('[data-cld]').fill('2027-02-09'); card.locator('[data-cln]').fill('Mardi Gras'); card.locator('[data-cly]').evaluate("e=>e.click()"); card.locator('[data-cladd]').click()
     card.locator('[data-cld]').fill('2026-12-28'); card.locator('[data-cln]').fill('Day after Christmas'); card.locator('[data-cladd]').click()
     check("added days are listed", (card.locator('.clrow').count(), "Mardi Gras" in card.locator('[data-cllist]').inner_text(), "every year" in card.locator('[data-cllist]').inner_text()), (2, True, True))
-    card.locator('[data-savestore]').click(); p.wait_for_timeout(1500)
+    card.locator('[data-savestore]').first.click(); p.wait_for_timeout(1500)
     ns = [x for x in api(H, "GET", "/host/stores")[1]["stores"] if x["id"] == "NTX1"][0]
     check("closed days saved from the screen", (ns["closures"].get("obs"), [(x["d"], x["y"]) for x in ns["closures"]["days"]]), (None, [("2026-12-28", False), ("2027-02-09", True)]))
     check("federal holiday closures saved on the pharmacy", ns.get("holClosed"), ["newyear", "mlk", "memorial", "july4", "labor", "xmas"])

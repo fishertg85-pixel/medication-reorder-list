@@ -1241,18 +1241,18 @@ function layoutGridHtml(page, L, body){
    Built on the layout engine (layout_engine.js). PHARM_LAYOUT is set once by Neo with the layout editor and is the same for everyone. */
 const PHARM_COLS = LAYOUT_COLS, PHARM_ROW = LAYOUT_ROW;
 const PHARM_PANELS = [['id', 'Pharmacy'], ['contact', 'Name And Address'], ['reg', 'License And Registration'], ['svc', 'Services Provided'], ['hrs', 'Hours Of Operation'], ['own', 'Account Owner And PIC'], ['mgr', 'Who Can Manage Users'], ['act', 'Modules And Save']];
-const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,40],"own":[1,41,4,49],"contact":[5,1,4,37],"reg":[5,38,4,52],"hrs":[9,1,4,71],"mgr":[9,72,4,18],"svc":[1,90,8,26],"act":[9,90,4,26]}};
+const PHARM_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,40],"own":[1,41,3,49],"contact":[4,1,4,37],"reg":[4,38,4,52],"hrs":[8,1,5,71],"mgr":[8,72,5,18],"svc":[1,90,7,26],"act":[8,90,5,26]}};
 const PHARM_PAGE = { id: 'pharm', title: 'Host Pharmacy Setup Page', panels: PHARM_PANELS, layout: PHARM_LAYOUT,
   render: (sample, panels) => pharmCardHtml(sample, { logo: '', holder: 'Pat Owner (owner)', host: true, clients: [{ id: 'IL-000001', legalName: 'NorTex Holdings LLC', entityType: 'llc', ein: '12-3456789' }] }, { panels }) };
 // The Account Owner's version of the same page has its own layout (Neo arranges it separately in the layout editor: page key pharm_owner).
-const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,4,41],"own":[1,42,4,12],"act":[1,54,4,20],"contact":[5,1,4,42],"reg":[5,43,4,31],"hrs":[9,1,4,73],"svc":[1,74,12,9]}};
+const PHARM_OWNER_LAYOUT = {"v":2,"cols":12,"panels":{"id":[1,1,3,41],"own":[1,42,3,12],"act":[1,54,3,20],"contact":[4,1,4,42],"reg":[4,43,4,31],"hrs":[8,1,5,73],"svc":[1,74,12,9]}};
 const PHARM_OWNER_PANELS = PHARM_PANELS.filter(p => p[0] !== 'mgr');      // the switches are IronLedger's alone
 const PHARM_OWNER_PAGE = { id: 'pharm_owner', title: 'Pharmacy Page (Account Owner)', panels: PHARM_OWNER_PANELS, layout: PHARM_OWNER_LAYOUT,
   render: (sample, panels) => pharmCardHtml(Object.assign({}, sample, { ein: '', einMasked: '••-•••4321' }), { logo: '', holder: 'Pat Owner (owner)' }, { panels }) };
 const pharmLayoutOk = L => layoutOk(PHARM_PAGE, L);
 const pharmLayout = () => pharmLayoutOk(PHARM_LAYOUT) ? PHARM_LAYOUT : null;
 const sw = (attrs, on, title) => `<label class="switch" title="${esc(title || '')}"><input type="checkbox" ${attrs}${on ? ' checked' : ''}><span></span></label>`;
-const SF = [['name','Pharmacy name'],['address','Street address'],['phone','Phone'],['fax','Fax'],['email','Email'],['suite','Suite / unit (if any)'],['city','City'],['state','State'],['zip','ZIP code'],['timezone','Time zone']];   // Street address sits directly under Pharmacy name
+const SF = [['name','Pharmacy Name'],['address','Street Address'],['phone','Phone'],['fax','Fax'],['email','Email'],['suite','Suite / Unit'],['city','City'],['state','State'],['zip','ZIP Code']];   // Street address sits directly under Pharmacy name
 const US_STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA PR RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
 const stateSelect = (attrs, cur) => `<select ${attrs}><option value=""></option>${US_STATES.map(v => `<option${v === (cur || '') ? ' selected' : ''}>${v}</option>`).join('')}</select>`;
 const tzSelect = (attrs, cur) => `<select ${attrs}>${Object.entries(TZ_NAMES).map(([v, l]) => `<option value="${v}"${v === (cur || 'America/Chicago') ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
@@ -1275,9 +1275,9 @@ const closeRows = days => days.map((x, i) => `<div class="clrow"><span class="cl
 const closedState = card => { const el = card.querySelector('[data-cl]'); try{ return JSON.parse(el.dataset.cl); }catch(_){ return []; } };
 const closuresOfCard = card => ({ days: closedState(card) });
 const hoursOf = s => Array.isArray(s.hours) && s.hours.length === 7 ? s.hours : [null,{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},{o:'09:00',c:'18:00'},null];
-const field = (s, k, l, t, lock) => `<label><span>${l}</span>${k === 'timezone' ? tzSelect(`data-sf="timezone"`, s.timezone) : k === 'state' ? stateSelect(`data-sf="state"${lock ? ' disabled data-ident="1"' : ''}`, s.state) : `<input type="${t || 'text'}" data-sf="${k}" value="${esc(s[k] || '')}"${k === 'address' ? ' class="wide"' : ''}${lock ? ' readonly data-ident="1"' : ''}>`}</label>`;
+const field = (s, k, l, t, lock) => `<label data-k="${k}"><span>${l}</span>${k === 'timezone' ? tzSelect(`data-sf="timezone"`, s.timezone) : k === 'state' ? stateSelect(`data-sf="state"${lock ? ' disabled data-ident="1"' : ''}`, s.state) : `<input type="${t || 'text'}" data-sf="${k}" value="${esc(s[k] || '')}"${k === 'address' ? ' class="wide"' : ''}${lock ? ' readonly data-ident="1"' : ''}>`}</label>`;
 const roVal = v => `<div class="ro${v ? '' : ' empty'}">${v ? esc(v) : 'Not set'}</div>`;
-const roField = (s, k, l, t) => `<label><span>${l}</span>${roVal(s[k])}</label>`;
+const roField = (s, k, l, t) => `<label data-k="${k}"><span>${l}</span>${roVal(s[k])}</label>`;
 // c.host: the card is being used by IronLedger (the host login). Everyone else sees license, identifiers, services and the Calendar switch but cannot change them.
 // Identity (name, address, license, NPI, DEA, NCPDP) is set by IronLedger and locked once on file; the Account Owner keeps phone, fax, time zone, hours and the two expiration dates.
 const IDENT = ['name', 'address', 'suite', 'city', 'state', 'zip', 'license', 'npi', 'dea', 'ncpdp', 'clientId', 'entityLegalName', 'entityType', 'ein'], AM_EDIT = ['phone', 'fax', 'email', 'timezone', 'licenseExpires', 'deaExpires'];
@@ -1312,36 +1312,36 @@ function ownInfo(s, people){
 const ownLabel = u => u ? (u.name || u.login) + ' (' + u.login + ')' : '';
 const cardField = (s, k, l, t, c) => IDENT.includes(k) ? (c.host ? field(s, k, l, t, !c.isNew && !!s[k] && !c.rep && !c.repView) : roField(s, k, l, t)) : (c.host || AM_EDIT.includes(k) ? field(s, k, l, t) : roField(s, k, l, t));
 const LOCKED = 'Set by IronLedger. Contact your IronLedger representative to change this.';
-const LOCKED_ID = 'Name, address, license and identifiers must match your license and billing, so IronLedger sets them. Phone, fax, email, time zone, hours and expiration dates are yours to keep current.';
+const LOCKED_ID = 'Name and address are set by IronLedger.';
 // Licensed entity (the entity named on the license, DEA and NPI; the EIN is required) and the client (the bill-to account, IL- number).
 const ENT_TYPES = [['corporation', 'Corporation'], ['llc', 'LLC'], ['sole_prop', 'Sole proprietor'], ['partnership', 'Partnership'], ['other', 'Other']];
 const entTypeLabel = v => (ENT_TYPES.find(x => x[0] === v) || [0, ''])[1];
 const entTypeSelect = (attrs, cur) => `<select ${attrs}><option value=""></option>${ENT_TYPES.map(([v, l]) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
 const clientName = (c, id) => { const k = (c.clients || []).find(x => x.id === id); return k ? k.legalName + ' (' + id + ')' : id || ''; };
-const clientSelect = (c, cur, attrs) => `<select data-sf="clientId" ${attrs || ''}><option value=""></option>${(c.clients || []).map(k => `<option value="${esc(k.id)}"${k.id === cur ? ' selected' : ''}>${esc(k.legalName)} (${esc(k.id)})</option>`).join('')}</select>`;
+const clientSelect = (c, cur, attrs) => `<select data-sf="clientId" ${attrs || ''}><option value=""></option>${(c.clients || []).map(k => `<option value="${esc(k.id)}"${k.id === cur ? ' selected' : ''}>${esc(k.legalName)}${(c.clients || []).filter(z => z.legalName === k.legalName).length > 1 ? ' (' + esc(k.id) + ')' : ''}</option>`).join('')}</select>`;
 const entityHost = (s, c) => { const lk = !c.isNew && !!s.ein && !c.rep && !c.repView, lkn = !c.isNew && !!s.entityLegalName && !c.rep && !c.repView, lkt = !c.isNew && !!s.entityType && !c.rep && !c.repView;
-  return `<div class="entity"><b class="clh">Licensed entity</b> <span class="hint">the entity named on the license, DEA and NPI</span>
-    <div class="pfields entrow"><label><span title="Required">Legal name *</span><input type="text" data-sf="entityLegalName" maxlength="120" value="${esc(s.entityLegalName || '')}"${lkn ? ' readonly data-ident="1"' : ''}></label>
-    <label><span title="Required">Entity type *</span>${entTypeSelect(`data-sf="entityType"${lkt ? ' disabled data-ident="1"' : ''}`, s.entityType)}</label>
+  return `<div class="entity"><b class="clh">Licensed Entity</b>
+    <div class="pfields entrow"><label class="full"><span title="Required">Legal Name *</span><input type="text" data-sf="entityLegalName" maxlength="120" value="${esc(s.entityLegalName || '')}"${lkn ? ' readonly data-ident="1"' : ''}></label>
+    <label><span title="Required">Entity Type *</span>${entTypeSelect(`data-sf="entityType"${lkt ? ' disabled data-ident="1"' : ''}`, s.entityType)}</label>
     <label><span title="Required">EIN *</span><input type="text" data-sf="ein" maxlength="11" placeholder="12-3456789" value="${esc(s.ein || '')}"${lk ? ' readonly data-ident="1"' : ''}></label></div>
     ${(c.clients || []).length && !c.repView && (!s.ein || c.isNew) ? '<button type="button" class="btn2 small" data-entsame="1" title="Fills the legal name, type and EIN from the selected client">Same as client</button>' : ''}
     ${!c.isNew && !s.ein ? '<div class="lockhint warn">EIN missing: required for every pharmacy.</div>' : ''}</div>`; };
-const entityRo = s => `<div class="entity"><b class="clh">Licensed entity</b><div class="pfields entrow">${roField(s, 'entityLegalName', 'Legal name')}<label><span>Entity type</span>${roVal(entTypeLabel(s.entityType))}</label><label><span>EIN</span>${roVal(s.einMasked)}</label></div></div>`;
+const entityRo = s => `<div class="entity"><b class="clh">Licensed entity</b><div class="pfields entrow">${roField(s, 'entityLegalName', 'Legal Name').replace('<label ', '<label class="full" ')}<label><span>Entity Type</span>${roVal(entTypeLabel(s.entityType))}</label><label><span>EIN</span>${roVal(s.einMasked)}</label></div></div>`;
 const PHARM_BODY = {
   id: (s, c) => c.isNew
-      ? `<div class="pidbox"><label class="pfields"><span>Pharmacy ID</span><input type="text" class="newid" data-newid="1" maxlength="20" autocapitalize="characters" spellcheck="false"></label>
+      ? `<div class="pidbox"><label class="clsel"><span>Pharmacy ID</span><input type="text" class="newid" data-newid="1" maxlength="20" autocapitalize="characters" spellcheck="false"></label>
         <div class="hint">What people type when they sign in (2–20 letters, numbers or dashes, like NTX1). It can’t be changed later. Add the logo after the pharmacy is created.</div>
-        <label class="pfields"><span>Client (bill-to account, required)</span>${clientSelect(c, s.clientId || '', c.clientFixed ? 'disabled' : '')}</label></div>${entityHost(s, c)}`
+        <label class="clsel"><span>Client (Bill-To Account, Required)</span>${clientSelect(c, s.clientId || '', c.clientFixed ? 'disabled' : '')}</label></div>${entityHost(s, c)}`
       : `<div class="plogo">${c.logo ? `<img src="${esc(c.logo)}" alt="">` : '<span class="hint">No logo</span>'}
         <label class="btn2 small">Upload logo<input type="file" accept="image/png,image/jpeg,image/webp" data-logo="${esc(s.id)}" hidden></label>
         ${c.logo ? `<button class="btn2 small" data-nologo="${esc(s.id)}">Remove</button>` : ''}</div>
-      <div class="pidbox"><div class="pid">Pharmacy ID: <b>${esc(s.id)}</b></div><div class="hint">(what people type when they sign in)</div>
-        <div class="pid">Primary account holder: <b>${esc(c.holder || 'Account Owner')}</b></div><div class="hint">(the Account Owner)</div>
+      <div class="pidbox"><div class="pid">Pharmacy ID: <b>${esc(s.id)}</b></div><div class="hint">(Sign-in ID)</div>
+       
         ${c.host
-          ? `<label class="pfields"><span>Client (bill-to account)</span>${clientSelect(c, s.clientId, !!s.clientId && !c.rep && !c.repView ? 'disabled data-ident="1"' : '')}</label>${s.clientId ? '' : '<div class="lockhint warn">No client yet: pick one.</div>'}`
+          ? `<label class="clsel"><span>Client (Bill-To Account)</span>${clientSelect(c, s.clientId, !!s.clientId && !c.rep && !c.repView ? 'disabled data-ident="1"' : '')}</label>${s.clientId ? '' : '<div class="lockhint warn">No client yet: pick one.</div>'}`
           : `<div class="pid">Account number: <b>${s.clientId ? esc(s.clientId) : 'Not assigned yet'}</b></div><div class="hint">(generated once by IronLedger; never changes)</div>`}</div>
       ${c.host ? entityHost(s, c) : entityRo(s)}`,
-  contact: (s, c) => { const cf = SF.map(([k, l]) => cardField(s, k, l, undefined, c)); return `<div class="pfields"><div class="nlcol">${cf[0]}${cf[1]}</div>${cf.slice(2).join('')}${c.host ? '' : `<div class="lockhint">${LOCKED_ID}</div>`}</div>`; },
+  contact: (s, c) => { const cf = SF.map(([k, l]) => cardField(s, k, l, undefined, c)); return `<div class="pfields namefields">${cf.join('')}${c.host ? '' : `<div class="lockhint">${LOCKED_ID}</div>`}</div>`; },
   reg: (s, c) => {
     if(c.host){
       const lock = (k) => !c.isNew && !!s[k] && !c.rep && !c.repView;
@@ -1362,7 +1362,7 @@ const PHARM_BODY = {
     : `<div class="pfields"><div class="chips">${(s.services || []).map(k => `<span class="chip">${esc(SVC_LABELS[k] || k)}</span>`).join('') || '<span class="hint">None set yet.</span>'}</div>
           ${s.servicesOther ? `<div class="pid">Other: ${esc(s.servicesOther)}</div>` : ''}<div class="lockhint">${LOCKED}</div></div>`,
   hrs: s => `<div class="pfields"><div class="hrs">${s.hours ? '' : '<div class="hint">Not set yet; these are suggestions until you save.</div>'}
-          ${hoursOf(s).map((h, i) => `<div class="hrow"><span title="${DAYS[i]}">${DAYS[i].slice(0, 3)}</span><input type="time" data-ho="${i}" value="${h ? h.o : '09:00'}"><input type="time" data-hc="${i}" value="${h ? h.c : '18:00'}"><label class="chk">${sw(`data-hx="${i}"`, !h)} Closed</label></div>`).join('')}</div>
+          ${hoursOf(s).map((h, i) => `<div class="hrow"><span title="${DAYS[i]}">${DAYS[i].slice(0, 3)}</span><input type="time" data-ho="${i}" value="${h ? h.o : '09:00'}"${h ? '' : ' disabled'}><input type="time" data-hc="${i}" value="${h ? h.c : '18:00'}"${h ? '' : ' disabled'}><label class="chk">${sw(`data-hx="${i}"`, !h)} Closed</label>${i === 0 ? tzSelect('data-sf="timezone" class="tzsel" title="Time Zone"', s.timezone) : ''}</div>`).join('')}</div>
           <div class="hdrop"><b class="clh">Federal holidays closed</b><div class="hdlist">${FED_HOL.map(([k, l]) => `<label class="chk">${sw(`data-hol="${k}"`, holOf(s).includes(k))} ${l}</label>`).join('')}</div></div>
           <div class="closed" data-cl='${esc(JSON.stringify(closuresOf(s).days))}'><b class="clh">Additional closed days</b>
             <div class="cllist" data-cllist>${closeRows(closuresOf(s).days)}</div>
@@ -1386,16 +1386,16 @@ const PHARM_BODY = {
           <label class="chk" style="grid-column:1/-1"><input type="checkbox" data-on="consent"> They signed the SMS consent form for this mobile number.</label></div>
         ${I.owner ? '<label><span>Reason for the change (required)</span><input type="text" data-ownreason maxlength="300"></label>' : ''}
         <button type="button" class="btn2 small" data-ownsave="${esc(s.id)}">Save Account Owner</button></div>
-      <div class="ownbox"><b class="clh">Is the Account Owner the pharmacist in charge?</b>
-        <label class="chk"><input type="radio" name="pic-${esc(s.id)}" data-picyes value="yes"${s.ownerIsPic === true ? ' checked' : ''}> Yes. They get the pharmacist functions: Rx Intake, validations, EM logs.</label>
-        <label class="chk"><input type="radio" name="pic-${esc(s.id)}" data-picyes value="no"${s.ownerIsPic === false ? ' checked' : ''}> No. A licensed pharmacist is the PIC.</label>
+      <div class="ownbox"><b class="clh">Is The Owner The PIC?</b>
+        <label class="chk"><input type="radio" name="pic-${esc(s.id)}" data-picyes value="yes"${s.ownerIsPic === true ? ' checked' : ''}> Yes: The Owner Is The PIC</label>
+        <label class="chk"><input type="radio" name="pic-${esc(s.id)}" data-picyes value="no"${s.ownerIsPic === false ? ' checked' : ''}> No: A Pharmacist Is The PIC</label>
         <label data-picwho${s.ownerIsPic === false ? '' : ' hidden'}><span>Pharmacist in charge</span><select data-picpick><option value="">—</option>${pharmacists.map(u => `<option value="${esc(u.login)}"${u.login === s.picLogin ? ' selected' : ''}>${esc(ownLabel(u))}${u.license ? '' : ' (no RPh license #)'}</option>`).join('')}</select></label>
         ${asked ? '<label><span>Reason for the change (required)</span><input type="text" data-picreason maxlength="300"></label>' : ''}
-        <div class="hint">The PIC must be a licensed pharmacist with an RPh license number on their login. Only IronLedger records or changes this; each change is kept in the history.</div>
+        <div class="hint">Only IronLedger changes this.</div>
         <button type="button" class="btn2 small" data-picsave="${esc(s.id)}">Save</button></div></div>`;
   },
   mgr: (s, c) => c.isNew ? '<div class="pfields" style="display:block"><div class="hint">Set after the pharmacy is created.</div></div>'
-    : `<div class="pfields" style="display:block"><div class="hint" style="margin-bottom:6px">May add, change and remove people at this pharmacy. Never billing, the client page or ownership.</div>
+    : `<div class="pfields" style="display:block"><div class="hint" style="margin-bottom:6px">Add, change and remove people here.</div>
       <label class="chk">${sw('data-mgr="mgrOwner"', s.mgrOwner !== false)} Account Owner</label>
       <label class="chk">${sw('data-mgr="mgrPic"', s.mgrPic !== false)} Pharmacist-in-Charge super user</label>
       <label class="chk">${sw('data-mgr="mgrClient"', s.mgrClient === true)} Client Account Owner</label></div>`,
@@ -1419,7 +1419,9 @@ const PHARM_BODY = {
           <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label><div data-histout></div></div>` : ''}</div>`
 };
 // the whole card, built by the layout engine
-function pharmCardHtml(s, c, L){ return layoutGridHtml(c.host ? PHARM_PAGE : PHARM_OWNER_PAGE, L, id => PHARM_BODY[id](s, c)); }
+// Save at the top, right-aligned above the panels (the same button as the Save panel's; it stays in view while you scroll)
+const saveBar = btn => btn ? `<div class="savebar">${btn}</div>` : '';
+function pharmCardHtml(s, c, L){ return saveBar(c.rep ? '' : c.isNew ? '<button class="btn" data-createstore="1">Create pharmacy</button>' : `<button class="btn" data-savestore="${esc(s.id)}">Save</button>`) + layoutGridHtml(c.host ? PHARM_PAGE : PHARM_OWNER_PAGE, L, id => PHARM_BODY[id](s, c)); }
 
 // ---------------- behaviour shared by the Account Owner page and the host page ----------------
 // o = { base: '/owner' | '/host', stores: () => [store, …], say: text => …, after: async () => … }
@@ -1438,7 +1440,8 @@ function pharmCardEvents(root, o){
     if(e.target.closest('[data-lic]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.licTouched = '1'; }
     if(e.target.closest('[data-lic-exp]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.licTouched = '1'; }
     const pk = e.target.closest('[data-ownpick]'); if(pk) pk.closest('.pcard').querySelector('[data-ownnew]').hidden = pk.value !== '@new';
-    const py = e.target.closest('[data-picyes]'); if(py) py.closest('.pcard').querySelector('[data-picwho]').hidden = py.value !== 'no'; if(e.target.closest('[data-ho],[data-hc],[data-hx]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.hrTouched = '1'; }
+    const py = e.target.closest('[data-picyes]'); if(py) py.closest('.pcard').querySelector('[data-picwho]').hidden = py.value !== 'no'; const hx = e.target.closest('[data-hx]'); if(hx){ hx.closest('.hrow').querySelectorAll('input[type=time]').forEach(t => { t.disabled = hx.checked; }); }
+    if(e.target.closest('[data-ho],[data-hc],[data-hx]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.hrTouched = '1'; }
     if(e.target.closest('[data-hol]')){ const c = e.target.closest('.pcard'); if(c) c.dataset.hcTouched = '1'; } });
   root.addEventListener('click', async e => {
     const la = e.target.closest('[data-licadd]'), ld = e.target.closest('[data-licdel]'), osv = e.target.closest('[data-ownsave]'), psv = e.target.closest('[data-picsave]');
@@ -1585,6 +1588,21 @@ function pharmCardEvents(root, o){
   });
 }
 
+// Fit standard: a name or address is never cut off in its box. A text that is longer than its box gets a smaller type size (down to 10.5 px) and the full text as a tooltip.
+// Runs after every change to the page and on typing; only fields that overflow are touched.
+(function(){
+  const cv = document.createElement('canvas').getContext('2d');
+  const over = e => { if(e.tagName === 'SELECT'){ const t = e.options[e.selectedIndex], cs = getComputedStyle(e); if(!t) return false; cv.font = cs.font; return cv.measureText(t.text).width > e.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 24; } return e.scrollWidth > e.clientWidth + 1; };
+  const fit = e => { if(!e.offsetParent || !e.clientWidth) return; e.style.fontSize = ''; let fs = parseFloat(getComputedStyle(e).fontSize); const v = e.tagName === 'SELECT' ? (e.options[e.selectedIndex] || {}).text : (e.value !== undefined && e.tagName === 'INPUT' ? e.value : e.textContent);
+    while(over(e) && fs > 10.5){ fs -= .5; e.style.fontSize = fs + 'px'; } if(v) e.title = v; };
+  const all = root => (root || document).querySelectorAll('.pcard .pfields input:not([type=checkbox]):not([type=radio]):not([type=date]):not([type=time]):not([type=file]), .pcard .pfields select, .pcard .pfields .ro, .pcard .clsel select, .pcard .clsel input, .pcard .pid, .pcard .hint, .pcard .lockhint').forEach(fit);
+  let t = 0; const later = () => { cancelAnimationFrame(t); t = requestAnimationFrame(() => all()); };
+  document.addEventListener('input', e => { if(e.target.closest && e.target.closest('.pcard .pfields')) fit(e.target); });
+  document.addEventListener('change', e => { if(e.target.closest && e.target.closest('.pcard .pfields')) fit(e.target); });
+  new MutationObserver(later).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+  window.addEventListener('resize', later); later();
+})();
+
 /* ---------------- client account page (host): who the client is, for account creation and billing ----------------
    Built on the layout engine (layout_engine.js) like every page of the suite. CLIENT_LAYOUT is set by Neo with the layout editor
    (dev/build_layout_editor.py client) and is the same for everyone. Uses helpers from pharm_panels.js (stateSelect, entTypeSelect, ENT_TYPES, esc).
@@ -1605,19 +1623,19 @@ const contactRows = list => list.map((x, i) => `<div class="clrow"><span class="
 const contactsOfCard = card => { const el = card.querySelector('[data-ctcs]'); try{ return JSON.parse(el.dataset.ctcs); }catch(_){ return []; } };
 const CLIENT_BODY = {
   ent: (cl, c) => `<div class="pfields">${c.isNew ? '<div class="hint">The account number (IL-…) is generated when you create the client.</div>' : `<div class="pid">Account number: <b>${esc(cl.id)}</b> <span class="hint">(never changes)</span></div>`}
-      <label><span>Entity type (required)</span>${entTypeSelect(`data-cf="entityType"${clientLocked('entityType', cl, c) ? ' disabled data-ident="1"' : ''}`, cl.entityType)}</label>
-      ${cfIn(cl, 'legalName', 'Legal name of the entity (required)', c, { ident: true, max: 160, w2: true })}
-      ${cfIn(cl, 'dba', 'DBA (doing business as), if any', c, { max: 160, w2: true })}
-      ${cfIn(cl, 'ein', 'EIN (required)', c, { ident: true, max: 11, ph: '12-3456789' })}
+      ${cfIn(cl, 'legalName', 'Legal Name Of The Entity (Required)', c, { ident: true, max: 160, w2: true })}
+      ${cfIn(cl, 'dba', 'DBA (Doing Business As), If Any', c, { max: 160, w2: true })}
+      <label><span>Entity Type (Required)</span>${entTypeSelect(`data-cf="entityType"${clientLocked('entityType', cl, c) ? ' disabled data-ident="1"' : ''}`, cl.entityType)}</label>
+      ${cfIn(cl, 'ein', 'EIN (Required)', c, { ident: true, max: 11, ph: '12-3456789' })}
       ${!c.isNew && !c.ro ? `<div class="identbar"><button type="button" class="btn2 small" data-unlockclient="1" title="Legal name, entity type and EIN are locked once on file. A reason is required and every change is kept in the history.">Unlock fields</button>
         <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label></div>` : ''}</div>`,
   addr: (cl, c) => `<div class="pfields"><b class="clh">Business address</b>
-      ${cfIn(cl, 'address', 'Street address', c, { max: 200 })}${cfIn(cl, 'suite', 'Suite / unit (if any)', c, { max: 40 })}${cfIn(cl, 'city', 'City', c, { max: 80 })}
-      <label><span>State</span>${stateSelect('data-cf="state"', cl.state)}</label>${cfIn(cl, 'zip', 'ZIP code', c, { max: 10 })}
+      ${cfIn(cl, 'address', 'Street Address', c, { max: 200, w2: true })}${cfIn(cl, 'suite', 'Suite / Unit', c, { max: 40 })}${cfIn(cl, 'city', 'City', c, { max: 80 })}
+      <label><span>State</span>${stateSelect('data-cf="state"', cl.state)}</label>${cfIn(cl, 'zip', 'ZIP Code', c, { max: 10 })}
       <label class="chk">${sw('data-cf="billingSame"', cl.billingSame !== false)} Billing address is the same</label>
       <div data-billbox${cl.billingSame !== false ? ' hidden' : ''}><b class="clh">Billing address</b>
-      ${cfIn(cl, 'bAddress', 'Street address', c, { max: 200 })}${cfIn(cl, 'bSuite', 'Suite / unit (if any)', c, { max: 40 })}${cfIn(cl, 'bCity', 'City', c, { max: 80 })}
-      <label><span>State</span>${stateSelect('data-cf="bState"', cl.bState)}</label>${cfIn(cl, 'bZip', 'ZIP code', c, { max: 10 })}</div></div>`,
+      ${cfIn(cl, 'bAddress', 'Street Address', c, { max: 200, w2: true })}${cfIn(cl, 'bSuite', 'Suite / Unit', c, { max: 40 })}${cfIn(cl, 'bCity', 'City', c, { max: 80 })}
+      <label><span>State</span>${stateSelect('data-cf="bState"', cl.bState)}</label>${cfIn(cl, 'bZip', 'ZIP Code', c, { max: 10 })}</div></div>`,
   contact: (cl, c) => `<div class="pfields">${cfIn(cl, 'phone', 'Telephone', c, { type: 'tel', max: 30 })}${cfIn(cl, 'fax', 'Fax', c, { type: 'tel', max: 30 })}
       <b class="clh">Contacts</b><div class="hint">They don’t need a login.</div>
       <div class="cllist" data-ctlist>${contactRows(cl.contacts || [])}</div>
@@ -1645,7 +1663,7 @@ const CLIENT_BODY = {
 };
 // read-only view (the client's Account Owner): everything shown, nothing editable
 function clientFreeze(root){ root.querySelectorAll('input,select,textarea,button[data-ctdel]').forEach(e => { e.disabled = true; }); root.querySelectorAll('.ctadd,[data-ctdel],.identbar,[data-pnl=act]').forEach(e => { e.hidden = true; e.style.display = 'none'; }); }
-function clientCardHtml(cl, c, L){ return layoutGridHtml(CLIENT_PAGE, L, id => CLIENT_BODY[id](cl, c)); }
+function clientCardHtml(cl, c, L){ return saveBar(c.ro ? '' : c.isNew ? '<button type="button" class="btn" data-createclient="1">Create client</button>' : `<button type="button" class="btn" data-saveclient="${esc(cl.id)}">Save</button>`) + layoutGridHtml(CLIENT_PAGE, L, id => CLIENT_BODY[id](cl, c)); }
 
 // ---------------- behaviour for the host page ----------------
 // o = { stores: () => [pharmacy…], say: text => …, after: async isNew => … }

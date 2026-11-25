@@ -18,19 +18,19 @@ const contactRows = list => list.map((x, i) => `<div class="clrow"><span class="
 const contactsOfCard = card => { const el = card.querySelector('[data-ctcs]'); try{ return JSON.parse(el.dataset.ctcs); }catch(_){ return []; } };
 const CLIENT_BODY = {
   ent: (cl, c) => `<div class="pfields">${c.isNew ? '<div class="hint">The account number (IL-…) is generated when you create the client.</div>' : `<div class="pid">Account number: <b>${esc(cl.id)}</b> <span class="hint">(never changes)</span></div>`}
-      <label><span>Entity type (required)</span>${entTypeSelect(`data-cf="entityType"${clientLocked('entityType', cl, c) ? ' disabled data-ident="1"' : ''}`, cl.entityType)}</label>
-      ${cfIn(cl, 'legalName', 'Legal name of the entity (required)', c, { ident: true, max: 160, w2: true })}
-      ${cfIn(cl, 'dba', 'DBA (doing business as), if any', c, { max: 160, w2: true })}
-      ${cfIn(cl, 'ein', 'EIN (required)', c, { ident: true, max: 11, ph: '12-3456789' })}
+      ${cfIn(cl, 'legalName', 'Legal Name Of The Entity (Required)', c, { ident: true, max: 160, w2: true })}
+      ${cfIn(cl, 'dba', 'DBA (Doing Business As), If Any', c, { max: 160, w2: true })}
+      <label><span>Entity Type (Required)</span>${entTypeSelect(`data-cf="entityType"${clientLocked('entityType', cl, c) ? ' disabled data-ident="1"' : ''}`, cl.entityType)}</label>
+      ${cfIn(cl, 'ein', 'EIN (Required)', c, { ident: true, max: 11, ph: '12-3456789' })}
       ${!c.isNew && !c.ro ? `<div class="identbar"><button type="button" class="btn2 small" data-unlockclient="1" title="Legal name, entity type and EIN are locked once on file. A reason is required and every change is kept in the history.">Unlock fields</button>
         <label class="reason" hidden><span>Reason for the change</span><input type="text" data-reason maxlength="300"></label></div>` : ''}</div>`,
   addr: (cl, c) => `<div class="pfields"><b class="clh">Business address</b>
-      ${cfIn(cl, 'address', 'Street address', c, { max: 200 })}${cfIn(cl, 'suite', 'Suite / unit (if any)', c, { max: 40 })}${cfIn(cl, 'city', 'City', c, { max: 80 })}
-      <label><span>State</span>${stateSelect('data-cf="state"', cl.state)}</label>${cfIn(cl, 'zip', 'ZIP code', c, { max: 10 })}
+      ${cfIn(cl, 'address', 'Street Address', c, { max: 200, w2: true })}${cfIn(cl, 'suite', 'Suite / Unit', c, { max: 40 })}${cfIn(cl, 'city', 'City', c, { max: 80 })}
+      <label><span>State</span>${stateSelect('data-cf="state"', cl.state)}</label>${cfIn(cl, 'zip', 'ZIP Code', c, { max: 10 })}
       <label class="chk">${sw('data-cf="billingSame"', cl.billingSame !== false)} Billing address is the same</label>
       <div data-billbox${cl.billingSame !== false ? ' hidden' : ''}><b class="clh">Billing address</b>
-      ${cfIn(cl, 'bAddress', 'Street address', c, { max: 200 })}${cfIn(cl, 'bSuite', 'Suite / unit (if any)', c, { max: 40 })}${cfIn(cl, 'bCity', 'City', c, { max: 80 })}
-      <label><span>State</span>${stateSelect('data-cf="bState"', cl.bState)}</label>${cfIn(cl, 'bZip', 'ZIP code', c, { max: 10 })}</div></div>`,
+      ${cfIn(cl, 'bAddress', 'Street Address', c, { max: 200, w2: true })}${cfIn(cl, 'bSuite', 'Suite / Unit', c, { max: 40 })}${cfIn(cl, 'bCity', 'City', c, { max: 80 })}
+      <label><span>State</span>${stateSelect('data-cf="bState"', cl.bState)}</label>${cfIn(cl, 'bZip', 'ZIP Code', c, { max: 10 })}</div></div>`,
   contact: (cl, c) => `<div class="pfields">${cfIn(cl, 'phone', 'Telephone', c, { type: 'tel', max: 30 })}${cfIn(cl, 'fax', 'Fax', c, { type: 'tel', max: 30 })}
       <b class="clh">Contacts</b><div class="hint">They don’t need a login.</div>
       <div class="cllist" data-ctlist>${contactRows(cl.contacts || [])}</div>
@@ -58,7 +58,7 @@ const CLIENT_BODY = {
 };
 // read-only view (the client's Account Owner): everything shown, nothing editable
 function clientFreeze(root){ root.querySelectorAll('input,select,textarea,button[data-ctdel]').forEach(e => { e.disabled = true; }); root.querySelectorAll('.ctadd,[data-ctdel],.identbar,[data-pnl=act]').forEach(e => { e.hidden = true; e.style.display = 'none'; }); }
-function clientCardHtml(cl, c, L){ return layoutGridHtml(CLIENT_PAGE, L, id => CLIENT_BODY[id](cl, c)); }
+function clientCardHtml(cl, c, L){ return saveBar(c.ro ? '' : c.isNew ? '<button type="button" class="btn" data-createclient="1">Create client</button>' : `<button type="button" class="btn" data-saveclient="${esc(cl.id)}">Save</button>`) + layoutGridHtml(CLIENT_PAGE, L, id => CLIENT_BODY[id](cl, c)); }
 
 // ---------------- behaviour for the host page ----------------
 // o = { stores: () => [pharmacy…], say: text => …, after: async isNew => … }

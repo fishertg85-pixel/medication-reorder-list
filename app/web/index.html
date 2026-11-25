@@ -278,13 +278,38 @@ table.invt{border-collapse:collapse;width:100%;font-size:13.5px;} table.invt th,
 .utop{margin:0 0 10px;} .drmodal{position:fixed;inset:0;background:rgba(10,20,35,.55);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:6vh 3vw;overflow:auto;}
 .drbox{background:var(--bg);border-radius:10px;width:min(640px,96vw);padding:14px 16px 12px;box-shadow:0 16px 48px rgba(0,0,0,.4);} .drhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:16px;}
 
-/* Street address starts under Pharmacy name */
-.pfields>.nlcol{grid-column:1 / span 2;grid-row:span 2;display:grid;grid-template-rows:subgrid;grid-template-columns:minmax(0,1fr);min-width:0;}
 /* licensed entity: three fields on one row, labels on one line, identical heights, square against the same edges */
-.entity .entrow{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1.2fr);gap:6px 10px;align-items:end;min-width:0;}
+.entity .entrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px 10px;align-items:end;min-width:0;} .entity .entrow>.full{grid-column:1/-1;}
 .entity .entrow label span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .entity .entrow input,.entity .entrow select{height:36px;box-sizing:border-box;margin:0;}
 .entity>.btn2{margin-top:8px;} .entity .lockhint{margin-top:6px;}
+
+/* ---- Fit standard (39.2b): a street address always starts under the name and takes its own row; labels never wrap; nothing scrolls inside a panel ---- */
+.pcard label>span{white-space:nowrap;} .pcard .ro{white-space:nowrap;overflow:hidden;}
+.pcard .clsel{display:block;grid-column:1/-1;margin:0 0 6px;min-width:0;} .pcard .clsel select,.pcard .clsel input{width:100%;}
+/* Name And Address (twelve small columns): Pharmacy Name on its own row; then [Street Address][Suite / Unit]; [City][State][ZIP]; [Phone][Fax]; [Email]. The time zone sits in the Hours Of Operation box, right of the Sunday row. */
+.pnl .pfields.namefields{grid-template-columns:repeat(12,minmax(0,1fr));gap:6px 10px;}
+.pnl .pfields.namefields>label{grid-column:span 6;}
+.pnl .pfields.namefields>label[data-k=name]{order:1;grid-column:1/-1;} .pnl .pfields.namefields>label[data-k=address]{order:2;grid-column:span 8;} .pnl .pfields.namefields>label[data-k=suite]{order:3;grid-column:span 4;}
+.pnl .pfields.namefields>label[data-k=city]{order:4;grid-column:span 6;} .pnl .pfields.namefields>label[data-k=state]{order:5;grid-column:span 3;} .pnl .pfields.namefields>label[data-k=zip]{order:6;grid-column:span 3;}
+.pnl .pfields.namefields>label[data-k=phone]{order:7;grid-column:span 6;} .pnl .pfields.namefields>label[data-k=fax]{order:8;grid-column:span 6;}
+.pnl .pfields.namefields>label[data-k=email]{order:9;grid-column:1/-1;} .pnl .pfields.namefields>.lockhint{order:10;grid-column:1/-1;}
+.hrow .tzsel{margin-left:auto;flex:0 1 112px;min-width:84px;width:auto;padding:5px 6px;font-size:13px;}
+/* Client page: Legal name and DBA each on their own row, Street Address on its own row, billing block laid out like the business block */
+.pnl[data-pnl=ent] .pfields,.pnl[data-pnl=addr] .pfields,.pnl[data-pnl=addr] [data-billbox]{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px 10px;}
+.pnl[data-pnl=ent] .pfields>.w2,.pnl[data-pnl=addr] .pfields .w2{grid-column:1/-1;}
+.pnl[data-pnl=ent] .pfields>label:not(.w2){grid-column:span 2;}
+.pnl[data-pnl=addr] .pfields>label.chk,.pnl[data-pnl=addr] [data-billbox]>.clh{grid-column:1/-1;}
+.pnl[data-pnl=addr] [data-billbox]{grid-column:1/-1;display:grid;} .pnl[data-pnl=addr] [data-billbox][hidden]{display:none;}
+.pnl[data-pnl=addr] .pfields>label:not(.w2):not(.chk),.pnl[data-pnl=addr] [data-billbox]>label:not(.w2){grid-column:span 1;}
+.pnl[data-pnl=addr] .pfields>label.w2:first-of-type{grid-column:1/-1;}
+.pnl[data-pnl=ent] .pfields>.identbar,.pnl[data-pnl=ent] .pfields>.hint,.pnl[data-pnl=ent] .pfields>.pid{grid-column:1/-1;}
+
+.savebar{position:sticky;top:0;z-index:5;display:flex;justify-content:flex-end;padding:4px 0 8px;margin:0 0 4px;background:var(--bg);} .savebar .btn{min-width:96px;}
+.pcard .pid,.pcard .hint,.pcard .lockhint{white-space:nowrap;} .hrow input[type=time],.hrow .chk{flex:0 0 auto;}
+.savebar .btn{white-space:nowrap;} .licrow label:nth-child(4){flex-basis:116px;}
+.pcard .btn,.pcard .btn2{white-space:nowrap;}
+.hrow input[type=time]:disabled{opacity:.45;background:var(--line,#e3e6ea);cursor:not-allowed;}
 /* ---- Documents tab ---- */
 #panel-documents{position:relative;}
 #panel-documents .pgrid{margin-top:2px;}
