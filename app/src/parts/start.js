@@ -6,6 +6,7 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = async () => {
   const pan = b.dataset.tab === 'dashboard' ? 'calendar' : b.dataset.tab;                  // Dashboard and Calendar are two views of the same page
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + pan));
   document.body.classList.toggle('wideTab', b.dataset.tab === 'owner' || b.dataset.tab === 'documents');
+  document.body.classList.toggle('calWide', b.dataset.tab === 'calendar');     // the Calendar tab uses the whole window width (task column on the right)
   if(b.dataset.tab === 'owner') openOwnerTab();
   if(b.dataset.tab === 'archive') loadArchive(false).catch(() => {});
   if(b.dataset.tab === 'calendar' || b.dataset.tab === 'dashboard') calShow(b.dataset.tab);

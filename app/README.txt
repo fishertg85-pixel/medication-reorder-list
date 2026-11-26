@@ -29,6 +29,16 @@ INSTALL OR UPDATE: THE COMMANDS (START HERE)
      bash host.sh assign LOGIN NTX2        bash host.sh unassign LOGIN NTX2
 
 ZIP 39.6 (2026-11-25): WHAT CHANGED (on top of 39.5)
+  Calendar tab  The Calendar tab uses the whole window width (it was a 1,300 px strip in the middle). Calendar on the
+                left, a Tasks column on the right in the same box: Overdue, Due Soon, Upcoming (next 30 days) and
+                No Record, each with a count; every task shows its due date, how soon, and what it is for; click
+                a task to open it. The column follows the Category / Responsible / Only Tasks I Can Complete
+                filters, is as tall as the calendar and scrolls inside itself when the list is longer. Picking a
+                day shows that day in the same column; Close brings the tasks back. Below 1,600 px wide the
+                calendar keeps the full width and the task list goes under it. Dashboard and the other tabs are
+                unchanged.
+  Portal sign-  When a sign-in is refused, the employee portal now signs out once (it used to repeat the sign-out for
+  in            every refused request), so the sign-in box is drawn once and a late answer cannot clear what is typed.
   Users list    The "Also IronLedger" text is gone from the Users list everywhere, the employee portal included.
                 Nothing on screen marks a login as an IronLedger employee. (For such a login the sign-in controls
                 are still not offered to a pharmacy: reset password, PIN, mobile, login on/off, delete.)

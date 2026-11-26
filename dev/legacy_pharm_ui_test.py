@@ -15,7 +15,7 @@ with sync_playwright() as p:
     pg.goto("http://localhost:8790/host.html")
     pg.fill("#sUser", "neo"); pg.fill("#sPass", "hosttemp12a"); pg.click("#sGo")
     pg.wait_for_selector("#sNew:visible"); pg.fill("#sNew1", "hostpass999"); pg.fill("#sNew2", "hostpass999"); pg.click("#sNewGo")
-    pg.wait_for_selector("#sCode:visible, #side", state="attached")
+    pg.wait_for_selector("#sCode:visible, #gBody:visible")
     if pg.is_visible("#sCode"): pg.fill("#sCodeIn", "123456"); pg.click("#sCodeGo")
     pg.wait_for_selector("#side [data-qs]", state="visible")
     check("queue is on the right of the page", pg.locator(".cq").bounding_box()["x"] > pg.locator(".cmain").bounding_box()["x"])

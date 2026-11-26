@@ -99,7 +99,7 @@ with sync_playwright() as p:
     if pg.is_visible("#sCode"): pg.fill("#sCodeIn", "123456"); pg.click("#sCodeGo"); pg.wait_for_selector("#sMsg:has-text('Incorrect ID or password')")
     check("portal turns the pharmacy Account Owner away like a wrong password", pg.is_visible("#gSign") and not pg.is_visible("#gBody"))
     pg.fill("#sUser", "neo"); pg.fill("#sPass", "hostpass999"); pg.click("#sGo")
-    pg.wait_for_selector("#side, #sCode:visible", state="attached")
+    pg.wait_for_selector("#sCode:visible, #gBody:visible")       # wait until the page has answered: the code box or the portal (the list itself is always in the page, so waiting for it proves nothing)
     if pg.is_visible("#sCode"): pg.fill("#sCodeIn", "123456"); pg.click("#sCodeGo"); pg.wait_for_selector("#side", state="attached")
     try: pg.wait_for_selector("#side [data-q], #side [data-qs]", timeout=15000)
     except Exception: print("SIDE:", pg.inner_text("#side")[:300], "| body visible:", pg.is_visible("#gBody"), "| msg:", pg.inner_text("#sMsg")[:100]); raise

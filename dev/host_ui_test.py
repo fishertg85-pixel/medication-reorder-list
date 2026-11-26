@@ -18,7 +18,7 @@ with sync_playwright() as p:
     pg.goto("http://localhost:8790/host.html"); pg.wait_for_selector("#sUser"); pg.screenshot(path=OUT + "host_signin.png")
     pg.fill("#sUser", "neo"); pg.fill("#sPass", "hosttemp12a"); pg.click("#sGo")
     pg.wait_for_selector("#sNew:visible"); pg.fill("#sNew1", "hostpass999"); pg.fill("#sNew2", "hostpass999"); pg.click("#sNewGo")
-    pg.wait_for_selector("#sCode:visible, #side", state="attached")
+    pg.wait_for_selector("#sCode:visible, #gBody:visible")
     if pg.is_visible("#sCode"): pg.fill("#sCodeIn", "123456"); pg.click("#sCodeGo")
     pg.wait_for_selector("#side", state="visible")
     check("no tabs across the top, titled IronLedger employee portal", pg.locator("#hTabs").count() == 0 and "IronLedger employee portal" in pg.inner_text("header.topbar"))

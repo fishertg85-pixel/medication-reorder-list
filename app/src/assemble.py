@@ -55,6 +55,7 @@ rep('</style>\n</head>', r'''
   /* Account Owner tab */
   /*PHARM_CSS*/
   body.wideTab main{max-width:none;}
+  body.calWide main{max-width:none;padding-left:0;padding-right:0;}   /* Calendar tab: edge to edge; the calendar page keeps its own 20px margins, so its boxes line up with the logo and the buttons above */
   .btn.small,.btn2.small{padding:5px 10px;font-size:12.5px;}
   .btn2.danger{color:var(--bad, #a33);border-color:currentColor;}
   .copyb{padding:4px 8px;vertical-align:middle;line-height:0;} .copyb svg{display:block;}

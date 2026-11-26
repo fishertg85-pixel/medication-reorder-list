@@ -61,7 +61,7 @@ with sync_playwright() as pw:
     check("the Account Owner made them a Staff Pharmacist from the screen (type, license, preset privileges)", (u["acctType"], u["license"], u["perms"].get("submit"), u["perms"].get("archive"), u["perms"].get("remove")), ("pharmacist", "TX55555", True, True, True))
     p.screenshot(path=OUT + 'dual_owner_users.png'); p.close()
     # ---- the employee portal still marks it
-    p = newpage(); p.goto(BASE + 'host.html'); p.wait_for_selector('#sUser'); p.fill('#sUser', 'neo'); p.fill('#sPass', 'hostpass999'); p.click('#sGo'); p.wait_for_selector('#sCode:visible, #side', state='attached')
+    p = newpage(); p.goto(BASE + 'host.html'); p.wait_for_selector('#sUser'); p.fill('#sUser', 'neo'); p.fill('#sPass', 'hostpass999'); p.click('#sGo'); p.wait_for_selector('#sCode:visible, #gBody:visible')
     if p.is_visible('#sCode'): p.fill('#sCodeIn', '123456'); p.click('#sCodeGo')
     p.wait_for_selector('#side [data-q]', timeout=8000); p.click('#side [data-q]'); p.wait_for_selector('#side [data-qs=LAG1]'); p.click('#side [data-qs=LAG1]'); p.wait_for_selector('#vPharm .pcard')
     p.click('#vPharm label:has([data-picyes][value=no])'); p.wait_for_timeout(300)

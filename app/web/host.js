@@ -48,7 +48,9 @@ async function idToken(force){
 function authErr(){ const e = new Error('Please sign in again.'); e.auth = true; return e; }
 
 /* ---- the server: /host/* only ---- */
+let OUTING = null;                                         // the sign-out under way, if any (see signOut)
 async function api(method, path, body, retried){
+  const ses = SES;                                         // the sign-in this request belongs to: a late answer from an earlier sign-in, or one that arrives while signing out, must not sign the page out again
   let tok; try{ tok = await idToken(); }catch(e){ if(e.auth) showSign('Please sign in again.'); throw e; }
   let r;
   try{ r = await fetch(CFG.apiUrl.replace(/\/$/, '') + path, {method, headers:{Authorization:'Bearer ' + tok, ...(body ? {'Content-Type':'application/json'} : {})}, body:body ? JSON.stringify(body) : undefined, cache:'no-store'}); }
@@ -56,8 +58,8 @@ async function api(method, path, body, retried){
   if(r.status === 401 && !retried){ try{ await idToken(true); }catch(e){ showSign('Please sign in again.'); throw e; } return api(method, path, body, true); }
   const j = await r.json().catch(() => ({}));
   if(r.status === 423){ lockNow('Locked after 5 minutes without activity.', true); const e = new Error(j.error); e.auth = true; throw e; }
-  if(r.status === 404 && path.startsWith('/host')){ await signOut('Incorrect ID or password.'); const e = new Error('Not an employee'); e.auth = true; throw e; }
-  if(r.status === 403 && path === '/me'){ await signOut('This login is switched off.'); const e = new Error('off'); e.auth = true; throw e; }
+  if(r.status === 404 && path.startsWith('/host')){ if(ses && SES === ses && !OUTING) await signOut('Incorrect ID or password.'); const e = new Error('Not an employee'); e.auth = true; throw e; }
+  if(r.status === 403 && path === '/me'){ if(ses && SES === ses && !OUTING) await signOut('This login is switched off.'); const e = new Error('off'); e.auth = true; throw e; }
   if(!r.ok){ const e = new Error(j.error || j.message || ('Server answered ' + r.status)); e.status = r.status; throw e; }
   UNTIL = Date.now() + LOCK_MS;
   return j;
@@ -143,12 +145,17 @@ function lockNow(msg, serverSaid){
   if(was && !serverSaid) api('POST', '/host-lock', {}).catch(() => {});
   if(ME) showLock(msg);
 }
-async function signOut(msg){
-  if(SES){
+// One sign-out at a time: several answers refusing the same sign-in (a login that is not an employee gets one per request) share it,
+// so the sign-in box is drawn once and what the person types next is not wiped by a late answer.
+function signOut(msg){ if(!OUTING) OUTING = doSignOut(msg).finally(() => { OUTING = null; }); return OUTING; }
+async function doSignOut(msg){
+  const ses = SES;
+  if(ses){
     try{ if(UNTIL > 0) await api('POST', '/host-lock', {}); }catch(e){}
-    try{ await cog('RevokeToken', {ClientId:CID, Token:SES.refresh}); }catch(e){}
+    try{ await cog('RevokeToken', {ClientId:CID, Token:ses.refresh}); }catch(e){}
   }
-  SES = null; store(); for(const k in TEMPS) delete TEMPS[k]; showSign(msg || 'Signed out.', !msg);
+  if(SES === ses){ SES = null; store(); }
+  for(const k in TEMPS) delete TEMPS[k]; showSign(msg || 'Signed out.', !msg);
 }
 $('lOut').onclick = () => signOut();
 $('bOut').onclick = async () => { if(await UG.leave()) signOut(); };

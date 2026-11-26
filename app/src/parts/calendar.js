@@ -106,7 +106,7 @@ function calShow(view, sub){                                     // called when 
 function calOpenView(view){
   document.querySelectorAll('#tabs button').forEach(x => x.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-calendar'));
-  document.body.classList.remove('wideTab'); calShow(view);
+  document.body.classList.remove('wideTab', 'calWide'); calShow(view);
 }
 window.addEventListener('message', e => {
   if(e.origin !== location.origin || !e.data || !e.data.ilcal) return;

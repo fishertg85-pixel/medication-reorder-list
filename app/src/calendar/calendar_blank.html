@@ -153,6 +153,19 @@ footer.foot b{color:var(--ink)}
 body.suite nav.tabs{display:none}body.suite .brand small{display:none}body.suite .ctl-me{display:none}.pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px;align-items:start}.subbar{display:flex;gap:6px;margin:0 0 12px}.subbar button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}.badge{display:inline-block;min-width:18px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:11.5px;font-weight:700;text-align:center}
 .sr .tx .pl{display:block;margin-top:3px}
 .dayside{width:380px}
+/* the right-hand column beside the month / week grid: exactly as tall as the calendar, its own scroll when the list is longer */
+.calwrap.fix{align-items:stretch}
+.calwrap.fix .dayside{position:relative;top:auto;max-height:none;overflow:visible;padding-bottom:0;min-height:320px}
+.calwrap.fix .dayside .tsin{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;padding-bottom:8px}
+.tside .sdh{align-items:baseline}
+.tsh{display:flex;align-items:center;gap:8px;padding-top:12px}.tsh .num{font-weight:700;color:var(--ink)}.tsh .mut{text-transform:none;letter-spacing:0;font-weight:400}
+.tsh .pill{text-transform:none;letter-spacing:0}
+.sr.tk .tx b{font-size:13px;font-weight:600}
+.sr.tk .tx b,.sr.tk .tx span.mut{white-space:normal;overflow:visible;text-overflow:clip}   /* task column: a title is never cut off; one longer than the column takes a second line */
+/* below 1600 px wide the calendar keeps the full width and the task list goes under it (the day panel still opens on the right when a day is picked, as before) */
+@media (max-width:1599px){.calwrap.fix.tasks{flex-direction:column}.calwrap.fix.tasks .dayside{width:100%;border-left:0;border-top:1px solid var(--line);min-height:0}.calwrap.fix.tasks .dayside .tsin{position:static;overflow:visible;columns:360px;column-gap:0;column-rule:1px solid var(--line)}
+ .calwrap.fix.tasks .sdh{column-span:all}.calwrap.fix.tasks .sr{break-inside:avoid}.calwrap.fix.tasks .tsh{break-after:avoid}}
+@media (max-width:900px){.calwrap.fix .dayside{min-height:0}.calwrap.fix .dayside .tsin{position:static;overflow:visible}}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 
 /* ===== full-width calendar, fits the screen ===== */
@@ -900,8 +913,21 @@ function vCalendarMonth(){
   let h=calHead(); h+='<div class="body calbar"><div>'+navBar()+'</div>'+togs+'</div>';
   const cv=UI.calView; let main=cv==='day'?vDay():cv==='week'?vWeek(1):cv==='biweek'?vWeek(2):vMonth();
   if(cv==='day'){ UI.selDay=clampDay(UI.selDay||today); h+='<div class="calwrap"><div class="calmain">'+main+'</div>'+daySide(true)+'</div>'; }
-  else if(UI.panel&&UI.selDay) h+='<div class="calwrap"><div class="calmain">'+main+'</div>'+daySide(false)+'</div>'; else h+=main;
+  else{ const day=!!(UI.panel&&UI.selDay); h+='<div class="calwrap fix'+(day?'':' tasks')+'"><div class="calmain">'+main+'</div>'+(day?daySide(false):taskSide())+'</div>'; }     // right-hand column: the picked day, otherwise what is due and coming up
   return h+'</div>';
+}
+/* Task column beside the calendar: what is overdue, due soon, coming up in the next 30 days, and what has no starting record. It follows the Category / Responsible / "Only tasks I can complete" filters.
+   Same box as the day panel (same place, same width), as tall as the calendar; a longer list scrolls inside it. */
+function taskSide(){
+  const open=openOccs(), ord=(a,b)=>(a.due||'')<(b.due||'')?-1:(a.due||'')>(b.due||'')?1:(a.track.ob.title<b.track.ob.title?-1:a.track.ob.title>b.track.ob.title?1:0);
+  const of=(st,f)=>open.filter(o=>o.status===st&&(!f||f(o))).sort(ord);
+  const secs=[['overdue','',of('overdue')],['due-soon','',of('due-soon')],['upcoming','Next 30 Days',of('upcoming',o=>o.days!=null&&o.days<=30)],['nobaseline','',of('nobaseline')]];
+  const row=o=>{ const t=o.track, wt=workTag(o.trackKey,o.key); return '<div class="sr tk" data-act="occ" data-t="'+esc(o.trackKey)+'" data-k="'+esc(o.key)+'"><div class="tx"><b>'+esc(t.ob.title)+'</b><span class="mut">'+(o.due?esc(fmtS(o.due))+' · '+esc(whenText(o.days))+' · ':'')+esc(subjName(t))+'</span>'+(wt?'<span class="pl">'+wt+'</span>':'')+'</div></div>'; };
+  const n=secs.reduce((a,x)=>a+x[2].length,0);
+  let h='<aside class="dayside tside" aria-label="Tasks due and coming up"><div class="tsin"><div class="sdh"><div style="font-size:16px;font-weight:600">Tasks</div><span class="mut" style="font-size:12.5px">'+n+' Open</span></div>';
+  secs.forEach(x=>{ if(x[2].length)h+='<div class="sh tsh">'+pill(x[0])+'<span class="num">'+x[2].length+'</span>'+(x[1]?'<span class="mut">'+x[1]+'</span>':'')+'</div>'+x[2].map(row).join(''); });
+  if(!n)h+='<div class="sr mut" style="cursor:default">Nothing due.</div>';
+  return h+'</div></aside>';
 }
 function daySide(inDay){
   const d=clampDay(UI.selDay), hr=hoursFor(d), fc=dayFacts(d), due=calItems(d,d), ps=planItems(d,d), isT=d===D.today;
@@ -911,14 +937,14 @@ function daySide(inDay){
   const open=due.filter(o=>!o.done);
   const rowP=p=>{ const tg=planTag(p); const wt=workTag(p.t,p.k); return '<div class="sr" data-act="occ" data-t="'+esc(p.t)+'" data-k="'+esc(p.k)+'"><div class="tm">'+(p.allDay?'All Day':t12(toMin(p.time)))+'</div><div class="tx"><b title="'+esc(p.title)+'">'+esc(p.title)+'</b><span class="mut">'+esc(p.subj)+'</span>'+(wt?'<span class="pl">'+wt+'</span>':'')+'</div>'+((p.allDay&&tg.t==='All Day')?'':'<span class="pill '+tg.c+'">'+tg.t+'</span>')+'</div>'; };
   const rowD=o=>{ const pls=o.done?(pill(o.status)+revPill(o)):workTag(o.trackKey,o.key); return '<div class="sr" data-act="occ" data-t="'+esc(o.trackKey)+'" data-k="'+esc(o.key)+'"><div class="tm mut">Due</div><div class="tx"><b title="'+esc(o.track.ob.title)+'">'+esc(o.track.ob.title)+'</b><span class="mut">'+esc(subjName(o.track))+' · '+esc(whoName(o.track))+'</span>'+(o.moved?'<span class="mut">'+esc(movedNote(o))+'</span>':'')+(pls?'<span class="pl">'+pls+'</span>':'')+'</div>'+(o.done?'':'<button class="btn sm" data-act="occ" data-t="'+esc(o.trackKey)+'" data-k="'+esc(o.key)+'">'+(workOf(o.trackKey,o.key)?'Continue Task':'Start Task')+'</button>')+'</div>'; };
-  let h='<aside class="dayside" aria-label="Tasks for '+esc(longDate(d))+'"><div class="sdh"><div><div style="font-size:16px;font-weight:600">'+longDate(d)+'</div><div class="mut" style="font-size:12.5px">'+(isT?'Today · ':'')+(hr.closed?'Pharmacy Closed: '+esc(hr.reason):'Pharmacy Hours: '+hr.text)+'</div></div>'+(inDay?'':'<button class="btn sm" data-act="closeside" aria-label="Close day panel">Close</button>')+'</div>';
+  let h='<aside class="dayside" aria-label="Tasks for '+esc(longDate(d))+'"><div class="tsin"><div class="sdh"><div><div style="font-size:16px;font-weight:600">'+longDate(d)+'</div><div class="mut" style="font-size:12.5px">'+(isT?'Today · ':'')+(hr.closed?'Pharmacy Closed: '+esc(hr.reason):'Pharmacy Hours: '+hr.text)+'</div></div>'+(inDay?'':'<button class="btn sm" data-act="closeside" aria-label="Close day panel">Close</button>')+'</div>';
   if(hr.closed&&open.length){ const pv=prevOpenDay(d); h+='<div class="warnbox" style="margin:0 14px 8px">'+open.length+' open item'+(open.length===1?' is':'s are')+' due on a day the pharmacy is closed.'+(pv?' Plan to complete '+(open.length===1?'it':'them')+' by '+longDate(pv)+'.':'')+'</div>'; }
   h+='<div class="sh">All Day</div>';
   const nAll=fc.length+allP.length+unsched.length;
   h+=fc.map(f=>'<div class="sr" style="cursor:default"><div class="tx"><b title="'+esc(f.name)+'">'+esc(f.name)+'</b></div></div>').join('')+allP.map(rowP).join('')+unsched.map(rowD).join('');
   if(!nAll)h+='<div class="sr mut" style="cursor:default">Nothing all day.</div>';
   h+='<div class="sh">Scheduled By Time</div>'+(timed.length?timed.map(rowP).join(''):'<div class="sr mut" style="cursor:default">Nothing scheduled at a set time.</div>');
-  h+='<div class="sdf mut">'+due.length+' Item'+(due.length===1?'':'s')+' Due · '+ps.length+' Scheduled</div><div class="sdf"><button class="btn sm pri" data-act="addsched" data-d="'+d+'">Add To Schedule</button></div>'+(inDay?'':'<div class="sdf"><button class="btn sm" data-act="openday" data-d="'+d+'">Open Day Timeline</button></div>')+'</aside>';
+  h+='<div class="sdf mut">'+due.length+' Item'+(due.length===1?'':'s')+' Due · '+ps.length+' Scheduled</div><div class="sdf"><button class="btn sm pri" data-act="addsched" data-d="'+d+'">Add To Schedule</button></div>'+(inDay?'':'<div class="sdf"><button class="btn sm" data-act="openday" data-d="'+d+'">Open Day Timeline</button></div>')+'</div></aside>';
   return h;
 }
 function vMonth(){
@@ -1303,7 +1329,7 @@ function render(){
   document.body.classList.toggle('suite',HXS());
   const sites=S.sites.filter(s=>!s.archived);
   const people=S.people.filter(p=>!p.archived);
-  root.innerHTML='<header class="top"><div class="wrap"><div class="bar"><div class="brand"><span class="mark">Iron<b>Ledger</b></span><small>Compliance Calendar'+(S.profile.name&&S.mode==='live'?' · '+esc(S.profile.name):'')+'</small></div><div class="spacer"></div><button class="clock" id="clock" data-act="hours" title="Time zone and hours of operation"><span id="clkD" class="mut"></span><span id="clkT" class="num"></span><span id="clkS" class="pill"></span></button>'+
+  root.innerHTML='<header class="top"><div class="wrap'+(UI.tab==='calendar'?' wide':'')+'"><div class="bar"><div class="brand"><span class="mark">Iron<b>Ledger</b></span><small>Compliance Calendar'+(S.profile.name&&S.mode==='live'?' · '+esc(S.profile.name):'')+'</small></div><div class="spacer"></div><button class="clock" id="clock" data-act="hours" title="Time zone and hours of operation"><span id="clkD" class="mut"></span><span id="clkT" class="num"></span><span id="clkS" class="pill"></span></button>'+
    (sites.length>1?'<span class="ctl">Pharmacy <select data-chg="site"><option value="">All</option>'+sites.map(s=>'<option value="'+esc(s.id)+'"'+(UI.site===s.id?' selected':'')+'>'+esc(s.name)+'</option>').join('')+'</select></span>':'')+
    (people.length?'<span class="ctl ctl-me">Acting As <select data-chg="me"><option value="">Unspecified</option>'+people.map(p=>'<option value="'+esc(p.id)+'"'+(ME===p.id?' selected':'')+'>'+esc(p.name)+'</option>').join('')+'</select></span>':'')+
    '</div><nav class="tabs" role="tablist">'+TABS.map(t=>'<button role="tab" aria-selected="'+(UI.tab===t[0])+'" data-act="tab" data-v="'+t[0]+'">'+t[1]+(t[0]==='review'&&NPEND?' <span class="badge">'+NPEND+'</span>':'')+'</button>').join('')+'</nav></div></header>'+(HXS()&&(UI.tab==='audit'||UI.tab==='people'||UI.tab==='setup')?'<div class="wrap" style="padding-top:12px"><button class="btn sm" data-act="back">← Back</button></div>':'')+
